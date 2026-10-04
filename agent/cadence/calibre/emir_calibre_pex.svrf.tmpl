@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Vijay Gupta and contributors
+// Part of EMIR, the open-source EM/IR screening tool.
+//
+// EMIR -- Calibre PEX statements, a SKETCH. UNVERIFIED: never run (no Calibre
+// where EMIR was developed). See NOTES.md for what each line is meant to give
+// EMIR's DSPF reader, and check every statement against your release.
+//
+// One run per kind, from ONE LVS database:
+//   R      -> ${CELL}.r_only.dspf   the EM/IR grid `emir run` screens
+//   C+CC   -> ${CELL}.c_only_coupled.dspf   the netlist simulated for cc-grid
+
+PEX NETLIST "${CELL}.r_only.dspf" DSPF SOURCENAMES
+PEX REDUCE ANALOG NO
+// resistor annotations EMIR needs: width, length, layer, location (UNVERIFIED
+// that these annotate a DSPF; the public material shows them for CALIBREVIEW)
+// PEX NETLIST ... RWIDTH RLENGTH RLAYER RLOCATION

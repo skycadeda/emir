@@ -1,0 +1,5 @@
+# leak_guard allowlist: documented, intentional mentions only (scripts/leak_guard.py).
+# <path glob>  <rule id or *>  [text=<substring the line must contain>]  # <reason>
+#
+# Empty on purpose. The guard has no entry for itself: its patterns are written
+# so that its own source never spells what it searches for.

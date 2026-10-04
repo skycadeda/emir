@@ -1,0 +1,11 @@
+{
+ "what": "What the removed `emir layout` reported on this GDS (make_layouts.py's sink.gds) at the operating point of tb_op.cir.in: its network built from the layout's rectangles on the process file's layers (li1 and up; no contacts below li1, no diffusion), the devices extracted by magic and simulated by Xyce on ideal rails with a 0 V probe on every terminal. Run with the last version of EMIR that had the command, on 2026-10-04, with pdks/sky130.yaml at 90 C; its golden digest, which Xyce 7.10 and ngspice 45 reproduced. A record, not a check: the command is gone.",
+ "current_A": 0.0014822,
+ "rectangles": 253,
+ "nets": {
+  "out": {"ir_drop_mV": 24.548882983626637, "max_ratio": 3.087868150000063, "n_violations": 7,
+          "elements": 39, "worst": {"layer": "via2", "metric": "avg", "fix": "via2: 1 -> 4 cuts (+3)"}},
+  "vss": {"ir_drop_mV": 15.412015451345722, "max_ratio": 3.0878681547799496, "n_violations": 3,
+          "elements": 92, "worst": {"layer": "via2", "metric": "avg", "fix": "via2: 1 -> 4 cuts (+3)"}}
+ }
+}

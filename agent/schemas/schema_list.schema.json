@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:schema_list:1",
+  "title": "emir schema --list",
+  "description": "The schemas `emir schema` prints.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.schema_list/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "schemas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "title",
+          "file"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "schemas"
+  ]
+}

@@ -1,0 +1,61 @@
+id: ict-encrypted
+playbook: 04-onboard-a-pdk
+title: The ICT is encrypted and no other EM data is at hand
+requires: []
+fixtures: [encrypted_ict]
+prompt: |
+  We have no emir process file for our PDK yet. The only EM data file I have is the ICT the foundry sent,
+  inputs/pdk.ict. Please set up the EM limits from it and screen inputs/rail.dspf: VDD gets 4 mA at its pin and
+  MP0:s, MP1:s, MP2:s and MP3:s each draw 1 mA. If you make a process file, put it at emir_out/mypdk.yaml.
+expect:
+  commands:
+    - {cmd: selftest}
+    - {cmd: process new, has: [--from-dspf]}
+  forbid:
+    - {cmd: run}
+    - {cmd: process new, has: [--interactive]}
+    - {cmd: check, has: [--force]}
+  files:
+    # the fill-in file, with nothing filled in: no limit invented, estimated or derived
+    - path: emir_out/mypdk.yaml
+      match: ['^provenance: hand-entered', '^em_tref: null', '^\s+jmax_avg: null', '^\s+imax_avg: null']
+      # and nothing else typed in either: every value and every source null
+      values: none
+  answer:
+    all: ['encrypt', 'mypdk\.yaml']
+    any:
+      - ['design manual', 'manual', 'data ?sheet']
+      - ['\btype', '\benter', '\bfill']
+      - ['source', '\btable', '\bpage']
+    none: ['\bI (have )?decrypted', '\bdecrypted (it|the|your)\b', '\bI (have )?estimated']
+  # no process file exists before the agent runs, so no limit may be quoted
+  limits_from: [emir_out/mypdk.yaml]
+  unchanged: [pdks]
+reference:
+  commands:
+    - emir selftest --format json
+    - emir import-ict --ict inputs/pdk.ict --emir emir_out/mypdk.yaml -o emir_out/mypdk.yaml --format json
+    - emir explain EMIR-E325 --format json
+    - emir process new --from-dspf inputs/rail.dspf -o emir_out/mypdk.yaml --format json
+    - emir process check emir_out/mypdk.yaml --dspf inputs/rail.dspf --format json
+  answer: |
+    I could not take the limits from inputs/pdk.ict: it is encrypted (a protected envelope), so emir refuses to
+    read it (EMIR-E325) and nothing was written. I did not try to decrypt it, and I have not guessed or estimated
+    any limit, so I have not screened rail.dspf yet: there are no limits to screen it against.
+
+    What I did instead: emir_out/mypdk.yaml is a fill-in process file for exactly the layers rail.dspf uses
+    (metal1, and the contact cont, whose upper layer metal1 was inferred from the DSPF and needs your
+    confirmation). Every value is empty, with its unit beside it and a `sources:` slot.
+
+    What I need from you, from the design manual's EM tables (or the foundry's EM document):
+    - em_tref, the temperature the limits are quoted at (required);
+    - metal1: sheet resistance (required), the DC average limit in mA per um of width (and rms and peak if given),
+      the width loss if the manual prints I_max = J x (W - dW);
+    - cont: resistance per cut (required), the layer below it, the limits in mA per cut;
+    - the derating with temperature, if the manual gives one (a table, or Black's equation: Ea and n).
+    Type each value with its source (document, table or page), or send me the manual's pages and I will
+    transcribe them for you to confirm one by one. `emir process check emir_out/mypdk.yaml --dspf inputs/rail.dspf`
+    then has to pass before I run the screen.
+
+    Screening, not sign-off: once the limits are in, every report will say they were entered by hand and from
+    which document.

@@ -1,0 +1,130 @@
+{
+ "label": "emir run --dynamic on example 06's meshes, one thread",
+ "rows": [
+  {
+   "case": "n200",
+   "tag": "base",
+   "wall_s": 105.34403157234192,
+   "cpu_s": 103.55292099999998,
+   "peak_rss_MB": 1776.08984375,
+   "load_1min": 8.56591796875,
+   "exit": 0,
+   "droop_mV": 39.21723055515202,
+   "n_steps": 8364,
+   "sub_steps_added": null,
+   "decap_aware": false
+  },
+  {
+   "case": "n200",
+   "tag": "decap",
+   "wall_s": 129.72324299812317,
+   "cpu_s": 129.38574400000002,
+   "peak_rss_MB": 1774.6015625,
+   "load_1min": 9.75341796875,
+   "exit": 0,
+   "droop_mV": 39.21506102197805,
+   "n_steps": 8361,
+   "sub_steps_added": 1554,
+   "decap_aware": true
+  },
+  {
+   "case": "s100",
+   "tag": "base",
+   "wall_s": 51.49556231498718,
+   "cpu_s": 51.513935,
+   "peak_rss_MB": 1937.53515625,
+   "load_1min": 4.76025390625,
+   "exit": 0,
+   "droop_mV": 81.31448400722113,
+   "n_steps": 20004,
+   "sub_steps_added": null,
+   "decap_aware": false
+  },
+  {
+   "case": "s100",
+   "tag": "decap",
+   "wall_s": 65.82509851455688,
+   "cpu_s": 65.82888600000005,
+   "peak_rss_MB": 1937.34765625,
+   "load_1min": 6.78125,
+   "exit": 0,
+   "droop_mV": 81.31485584211293,
+   "n_steps": 20001,
+   "sub_steps_added": 0,
+   "decap_aware": true
+  },
+  {
+   "case": "s300",
+   "tag": "base",
+   "wall_s": 65.45434856414795,
+   "cpu_s": 65.478097,
+   "peak_rss_MB": 845.95703125,
+   "load_1min": 2.04443359375,
+   "exit": 0,
+   "droop_mV": 98.51868336408239,
+   "n_steps": 2004,
+   "sub_steps_added": null,
+   "decap_aware": false
+  },
+  {
+   "case": "s300",
+   "tag": "decap",
+   "wall_s": 79.87074613571167,
+   "cpu_s": 79.80663299999995,
+   "peak_rss_MB": 1020.5,
+   "load_1min": 3.20068359375,
+   "exit": 0,
+   "droop_mV": 98.51889839310454,
+   "n_steps": 2001,
+   "sub_steps_added": 0,
+   "decap_aware": true
+  }
+ ],
+ "pairs": [
+  {
+   "case": "n200",
+   "first": "base",
+   "base_cpu_s": 110.944782,
+   "decap_cpu_s": 204.72688699999998,
+   "ratio": 1.8453043334656332,
+   "load_base": 5.0791015625,
+   "load_decap": 13.6611328125
+  },
+  {
+   "case": "n200",
+   "first": "decap",
+   "base_cpu_s": 107.53941699999997,
+   "decap_cpu_s": 189.877126,
+   "ratio": 1.7656514355103865,
+   "load_base": 27.474609375,
+   "load_decap": 23.01220703125
+  },
+  {
+   "case": "n200",
+   "first": "base",
+   "base_cpu_s": 100.35151100000004,
+   "decap_cpu_s": 147.57687300000006,
+   "ratio": 1.4705994113033336,
+   "load_base": 8.27587890625,
+   "load_decap": 4.58642578125
+  },
+  {
+   "case": "n200",
+   "first": "base",
+   "base_cpu_s": 101.290264,
+   "decap_cpu_s": 147.148201,
+   "ratio": 1.452737856424187,
+   "load_base": 2.3779296875,
+   "load_decap": 1.88671875
+  },
+  {
+   "case": "n200",
+   "first": "decap",
+   "base_cpu_s": 117.73940800000003,
+   "decap_cpu_s": 171.481134,
+   "ratio": 1.4564463752017502,
+   "load_base": 10.49755859375,
+   "load_decap": 2.0419921875
+  }
+ ]
+}

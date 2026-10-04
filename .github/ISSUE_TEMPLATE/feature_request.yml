@@ -1,0 +1,58 @@
+name: Feature request
+description: A new command, option, check, report field or flow.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        EMIR is a screening tool, not sign-off, and its first user is an AI agent:
+        new behaviour comes with `--format json` output, an `EMIR-` code for every
+        failure, a schema, and `next_steps` (CONTRIBUTING.md). No foundry data here,
+        please: describe the case with invented names and numbers.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to screen or decide, and where EMIR stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: >-
+        The command line you would like to type (or the MCP tool call), and what it
+        should print. If it reports numbers, say how they would be checked: a closed
+        form, an example with a hand calculation, another tool.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - DSPF / extracted-layout input
+        - process files and PDKs
+        - currents and simulators
+        - EM / IR checks and their maths
+        - big blocks (CC simulation, streaming)
+        - chip-level hierarchy (abstracts)
+        - the magic route (emir extract --tool magic)
+        - reports, HTML and layout viewers
+        - Cadence integration
+        - agent integration (AGENTS.md, playbooks, MCP, emir next)
+        - packaging and install
+        - documentation
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead
+  - type: checkboxes
+    id: no-foundry-data
+    attributes:
+      label: Confidentiality
+      options:
+        - label: This request holds no foundry or licensed-PDK data and no site details.
+          required: true

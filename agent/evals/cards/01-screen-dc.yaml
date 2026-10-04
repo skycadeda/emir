@@ -1,0 +1,57 @@
+id: screen-dc
+playbook: 01-screen-a-block
+title: Screen a block with DC currents the person gives
+requires: []
+fixtures: [sample]
+prompt: |
+  Please screen the VDD rail of my block for EM and IR drop. The extraction is inputs/rail.dspf and the
+  process file is inputs/process.yaml. DC currents: 4 mA comes in at the VDD pin, and each of the four
+  PMOS sources (MP0:s, MP1:s, MP2:s, MP3:s) draws 1 mA. Tell me the verdict, the worst segment, and what
+  to fix.
+expect:
+  commands:
+    - {cmd: selftest}
+    - {cmd: check, has: [--process, --currents]}
+    - {cmd: run, has: [--process, --currents]}
+    - {cmd: report}
+  forbid:
+    - {cmd: run, has: [--force]}
+  documents:
+    - schema: emir.run/1
+      fields:
+        verdict: FAIL
+        worst_net.net: VDD
+        worst_net.ratio: {approx: 1.6667, rel: 0.001}
+        nets.0.governing_metric: avg
+        nets.0.ir_drop_mV: {approx: 54.0, rel: 0.001}
+  answer:
+    verdict: FAIL
+    numbers:
+      - {value: 1.667, rel: 0.01, what: worst ratio}
+      - {value: 54.0, rel: 0.01, what: IR drop mV}
+    metric: avg
+    any:
+      - ['Rm1', 'Rm2', 'Rm3']
+      - ['widen', '1\.25']
+  limits_from: [inputs/process.yaml]
+reference:
+  commands:
+    - emir selftest --format json
+    - |-
+      emir next --dspf inputs/rail.dspf --process inputs/process.yaml --currents '{"VDD": 0.004, "MP0:s": -0.001, "MP1:s": -0.001, "MP2:s": -0.001, "MP3:s": -0.001}' --format json
+    - |-
+      emir check inputs/rail.dspf --process inputs/process.yaml --currents '{"VDD": 0.004, "MP0:s": -0.001, "MP1:s": -0.001, "MP2:s": -0.001, "MP3:s": -0.001}' --format json
+    - |-
+      emir run inputs/rail.dspf --process inputs/process.yaml --currents '{"VDD": 0.004, "MP0:s": -0.001, "MP1:s": -0.001, "MP2:s": -0.001, "MP3:s": -0.001}' --summary-out emir_out/summary.json --format json
+    - emir report --from emir_out/summary.json
+  answer: |
+    **Verdict: FAIL** on VDD. Screening, not sign-off.
+
+    - Worst: the first three Metal1 rail segments from the feed (Rm1-Rm3) at 1.667x the avg limit:
+      widen them from 0.750 to 1.255 um. Rm4-Rm6 are at 1.250x (widen to 0.940 um).
+    - The contact of MP3 (Rc3, Cont, 1 cut) is at 1.333x: 1 -> 2 cuts.
+    - Governing metric: avg (DC currents, so avg = rms = peak).
+    - IR drop: 54.0 mV from the VDD pin.
+    - Analysed at 100 C, the process file's em_tref (3.2 mA/um avg on Metal1, 0.75 mA per Cont cut).
+    - Not checked: switching transients and their peaks (DC currents only).
+    - Note: inputs/process.yaml is the ILLUSTRATIVE sample (EMIR-W306): its limits are invented.

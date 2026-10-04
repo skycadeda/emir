@@ -1,0 +1,106 @@
+{
+ "_about": "example 09's digest (summarize.py): exact match except the numbers named in _tolerances (absolute). No Cadence tool runs in this example.",
+ "_tolerances": {
+  "extract_c_only_coupled.temperature": 1e-09,
+  "extract_r_only.temperature": 1e-09
+ },
+ "extract_c_only_coupled": {
+  "ccl_command_lines": 52,
+  "ccl_type": "c_only_coupled",
+  "dry_run": true,
+  "dspf": "railblock.c_only_coupled.dspf",
+  "kind": "c_only_coupled",
+  "licensed": [
+   "pvs",
+   "quantus"
+  ],
+  "load_bearing_in_ccl": true,
+  "missing_settings": [],
+  "schema": "emir.extract/1",
+  "settings_from": {
+   "extract_temperature": "site.yaml",
+   "pvs_lvs_rules": "site.yaml",
+   "qrc_corner": "site.yaml",
+   "qrc_tech_dir": "site.yaml"
+  },
+  "steps": [
+   "lvs",
+   "lvs-gate",
+   "quantus"
+  ],
+  "temperature": 25.0
+ },
+ "extract_r_only": {
+  "ccl_command_lines": 52,
+  "ccl_type": "r_only",
+  "dry_run": true,
+  "dspf": "railblock.r_only.dspf",
+  "kind": "r_only",
+  "licensed": [
+   "pvs",
+   "quantus"
+  ],
+  "load_bearing_in_ccl": true,
+  "missing_settings": [],
+  "schema": "emir.extract/1",
+  "settings_from": {
+   "extract_temperature": "site.yaml",
+   "pvs_lvs_rules": "site.yaml",
+   "qrc_corner": "site.yaml",
+   "qrc_tech_dir": "site.yaml"
+  },
+  "steps": [
+   "lvs",
+   "lvs-gate",
+   "quantus"
+  ],
+  "temperature": 25.0
+ },
+ "extract_unconfigured": {
+  "ccl_command_lines": 0,
+  "ccl_type": null,
+  "dry_run": true,
+  "dspf": "railblock.r_only.dspf",
+  "kind": "r_only",
+  "licensed": [
+   "pvs",
+   "quantus"
+  ],
+  "load_bearing_in_ccl": false,
+  "missing_settings": [
+   "extract_temperature",
+   "pvs_lvs_rules",
+   "qrc_corner",
+   "qrc_tech_dir"
+  ],
+  "schema": "emir.extract/1",
+  "settings_from": {
+   "extract_temperature": "not set",
+   "pvs_lvs_rules": "not set",
+   "qrc_corner": "not set",
+   "qrc_tech_dir": "not set"
+  },
+  "steps": [
+   "lvs",
+   "lvs-gate",
+   "quantus"
+  ],
+  "temperature": null
+ },
+ "save_lines": {
+  "count": 16,
+  "file_lines": 1,
+  "first_words": [
+   "save",
+   "XDUT.Rm1:1",
+   "XDUT.Rm2:1"
+  ],
+  "mode": "rcc",
+  "schema": "emir.save_lines/1"
+ },
+ "testbench": {
+  "includes_saves": true,
+  "instance": "XDUT (VDD) railblock",
+  "unfilled_fields": 0
+ }
+}

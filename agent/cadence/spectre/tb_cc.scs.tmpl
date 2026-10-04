@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Vijay Gupta and contributors
+// Part of EMIR, the open-source EM/IR screening tool. Not a Cadence-supplied file.
+//
+// EMIR Spectre testbench, CC (--mode cc-grid): the block is simulated WITHOUT
+// parasitic resistance -- the C-only coupled extraction (Quantus kind
+// c_only_coupled), or the schematic netlist -- so the rails are ideal, the
+// netlist stays small and it converges. Only the instance-pin currents are
+// saved; EMIR pushes them through the R-only grid (kind r_only) by
+// superposition. The route for big blocks (ADC top, PLL top), where an RCC
+// transient converges poorly and slowly.
+//
+// Status: UNVERIFIED until checked on site. The Spectre route it follows (the
+// instance-pin currents saved with the lines emir printed, PSF ASCII written)
+// is verified on site by the local agent with `emir verify-sim --sim spectre
+// --run`; the two extractions with `emir check` on each DSPF. The template
+// itself is filled by hand.
+//
+// cc-grid is the person's choice of mode (`emir next` lists rcc, cc-grid and
+// cc-grid self-consistent with what each costs and how accurate it is).
+//
+// Fill the dollar-brace fields (by hand, with `envsubst`, or Python string.Template), then:
+//   emir save-lines ${DSPF_R} --mode cc-grid --prefix XDUT. --out emir_save.scs
+//   spectre tb_cc.scs -format psfascii -raw tb_cc.raw =log tb_cc.log
+//   emir check ${DSPF_R} --process <process.yaml> --cc-sim tb_cc.raw --mode cc-grid
+//   emir run   ${DSPF_R} --process <process.yaml> --cc-sim tb_cc.raw --mode cc-grid \
+//        --summary-out emir_out/summary.json --html emir_out/html
+//
+// The save lines come from the R-ONLY DSPF (${DSPF_R}): it names the
+// instance pins the grid needs. ${DSPF_C} and ${DSPF_R} must come from the
+// same LVS (`emir extract` reuses it), or instance names may not line up; an
+// instance pin that is not saved is reported, and counts as no current.
+// Results must be text (psfascii or nutascii): binary PSF is not read.
+//
+// Self-consistent (--mode cc-grid --self-consistent, when the person asks for
+// it): every instance pin on the rail gets its own node, fed from the rail by a
+// vsource type=pwl file= at the pin's droop waveform, read from a file the loop
+// rewrites each pass (in emir_out/selfconsist/<net>/; UNVERIFIED until checked
+// where Spectre runs). Spectre's netlist is not read by emir,
+// so the split is added here once, by hand (reconnect each pin, and a bulk on
+// the rail, to its node, as the printed comments list):
+//   emir run ${DSPF_R} --net ${VDD_NET} --split-stub   (prints it)
+// then (Spectre is licensed: without --run it only plans; ask the person):
+//   emir run ${DSPF_R} --process <process.yaml> --net ${VDD_NET} --mode cc-grid \
+//        --self-consistent --netlist tb_cc.scs --vdd ${VDD} --run \
+//        --summary-out emir_out/summary.json
+
+simulator lang=spectre
+global 0
+include "${MODELS}" section=${SECTION}
+
+// The block without resistance. Copy the port order from its .SUBCKT line.
+include "${DSPF_C}"
+XDUT (${PORTS}) ${CELL}
+
+// The operating mode under test: supplies, bias, inputs, clocks, loads.
+parameters vdd_v=${VDD}
+VSUP (${VDD_NET} 0) vsource dc=vdd_v
+// ...
+
+// Periodic blocks: a tran long enough to settle plus whole periods (EMIR
+// windows on whole periods, --period), or PSS (avg is the DC harmonic, rms by
+// Parseval).
+tr tran stop=${TSTOP} errpreset=conservative
+// pss1 pss fund=${FUND} harms=${HARMS} errpreset=conservative
+
+// The instance-pin currents EMIR asked for, and nothing else.
+include "emir_save.scs"

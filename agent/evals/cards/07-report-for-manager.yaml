@@ -1,0 +1,41 @@
+id: report-for-manager
+playbook: 07-report-to-human
+title: Turn last night's run summary into a status for a manager
+requires: []
+fixtures: [finished_run]
+prompt: |
+  Last night's EMIR run left inputs/run/summary.json. Write me a short status for my manager: what
+  failed, how bad it is, what to fix, and what was not checked.
+expect:
+  commands:
+    - {cmd: report, value: {--from: inputs/run/summary.json}}
+  forbid:
+    - {cmd: run}
+  answer:
+    verdict: FAIL
+    numbers:
+      - {value: 1.667, rel: 0.01, what: worst ratio}
+      - {value: 54.0, rel: 0.01, what: IR drop mV}
+    metric: avg
+    any:
+      - ['Rm1', 'Rm2', 'Rm3']
+      - ['widen', '1\.25']
+      - ['DC', 'transient']
+      - ['illustrative', 'invented', 'not real']
+  limits_from: [inputs/run/process.yaml]
+reference:
+  commands:
+    - emir selftest --format json
+    - emir report --from inputs/run/summary.json
+    - emir report --from inputs/run/summary.json --format json
+  answer: |
+    **EMIR status, railblock: FAIL** (1 net screened, VDD). Screening, not sign-off.
+
+    - How bad: the worst rail segments carry 1.667x their average-current limit (avg is the governing
+      metric); 10 segments are over the warn margin.
+    - What to fix: widen Metal1 Rm1-Rm3 from 0.750 to 1.255 um (Rm4-Rm6 to 0.940 um), and give the
+      contact Rc3 two cuts instead of one.
+    - IR drop: 54.0 mV on VDD.
+    - Not checked: switching transients and their peaks; the run used DC currents.
+    - Caveat: the process file was the illustrative sample, so these limits are not real; re-run with the
+      PDK's process file before acting on it.

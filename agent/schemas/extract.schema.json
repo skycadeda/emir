@@ -1,0 +1,531 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:extract:1",
+  "title": "emir extract",
+  "description": "GDS -> DSPF. `tool` quantus: PVS LVS and Quantus; `dry_run` true: the plan only, nothing was run (`ready` says whether --run could run it; `missing` says what is not); `dry_run` false: LVS matched and Quantus wrote `dspf`. PVS and Quantus are licensed tools: an agent asks the person before --run. `tool` magic: magic (open source) extracted the cell with every resistor's layer, width, length and place (`magic.path`: a magic with the geoout patch) and emir wrote `dspf` (also the RC netlist an rcc simulation runs, `rc_netlist`) and the CC netlist a cc-grid simulation runs (`cc_netlist`); `unchecked_layers`: magic's conductors the process file gives no limit (their current is in the IR drop); `work_dir`: where magic ran (`magic/` under `out_dir`, a directory of emir's own); `floating_capacitance`: capacitor nodes on no net of the network (EMIR-W646); `diagonal_resistors`: the DSPF's resistors on diagonal shapes, whose width is magic's tile extent (EMIR-W647; `emir run` lists them as not checked). Quantus documents also hold ready, kind, cdl, tools, settings, missing, lvs, ccl, steps; magic ones process, cc_netlist, rc_netlist, magic, magicrc, files, ports, port_pins, nets, resistors, capacitors, devices, layers, unchecked_layers, nets_without_resistance, floating_capacitance, diagonal_resistors, guessed_terminals, out_dir.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.extract/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "tool": {
+      "enum": [
+        "quantus",
+        "magic"
+      ]
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "ready": {
+      "type": "boolean"
+    },
+    "cell": {
+      "type": "string"
+    },
+    "source_cell": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "r_only",
+        "c_only_coupled",
+        "rc_coupled",
+        "rc_decoupled",
+        "c_only_decoupled"
+      ]
+    },
+    "kind_use": {
+      "type": "string"
+    },
+    "gds": {
+      "type": "string"
+    },
+    "cdl": {
+      "type": "string"
+    },
+    "work_dir": {
+      "type": "string"
+    },
+    "dspf": {
+      "type": "string"
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "pvs": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "found": {
+              "type": "boolean"
+            },
+            "source": {
+              "type": "string"
+            },
+            "looked_for": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "found",
+            "source"
+          ]
+        },
+        "qrc": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "found": {
+              "type": "boolean"
+            },
+            "source": {
+              "type": "string"
+            },
+            "looked_for": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "found",
+            "source"
+          ]
+        }
+      },
+      "required": [
+        "pvs",
+        "qrc"
+      ]
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "source"
+        ]
+      }
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "what": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "how": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "what",
+          "why",
+          "how"
+        ]
+      }
+    },
+    "lvs": {
+      "type": "object",
+      "properties": {
+        "svdb": {
+          "type": "string"
+        },
+        "report": {
+          "type": "string"
+        },
+        "match_regex": {
+          "type": "string"
+        },
+        "matched": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reuse": {
+          "type": "boolean"
+        },
+        "seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "svdb",
+        "report",
+        "matched",
+        "reuse"
+      ]
+    },
+    "ccl": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ccl_path": {
+      "type": "string"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "command": {
+            "type": "string"
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "licensed_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "planned",
+              "reused",
+              "passed",
+              "done",
+              "failed"
+            ]
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "argv",
+          "command",
+          "why",
+          "licensed_tool",
+          "status"
+        ]
+      }
+    },
+    "load_bearing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "provenance": {
+      "type": "string"
+    },
+    "process": {
+      "type": "string"
+    },
+    "cc_netlist": {
+      "type": "string"
+    },
+    "rc_netlist": {
+      "type": "string"
+    },
+    "magic": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tried": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "source",
+              "path",
+              "result"
+            ]
+          }
+        }
+      },
+      "required": [
+        "path",
+        "source",
+        "tried"
+      ]
+    },
+    "magicrc": {
+      "type": "string"
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "seconds": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "port_pins": {
+      "enum": [
+        "tied",
+        "separate"
+      ]
+    },
+    "tolerance": {
+      "type": "number"
+    },
+    "nets": {
+      "type": "integer"
+    },
+    "nets_with_resistors": {
+      "type": "integer"
+    },
+    "resistors": {
+      "type": "integer"
+    },
+    "capacitors": {
+      "type": "integer"
+    },
+    "devices": {
+      "type": "integer"
+    },
+    "extra_pins": {
+      "type": "integer"
+    },
+    "ties": {
+      "type": "integer"
+    },
+    "segments": {
+      "type": "integer"
+    },
+    "merged": {
+      "type": "integer"
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "magic": {
+            "type": "string"
+          },
+          "process": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "magic",
+          "process"
+        ]
+      }
+    },
+    "unchecked_layers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nets_without_resistance": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "floating_capacitance": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagonal_resistors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "out_dir": {
+      "type": "string"
+    },
+    "guessed_terminals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "why": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "shell": {
+            "const": true,
+            "description": "present (true) when the command is not an emir command (ls, tail, klayout ...): it needs a shell, which the MCP server does not have (emir_cli refuses it with EMIR-E591)"
+          },
+          "needs_human": {
+            "const": true,
+            "description": "present (true) when the step leads to a run the person decides on (it re-simulates, or runs a licensed tool): ask them first"
+          }
+        },
+        "required": [
+          "why",
+          "command"
+        ],
+        "description": "Exact commands to run next, in order; each runs as printed. An emir command keeps the caller's --format, except a run's `emir report` step (its Markdown is what to relay)."
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "tool",
+    "dry_run",
+    "cell",
+    "gds",
+    "work_dir",
+    "dspf",
+    "next_steps"
+  ]
+}

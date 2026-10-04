@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:nets:1",
+  "title": "emir nets",
+  "description": "The nets of a DSPF and their sizes.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.nets/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "dspf": {
+      "type": "string"
+    },
+    "design": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "n_nodes": {
+      "type": "integer"
+    },
+    "n_resistors": {
+      "type": "integer"
+    },
+    "nets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "resistors": {
+            "type": "integer"
+          },
+          "nodes": {
+            "type": "integer"
+          },
+          "inst_pins": {
+            "type": "integer"
+          },
+          "port": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "resistors",
+          "nodes",
+          "inst_pins",
+          "port"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "dspf",
+    "nets"
+  ]
+}

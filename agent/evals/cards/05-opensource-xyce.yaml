@@ -1,0 +1,50 @@
+id: opensource-xyce
+playbook: 05-open-source-flow
+title: Screen a block with Xyce and the person's testbench
+requires: [xyce]
+fixtures: [xyce_loadrail]
+prompt: |
+  I only have Xyce, no Spectre. Screen VDD of inputs/loadrail.dspf with inputs/process.yaml in rcc mode,
+  using my testbench inputs/tb_rcc.cir (it includes the extracted netlist itself; the activity repeats
+  every 10 ns). Tell me what fails and how to fix it.
+expect:
+  commands:
+    - {cmd: selftest}
+    - {cmd: simulate, value: {--sim: xyce, --mode: rcc}}
+    - {cmd: run, has: [--cc-sim], value: {--mode: rcc}}
+    - {cmd: report}
+  forbid:
+    - {cmd: run, has: [--force]}
+  documents:
+    - schema: emir.run/1
+      fields:
+        verdict: FAIL
+        worst_net.ratio: {approx: 1.04167, rel: 0.002}
+        nets.0.governing_metric: peak
+  answer:
+    verdict: FAIL
+    numbers:
+      - {value: 1.042, rel: 0.01, what: worst ratio}
+    metric: peak
+    any:
+      - ['Rc3', 'Cont', 'contact']
+      - ['2 cuts', '1 -> 2']
+  limits_from: [inputs/process.yaml]
+reference:
+  commands:
+    - emir selftest --format json
+    - emir next --dspf inputs/loadrail.dspf --process inputs/process.yaml --netlist inputs/tb_rcc.cir --mode rcc --format json
+    - emir simulate inputs/tb_rcc.cir --sim xyce --dspf inputs/loadrail.dspf --mode rcc --process inputs/process.yaml --out emir_out/sim/result.raw --format json
+    - emir check inputs/loadrail.dspf --process inputs/process.yaml --cc-sim emir_out/sim/result.raw --mode rcc --format json
+    - emir run inputs/loadrail.dspf --process inputs/process.yaml --cc-sim emir_out/sim/result.raw --mode rcc --period 1e-8 --summary-out emir_out/summary.json --format json
+    - emir report --from emir_out/summary.json
+  answer: |
+    **Verdict: FAIL** on VDD (rcc mode: Xyce simulated your testbench and every branch current was read).
+    Screening, not sign-off.
+
+    - Worst: the contact Rc3 (Cont, 1 cut) of the far device, peak 1.042x its limit (2.4 mA per cut):
+      Cont 1 -> 2 cuts.
+    - The feed segments Rm1-Rm3 are at 0.847x avg (WARN, inside the margin).
+    - IR drop 28.07 mV (average currents); dynamic drop 90.0 mV.
+    - Analysed at 100 C over whole 10 ns periods.
+    - The process file is the illustrative sample: its limits are invented.

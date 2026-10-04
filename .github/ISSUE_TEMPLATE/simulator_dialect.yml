@@ -1,0 +1,66 @@
+name: Simulator, extractor or DSPF dialect
+description: EMIR cannot read your extractor's DSPF or your simulator's result, or reads it wrongly.
+title: "[dialect] "
+labels: ["dialect"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        DSPF writers and simulators differ in names, units and layouts. To add one,
+        we need the **shape** of the file, never the file itself: write a few lines
+        by hand that show the construct (invented nets, layers and numbers; the same
+        keywords and punctuation as the real file). No extracted foundry data,
+        please: no DSPF or SPEF from a licensed PDK, no foundry model names.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Which input
+      options:
+        - DSPF / SPEF from an extractor
+        - simulation result (raw, PSF, CSV ...)
+        - netlist (save lines, probes, testbench rewrite)
+        - layout input (GDS, OASIS, LVS deck)
+    validations:
+      required: true
+  - type: input
+    id: tool
+    attributes:
+      label: Tool and version that wrote the file
+      placeholder: "Quantus 22.1, StarRC 2023.12, Calibre xRC, magic 8.3, Spectre 23.1, Xyce 7.10, ngspice 45 ..."
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What EMIR does with it
+      description: >-
+        The command, the EMIR code it gives (`emir explain <code>`), or the part of
+        the result that is wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: snippet
+    attributes:
+      label: A hand-written snippet of the construct
+      description: >-
+        A few invented lines in the tool's syntax that show what EMIR does not read:
+        a resistor line with its layer and geometry fields, an instance-pin record,
+        the header of the result file, a saved-signal name.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: emir check --format json (if it gets that far)
+      description: Replace paths and names from a licensed PDK or a private design.
+      render: json
+  - type: checkboxes
+    id: no-foundry-data
+    attributes:
+      label: Confidentiality
+      options:
+        - label: >-
+            The snippet is written by hand with invented names and numbers; nothing in
+            this issue is copied from a file extracted with a licensed PDK.
+          required: true

@@ -1,0 +1,6 @@
+# Codex: add to ~/.codex/config.toml. Use the absolute path of `emir` when
+# Codex does not start in a shell that has it on PATH (`emir mcp --list`
+# prints this machine's snippet with the full path).
+[mcp_servers.emir]
+command = "emir"
+args = ["mcp"]

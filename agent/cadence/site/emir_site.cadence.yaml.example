@@ -1,0 +1,37 @@
+# EMIR site file, the Cadence keys. A template: copy it to ~/.emir/site.yaml, or
+# anywhere and point $EMIR_SITE (or `emir extract --site`) at it, and replace
+# every /path/to/... with your site's own. A file in the working directory is
+# not read by itself: it names programs emir runs. Never commit the filled-in
+# copy: it holds your site's paths. Every key is optional; an option on the
+# command line wins, then the environment variable named below, then this file,
+# then $PATH. `emir info` and `emir extract` (dry run) print what was found and
+# where.
+#
+# Status: the keys are read by emir (emir/site.py, emir/cadence.py); the values
+# below are placeholders, UNVERIFIED for any real site.
+
+# ---- simulation
+spectre: spectre                       # or a path; $SPECTRE_BIN. `emir run --netlist`, and
+                                       # `emir simulate` / `emir verify-sim` with --run, start it
+hspice: hspice                         # or a path; $HSPICE_BIN. `emir simulate` / `emir verify-sim`
+                                       # --sim hspice --run start it
+process: /path/to/your/pdk_emir.yaml   # default --process ($EMIR_PROCESS); never commit a foundry one
+
+# ---- extraction: `emir extract` (dry run by default; --run starts the licensed tools)
+pvs: pvs                               # $PVS_BIN
+quantus: qrc                           # $QRC_BIN
+pvs_lvs_rules: /path/to/pdk/pvs/lvs.rul   # --rules, $PVS_RULES: the PDK's PVS LVS deck
+qrc_tech_dir: /path/to/pdk/qrc         # --tech-dir, $QRC_TECH_DIR: one sub-directory per corner
+qrc_corner: <corner>                   # --corner, $QRC_CORNER: a sub-directory of qrc_tech_dir
+extract_temperature: 25                # --temperature, $EMIR_EXTRACT_TEMP: C (Quantus scales R and
+                                       #   writes *|OPERATING_TEMPERATURE; emir then does not)
+# lvs_report: "{cell}.lvsrpt.cls"      # the report PVS writes (EMIR's default; UNVERIFIED for your release)
+# lvs_match: 'Run Result\s*:\s*MATCH'  # a regular expression the report must hold
+
+# ---- Virtuoso
+lib: MYLIB                             # default --lib ($EMIR_LIB): the OA library the Explorer opens
+mark_layer: [M1, drawing]              # any layer-purpose pair valid in YOUR tech file; the colours
+                                       #   come from emir_display.drf, not from this pair
+                                       #   (default: the current entry layer)
+work_dir: emir_out                     # root of the run directories ($EMIR_WORK)
+cds_lib: /path/to/your/cds.lib         # INCLUDEd by agent/cadence/python/virtuoso_batch.py ($EMIR_CDS_LIB)

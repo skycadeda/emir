@@ -1,0 +1,60 @@
+#!/bin/sh
+# EMIR launcher. Uses the bundled Python if this is the offline bundle,
+# otherwise the first python3 >= 3.10 it can find ($EMIR_PYTHON overrides).
+# Works from a clone with no install, and through symlinks (e.g. ~/bin/emir).
+
+# resolve symlinks to find the real bin/ directory (portable: no readlink -f)
+self=$0
+while [ -h "$self" ]; do
+    dir=$(cd "$(dirname "$self")" && pwd -P)
+    link=$(readlink "$self")
+    case $link in
+        /*) self=$link ;;
+        *) self=$dir/$link ;;
+    esac
+done
+here=$(cd "$(dirname "$self")/.." && pwd -P)
+
+# A parent program's Python environment must not leak in: Virtuoso, for
+# one, can export a PYTHONHOME or PYTHONPATH that breaks python3 or numpy
+# (and the "no python found" below would then be wrong). EMIR_KEEP_PYTHONPATH=1
+# keeps an inherited PYTHONPATH. Unbuffered output streams the log line by
+# line to a reader on a pipe (the Virtuoso form) instead of in bursts.
+unset PYTHONHOME
+[ "${EMIR_KEEP_PYTHONPATH:-0}" = 1 ] || unset PYTHONPATH
+export PYTHONUNBUFFERED=1
+
+if [ -n "$EMIR_PYTHON" ]; then
+    py="$EMIR_PYTHON"
+    # a bare name (EMIR_PYTHON=python3.12) is looked up on PATH
+    case $py in
+        */*) ;;
+        *) py=$(command -v "$py" 2>/dev/null) || py="$EMIR_PYTHON" ;;
+    esac
+    if [ -d "$py" ] || [ ! -x "$py" ]; then
+        echo "emir: EMIR_PYTHON=$EMIR_PYTHON is not an executable Python (EMIR-E603)." >&2
+        echo "      point it at a python3 >= 3.10 with numpy, scipy and pyyaml, or unset it" >&2
+        # 3: a required tool or package is missing (the exit-status contract)
+        exit 3
+    fi
+elif [ -x "$here/python/bin/python3" ]; then
+    py="$here/python/bin/python3"
+else
+    py=""
+    # the first interpreter that is new enough AND has the dependencies
+    for c in python3 python3.13 python3.12 python3.11 python3.10; do
+        if command -v "$c" >/dev/null 2>&1 &&
+           "$c" -c 'import sys; assert sys.version_info >= (3, 10); import numpy, scipy, yaml' 2>/dev/null; then
+            py=$(command -v "$c"); break
+        fi
+    done
+    if [ -z "$py" ]; then
+        echo "emir: no python >= 3.10 with numpy/scipy/pyyaml found (EMIR-E603)." >&2
+        echo "      use the offline bundle, or: pip install -e $here  (then set EMIR_PYTHON)" >&2
+        # 3: a required tool or package is missing (the exit-status contract)
+        exit 3
+    fi
+fi
+# PYTHONSAFEPATH keeps the current directory off sys.path (3.11+), so a
+# folder called emir/ in the cwd cannot shadow the package
+PYTHONSAFEPATH=1 PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" exec "$py" -m emir "$@"

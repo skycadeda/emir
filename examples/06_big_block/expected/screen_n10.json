@@ -1,0 +1,22 @@
+{
+ "label": "06_big_block, run.sh step 4: the N = 10 mesh (32 inverters) screened with the invented limits of process_screen.yaml through the waveform self-consistent loop (emir run --mode cc-grid --self-consistent --sim xyce; Xyce, synthetic, serial). Measured with Xyce 7.10 (development build): converged at pass 3 (4 simulations); FAIL, four Metal1 straps over their average limit, the two that leave the feed at 1.827x and 1.754x (fixes: widen 2.000 -> 3.655 um and -> 3.510 um), the next two up and right at 1.065x and 1.035x; every contact passes (worst 0.727x, peak); IR 3.819 mV. The ratios are held to 0.1 % (another Xyce version takes other time steps; the averages are charge, and move far less); the README banner and the blog's cover and carousel pages 1 and 2 draw this run.",
+ "checks": [
+  {"path": "verdict", "equals": "FAIL"},
+  {"path": "nets.0.net", "equals": "VDD"},
+  {"path": "nets.0.mode", "equals": "cc-grid"},
+  {"path": "nets.0.self_consistency.stopped", "equals": "converged"},
+  {"path": "nets.0.self_consistency.n_passes", "max": 5},
+  {"path": "nets.0.n_violations", "equals": 4},
+  {"path": "nets.0.governing_metric", "equals": "avg"},
+  {"path": "nets.0.worst_items.0.name", "equals": "Rv0_0"},
+  {"path": "nets.0.worst_items.0.ratio", "value": 1.82741, "rel": 0.001},
+  {"path": "nets.0.worst_items.1.name", "equals": "Rh0_0"},
+  {"path": "nets.0.worst_items.1.ratio", "value": 1.75446, "rel": 0.001},
+  {"path": "nets.0.worst_items.2.name", "equals": "Rv0_1"},
+  {"path": "nets.0.worst_items.2.ratio", "value": 1.06506, "rel": 0.001},
+  {"path": "nets.0.worst_items.3.name", "equals": "Rh1_0"},
+  {"path": "nets.0.worst_items.3.ratio", "value": 1.03471, "rel": 0.001},
+  {"path": "nets.0.max_ratio.via", "value": 0.72676, "rel": 0.005},
+  {"path": "nets.0.ir_drop_mV", "value": 3.8194, "rel": 0.002}
+ ]
+}

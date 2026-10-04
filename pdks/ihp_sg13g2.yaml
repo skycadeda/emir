@@ -1,0 +1,154 @@
+# emir process file for IHP SG13G2 (130 nm SiGe BiCMOS, 5 thin metals plus
+# TopMetal1 and TopMetal2), built only from the PDK's public, Apache-2.0 files
+# (IHP-Open-PDK, commit 22f43352). Every value names its source as [FILE]:line,
+# or a section and parameter name for the PDF documents.
+# Paths are relative to $IHP_PDK_ROOT (the directory holding ihp-sg13g2/):
+#
+#   [LEF]   ihp-sg13g2/libs.ref/sg13g2_stdcell/lef/sg13g2_tech.lef
+#   [LYP]   ihp-sg13g2/libs.tech/klayout/tech/sg13g2.lyp   (GDS layer/datatype)
+#   [MAG]   ihp-sg13g2/libs.tech/magic/ihp-sg13g2.tech
+#   [SPEC]  ihp-sg13g2/libs.doc/doc/SG13G2_os_process_spec.pdf (Rev. 1.2,
+#           2023-12-20): 1.2 Process Control, 2.13 Resistances, 2.14 Contact
+#           & Via Resistances, 2.15 Maximum Current Densities
+#   [RULES] ihp-sg13g2/libs.doc/doc/SG13G2_os_layout_rules.pdf (Rev. 0.4)
+#
+# Upstream: https://github.com/IHP-GmbH/IHP-Open-PDK (Apache-2.0).
+#
+# Resistance: typical values, the process specification's "Target" column,
+# like the nominal-corner values of the sky130 and gf180mcu files here. The
+# tech LEF carries the specification's "Max" column instead (worst case: e.g.
+# Metal1 0.135 against 0.110 ohm/sq, a via 20 against 9 ohm); each entry says
+# what the LEF has. Use the LEF values for a worst-case IR screen.
+#
+# EM limits: the LEF's DCCURRENTDENSITY values, which equal [SPEC] 2.15
+# "Maximum Current Densities (11 years @105 C)". For narrow wires the spec
+# gives an absolute current instead (Metal1 0.36 mA for w = 0.16..0.36 um,
+# Metal2-5 0.6 mA for w = 0.2..0.3 um); the per-um limit used here allows less
+# on those wires, so it is conservative there.
+#
+# NOT CHECKED with this file, because the PDK does not publish the limit:
+#   - rms and peak EM on every layer and via;
+#   - temperature derating of the avg limits (none is published): the 105 C
+#     limits are used at every analysis temperature;
+#   - Cont (the contact to Activ and GatPoly) and the layers under it (the
+#     file starts at Metal1).
+# Via resistance is not scaled with temperature (emir scales layers only).
+#
+# EM/IR screening, not sign-off.
+
+pdk: ihp-sg13g2 (IHP SG13G2, IHP-Open-PDK 22f43352)
+provenance: public-pdk-data  # every value from the PDK's public files, cited per line
+em_tref: 105.0             # C. [SPEC] 2.15 "Maximum Current Densities (11 years @105 C)"
+temp_reference: 27.0       # C. [SPEC] 1.2 "Electrical measurements are typically
+                           # performed at T0 = 27 C"; the TCRs of 2.13 refer to it
+
+dspf_layers:               # magic's names for the top layers ([MAG]:290-295 stack)
+  metal6: TopMetal1        # [MAG]:237 metal6
+  metal7: TopMetal2        # [MAG]:245 metal7
+  via5: TopVia1            # [MAG]:294 via5 metal5 metal6
+  via6: TopVia2            # [MAG]:295 via6 metal6 metal7
+  # magic's metal1..metal5 / via1..via4 and the KLayout LVS deck's
+  # metal1_con, via1_drw, topvia1_n_cap, topmetal1_con, ... match the names
+  # below case-insensitively or by the suffix rule.
+
+layers:
+  Metal1:
+    gds: [8, 0]            # [LYP]:848 Metal1.drawing 8/0
+    sheet_res: 0.110       # ohm/sq. [SPEC] 2.13 RSMET1 target 110 mohm ([LEF]:93: 0.135, Max)
+    tc1: 3.4e-3            # 1/C. [SPEC] 2.13 TC1RSMET1 3400 ppm/K
+    min_width: 0.16        # um. [LEF]:75 WIDTH 0.16
+    jmax_avg: 1.0          # mA/um. [LEF]:96 DCCURRENTDENSITY AVERAGE 1 (= [SPEC] 2.15 JMAXM1)
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+  Metal2:
+    gds: [10, 0]           # [LYP]:1136 Metal2.drawing 10/0
+    sheet_res: 0.088       # ohm/sq. [SPEC] 2.13 RSMET2 target 88 mohm ([LEF]:136: 0.103, Max)
+    tc1: 3.5e-3            # 1/C. [SPEC] 2.13 TC1RSMET2 3500 ppm/K
+    min_width: 0.20        # um. [LEF]:118
+    jmax_avg: 2.0          # mA/um. [LEF]:139 (= [SPEC] 2.15 JMAXM2)
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+  Metal3:
+    gds: [30, 0]           # [LYP]:1424 Metal3.drawing 30/0
+    sheet_res: 0.088       # ohm/sq. [SPEC] 2.13 RSMET3 target ([LEF]:177: 0.103, Max)
+    tc1: 3.5e-3            # 1/C. [SPEC] 2.13 TC1RSMET3
+    min_width: 0.20        # um. [LEF]:160
+    jmax_avg: 2.0          # mA/um. [LEF]:180 (= [SPEC] 2.15 JMAXM3)
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+  Metal4:
+    gds: [50, 0]           # [LYP]:1776 Metal4.drawing 50/0
+    sheet_res: 0.088       # ohm/sq. [SPEC] 2.13 RSMET4 target ([LEF]:219: 0.103, Max)
+    tc1: 3.5e-3            # 1/C. [SPEC] 2.13 TC1RSMET4
+    min_width: 0.20        # um. [LEF]:202
+    jmax_avg: 2.0          # mA/um. [LEF]:222 (= [SPEC] 2.15 JMAXM4)
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+  Metal5:
+    gds: [67, 0]           # [LYP]:2064 Metal5.drawing 67/0
+    sheet_res: 0.088       # ohm/sq. [SPEC] 2.13 RSMET5 target ([LEF]:260: 0.103, Max)
+    tc1: 3.5e-3            # 1/C. [SPEC] 2.13 TC1RSMET5
+    min_width: 0.20        # um. [LEF]:243
+    jmax_avg: 2.0          # mA/um. [LEF]:263 (= [SPEC] 2.15 JMAXM5)
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+  TopMetal1:
+    gds: [126, 0]          # [LYP]:2352 TopMetal1.drawing 126/0
+    sheet_res: 0.018       # ohm/sq. [SPEC] 2.13 RSTM1 target 18 mohm ([LEF]:294: 0.021, Max)
+    tc1: 3.7e-3            # 1/C. [SPEC] 2.13 TC1RSTM1 3700 ppm/K
+    min_width: 1.64        # um. [LEF]:283
+    jmax_avg: 15.0         # mA/um. [LEF]:297 (= [SPEC] 2.15 JMAXM6)
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+  TopMetal2:
+    gds: [134, 0]          # [LYP]:2624 TopMetal2.drawing 134/0
+    sheet_res: 0.011       # ohm/sq. [SPEC] 2.13 RSTM2 target 11 mohm ([LEF]:332: 0.0145, Max)
+    tc1: 3.8e-3            # 1/C. [SPEC] 2.13 TC1RSTM2 3800 ppm/K
+    min_width: 2.0         # um. [LEF]:317
+    jmax_avg: 16.0         # mA/um. [LEF]:335 (= [SPEC] 2.15 JMAXM7)
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+
+vias:
+  Via1:
+    gds: [19, 0]           # [LYP]:1088 Via1.drawing 19/0
+    below: Metal1
+    above: Metal2
+    res: 9.0               # ohm/cut. [SPEC] 2.14 RVIA1 target 9 ([LEF]:102: 20, Max)
+    vcwidth: 0.19          # um. [RULES] V1.a "Min. and max. Via1 width" 0.19
+                           # (the LEF gives Via1 no WIDTH)
+    imax_avg: 0.4          # mA/cut. [LEF]:103 (= [SPEC] 2.15 JMAXVIA1)
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  Via2:
+    gds: [29, 0]           # [LYP]:1376 Via2.drawing 29/0
+    below: Metal2
+    above: Metal3
+    res: 9.0               # ohm/cut. [SPEC] 2.14 RVIA2 target ([LEF]:148: 20, Max)
+    vcwidth: 0.19          # um. [LEF]:145
+    imax_avg: 0.4          # mA/cut. [LEF]:149 (= [SPEC] 2.15 JMAXVIA2)
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  Via3:
+    gds: [49, 0]           # [LYP]:1728 Via3.drawing 49/0
+    below: Metal3
+    above: Metal4
+    res: 9.0               # ohm/cut. [SPEC] 2.14 RVIA3 target ([LEF]:190: 20, Max)
+    vcwidth: 0.19          # um. [LEF]:186
+    imax_avg: 0.4          # mA/cut. [LEF]:191 (= [SPEC] 2.15 JMAXVIA3)
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  Via4:
+    gds: [66, 0]           # [LYP]:2016 Via4.drawing 66/0
+    below: Metal4
+    above: Metal5
+    res: 9.0               # ohm/cut. [SPEC] 2.14 RVIA4 target ([LEF]:231: 20, Max)
+    vcwidth: 0.19          # um. [LEF]:228
+    imax_avg: 0.4          # mA/cut. [LEF]:232 (= [SPEC] 2.15 JMAXVIA4)
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  TopVia1:
+    gds: [125, 0]          # [LYP]:2304 TopVia1.drawing 125/0
+    below: Metal5
+    above: TopMetal1
+    res: 2.2               # ohm/cut. [SPEC] 2.14 RTV1 target ([LEF]:274: 4.0, Max)
+    vcwidth: 0.42          # um. [LEF]:269
+    imax_avg: 1.4          # mA/cut. [LEF]:275 (= [SPEC] 2.15 JMAXTVIA1)
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  TopVia2:
+    gds: [133, 0]          # [LYP]:2576 TopVia2.drawing 133/0
+    below: TopMetal1
+    above: TopMetal2
+    res: 1.1               # ohm/cut. [SPEC] 2.14 RTV2 target ([LEF]:306: 2.2, Max)
+    vcwidth: 0.9           # um. [LEF]:303
+    imax_avg: 10.0         # mA/cut. [LEF]:307 (= [SPEC] 2.15 JMAXTVIA2)
+    # imax_rms / imax_peak: not published by the PDK - not checked

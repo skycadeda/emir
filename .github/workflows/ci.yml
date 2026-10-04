@@ -1,0 +1,294 @@
+# Continuous integration: the gates every change passes (CONTRIBUTING.md).
+#
+#   core     Python 3.10, 3.12, 3.13 with no extras: numpy, scipy and PyYAML only
+#            (plus the test tools). Every test but the examples; emir selftest from /.
+#   full     Python 3.12 with [all,dev], ngspice from apt (Xyce when Ubuntu packages
+#            it): every test, the examples against their expected/ results, and the
+#            whole `emir validate` suite.
+#   lowest   Python 3.10 with every direct dependency at the lowest version
+#            pyproject.toml allows (uv --resolution lowest-direct).
+#   wheel    build the sdist and wheel, twine check, the sdist holds the source tree,
+#            the wheel installed alone runs `emir selftest` from /.
+#   lint     pre-commit on every file (ruff, the leak guard, the generator checks)
+#            and the leak guard on every new commit: its files as it recorded them,
+#            and its message (each commit is published, so each is checked).
+#   docs     mkdocs build --strict.
+#
+# Nothing here needs a Cadence tool or licence: the Cadence tests run against
+# stand-in tools, and any test marked `cadence` (a real Spectre, Virtuoso or
+# Quantus) is deselected. The token is read-only. One secret is read, by the lint
+# job only: EMIR_LEAK_PRIVATE, the leak guard's private rules (scripts/leak_guard.py;
+# GitHub does not pass it to pull requests from forks, which get the public rules).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+
+defaults:
+  run:
+    shell: bash          # bash -eo pipefail: a failing command in a pipe fails the step
+
+jobs:
+  core:
+    name: core / Python ${{ matrix.python }} (no extras)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install emir with no extras, and the test tools
+        # pytest and jsonschema are test tools, not package extras: the package
+        # itself gets only its runtime dependencies (numpy, scipy, PyYAML)
+        run: |
+          python -m pip install .
+          python -m pip install "pytest>=7" "jsonschema>=4.18"
+          python -m pip list
+      - name: Tests (every marker but example; optional packages and tools absent)
+        run: python -m pytest -m "not example and not cadence" -rs
+      - name: emir selftest, from / so the source tree cannot shadow the install
+        working-directory: /
+        run: |
+          emir --version
+          emir selftest
+
+  full:
+    name: full / Python 3.12 (all extras, ngspice, examples, validate)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: ngspice (apt)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends ngspice
+          ngspice --version
+      - name: Xyce (only if the runner's Ubuntu packages it)
+        # Ubuntu 24.04 has no Xyce package (checked 2026-10-02), so this step
+        # normally records the skip. The Xyce cases then skip with the reason
+        # "xyce not installed" (pytest -rs lists each one): examples/02_xyce,
+        # the Xyce run of examples/12_self_consistent (its ngspice run stays),
+        # the Xyce runs in tests/test_opensim_sims.py and the Xyce helper test.
+        run: |
+          if apt-cache show xyce > /dev/null 2>&1; then
+            sudo apt-get install -y -q --no-install-recommends xyce
+          fi
+          if command -v Xyce > /dev/null 2>&1; then
+            Xyce -v
+          else
+            msg="No Xyce package for $(lsb_release -ds): the Xyce cases are SKIPPED (examples/02_xyce and every test skipped as 'xyce not installed'); ngspice runs the open-simulator flow."
+            echo "::notice title=Xyce cases skipped::$msg"
+            printf '### Xyce cases skipped\n\n%s\n' "$msg" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Install emir with every extra
+        run: |
+          python -m pip install -e ".[all,dev]"
+          python -m pip list
+      - name: emir info (the tools and packages this run found)
+        run: emir info
+      - name: Tests (every marker but example)
+        # The sky130 citation check and example 08's part B also need the
+        # sky130 PDK (PDK_ROOT), which this runner does not install: they skip
+        # and say so.
+        run: python -m pytest -m "not example and not cadence" -rs --durations=15
+      - name: Examples (each examples/NN_*/run.sh against its expected/ results)
+        run: python -m pytest -m "example and not cadence" -rs -v
+      - name: emir validate (all 13 analytic cases; none may be skipped)
+        run: emir validate --no-skip --out "$RUNNER_TEMP/validate"
+      - name: Keep the validation output when something failed
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: validate-output
+          path: ${{ runner.temp }}/validate
+          if-no-files-found: ignore
+          retention-days: 7
+
+  lowest:
+    name: lowest direct dependencies / Python 3.10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Install every direct dependency at its lowest allowed version
+        # each `>=` floor in pyproject.toml is the version installed here, so a
+        # floor that no longer works fails this job instead of a user's install
+        run: |
+          uv venv --python 3.10 "$RUNNER_TEMP/lowest"
+          uv pip install --python "$RUNNER_TEMP/lowest/bin/python" \
+              --resolution lowest-direct -e ".[all,dev]"
+          uv pip list --python "$RUNNER_TEMP/lowest/bin/python"
+          echo "$RUNNER_TEMP/lowest/bin" >> "$GITHUB_PATH"
+      - name: Tests (every marker but example)
+        run: python -m pytest -m "not example and not cadence" -rs
+      - name: emir selftest and validate, from /
+        working-directory: /
+        run: |
+          emir selftest
+          emir validate --no-skip --out "$RUNNER_TEMP/validate"
+
+  wheel:
+    name: wheel smoke (build, twine check, install alone, selftest)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Build the sdist and the wheel
+        run: |
+          python -m pip install "build>=1" "twine>=6"
+          python -m build
+          ls -l dist
+      - name: twine check
+        run: python -m twine check --strict dist/*
+      - name: The sdist is the whole source tree
+        run: python scripts/check_sdist.py dist/*.tar.gz
+      - name: Install the wheel alone in a fresh venv (runtime dependencies only)
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel"
+          "$RUNNER_TEMP/wheel/bin/python" -m pip install dist/*.whl
+          "$RUNNER_TEMP/wheel/bin/python" -m pip list
+      - name: emir selftest from / (nothing of the source tree is on the path)
+        working-directory: /
+        run: |
+          "$RUNNER_TEMP/wheel/bin/emir" --version
+          "$RUNNER_TEMP/wheel/bin/emir" selftest
+          "$RUNNER_TEMP/wheel/bin/emir" validate --quick
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  lint:
+    name: lint (pre-commit, leak guard on the commit messages)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0         # the commit messages of the push or pull request
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+      - name: The leak guard's private rules (the EMIR_LEAK_PRIVATE secret)
+        env:
+          LEAK_PRIVATE: ${{ secrets.EMIR_LEAK_PRIVATE }}
+        run: |
+          if [ -n "$LEAK_PRIVATE" ]; then
+            printf '%s\n' "$LEAK_PRIVATE" > .leak-guard-private
+            python scripts/leak_guard.py --list-rules | tail -n 1
+          else
+            echo "::notice::no EMIR_LEAK_PRIVATE secret here: the leak guard runs its public rules only"
+          fi
+      - name: pre-commit on every file (ruff, leak guard, generator checks, ...)
+        run: |
+          python -m pip install "pre-commit>=3"
+          pre-commit run --all-files --show-diff-on-failure
+      - name: Leak guard on every new commit, files and message (the history is published)
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) range="$PR_BASE..$PR_HEAD" ;;
+            push) if git cat-file -e "$BEFORE^{commit}" 2> /dev/null; then
+                    range="$BEFORE..$GITHUB_SHA"
+                  else
+                    range="-1 $GITHUB_SHA"      # a new branch: its tip
+                  fi ;;
+            *) range="-1 $GITHUB_SHA" ;;
+          esac
+          fail=0
+          n=0
+          # shellcheck disable=SC2086
+          for c in $(git rev-list $range); do
+            n=$((n + 1))
+            if ! python scripts/leak_guard.py --commit "$c"; then
+              echo "::error::commit $c: its files or its message fail the leak guard"
+              fail=1
+            fi
+          done
+          echo "$n commit(s) checked"
+          exit "$fail"
+
+  docs:
+    name: docs (mkdocs build --strict)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install the documentation tools (the [docs] extra)
+        run: python -m pip install -e ".[docs]"
+      - name: mkdocs build --strict (a broken link or a missing page fails)
+        run: mkdocs build --strict --site-dir "$RUNNER_TEMP/site"
+
+  all-green:
+    # one check to require in the branch protection rule
+    name: all green
+    if: always()
+    needs: [core, full, lowest, wheel, lint, docs]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          python3 -c 'import json, os, sys; r = json.loads(os.environ["RESULTS"]); sys.exit(0 if r and all(x == "success" for x in r) else 1)'

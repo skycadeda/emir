@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:help:1",
+  "title": "emir --help",
+  "description": "What `--help` prints in --format json: the help text of the command (`command`), or of `emir` itself (`command` null).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.help/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "command": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "text": {
+      "type": "string"
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "command",
+    "text"
+  ]
+}

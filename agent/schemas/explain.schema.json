@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:explain:1",
+  "title": "emir explain",
+  "description": "Registry entries of error codes.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.explain/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "codes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^EMIR-[EWI][1-9][0-9]{2}$"
+          },
+          "level": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "meaning": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "fallback": {
+            "type": "string"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retired": {
+            "type": "boolean"
+          },
+          "retired_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "level",
+          "title",
+          "meaning",
+          "hint",
+          "command",
+          "exit_code",
+          "retired"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "codes"
+  ]
+}

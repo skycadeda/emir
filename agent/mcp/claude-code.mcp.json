@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "emir": {
+      "type": "stdio",
+      "command": "emir",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

@@ -1,0 +1,131 @@
+[
+ {
+  "step": "list_tools",
+  "tools": {
+   "emir_check": {
+    "takes_confirm": true
+   },
+   "emir_nets": {
+    "takes_confirm": false
+   },
+   "emir_next": {
+    "takes_confirm": false
+   },
+   "emir_report": {
+    "takes_confirm": false
+   },
+   "emir_run": {
+    "takes_confirm": true
+   },
+   "emir_selftest": {
+    "takes_confirm": true
+   }
+  }
+ },
+ {
+  "tool": "emir_next",
+  "arguments": {
+   "dspf": "<sample>/rail.dspf",
+   "process": "<sample>/process.yaml",
+   "currents": "{\"VDD\": 0.004, \"MP0:s\": -0.001, \"MP1:s\": -0.001, \"MP2:s\": -0.001, \"MP3:s\": -0.001}"
+  },
+  "schema": "emir.next/1",
+  "is_error": false,
+  "exit_code": 0,
+  "mode": "dc",
+  "plan": [
+   "selftest",
+   "nets",
+   "check",
+   "run",
+   "report"
+  ]
+ },
+ {
+  "tool": "emir_selftest",
+  "arguments": {},
+  "schema": "emir.selftest/1",
+  "is_error": false,
+  "exit_code": 0,
+  "passed": true
+ },
+ {
+  "tool": "emir_nets",
+  "arguments": {
+   "dspf": "<sample>/rail.dspf"
+  },
+  "schema": "emir.nets/1",
+  "is_error": false,
+  "exit_code": 0
+ },
+ {
+  "tool": "emir_check",
+  "arguments": {
+   "dspf": "<sample>/rail.dspf",
+   "process": "<sample>/process.yaml",
+   "currents": "{\"VDD\": 0.004, \"MP0:s\": -0.001, \"MP1:s\": -0.001, \"MP2:s\": -0.001, \"MP3:s\": -0.001}"
+  },
+  "schema": "emir.check/1",
+  "is_error": false,
+  "exit_code": 0,
+  "passed": true,
+  "n_fail": 0
+ },
+ {
+  "tool": "emir_run",
+  "arguments": {
+   "dspf": "<sample>/rail.dspf",
+   "process": "<sample>/process.yaml",
+   "currents": "{\"VDD\": 0.004, \"MP0:s\": -0.001, \"MP1:s\": -0.001, \"MP2:s\": -0.001, \"MP3:s\": -0.001}",
+   "summary_out": "emir_out/summary.json"
+  },
+  "schema": "emir.run/1",
+  "is_error": false,
+  "exit_code": 0,
+  "verdict": "FAIL",
+  "counts": {
+   "FAIL": 1,
+   "WARN": 0,
+   "CLEAN": 0
+  },
+  "worst_net": {
+   "net": "VDD",
+   "ratio": 1.6666666666666667
+  },
+  "disclaimer": "Screening, not sign-off.",
+  "nets": [
+   {
+    "net": "VDD",
+    "verdict": "FAIL",
+    "governing_metric": "avg",
+    "ir_drop_mV": 54.0,
+    "n_violations": 10
+   }
+  ]
+ },
+ {
+  "tool": "emir_report",
+  "arguments": {
+   "from_file": "emir_out/summary.json"
+  },
+  "schema": "emir.report/1",
+  "is_error": false,
+  "exit_code": 0,
+  "verdict": "FAIL",
+  "disclaimer": "Screening, not sign-off."
+ },
+ {
+  "tool": "emir_run",
+  "arguments": {
+   "dspf": "<sample>/rail.dspf",
+   "process": "<sample>/process.yaml",
+   "netlist": "tb.scs",
+   "mode": "rcc",
+   "run": true
+  },
+  "schema": "emir.error/1",
+  "is_error": true,
+  "exit_code": 2,
+  "code": "EMIR-E590"
+ }
+]

@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:port_voltages:1",
+  "title": "emir run --port-voltages-out (the top-level pin voltages)",
+  "description": "The voltage at every block pin of a hierarchical run (V, from the top's reference, the pad), and between the pins of one block net (`dV_*`, from `ref_port`), for `emir abstract --port-voltages FILE@INST`. From a sync run without a phase sweep `wave_V` holds the waveform on the common grid (`t_common`) and back-annotation is exact; otherwise rms and peak are bounds (inphase), long-time values (async) or the worst over the swept phases. `v_delivered_V` is the supply to re-simulate the block at (the least-drooped pin) in the top-level self-consistency loop.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.port_voltages/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "created": {
+      "type": "string"
+    },
+    "top_dspf": {
+      "type": "string"
+    },
+    "process": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "align": {
+      "enum": [
+        "inphase",
+        "sync",
+        "async"
+      ]
+    },
+    "budget_mV": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "instances": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "abstract": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "block": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nets": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "top_net": {
+                  "type": "string"
+                },
+                "align": {
+                  "enum": [
+                    "inphase",
+                    "sync",
+                    "async"
+                  ]
+                },
+                "exact": {
+                  "type": "boolean"
+                },
+                "phase_s": {
+                  "type": "number"
+                },
+                "t_ref_s": {
+                  "type": "number"
+                },
+                "period_s": {
+                  "type": "number"
+                },
+                "n_samples": {
+                  "type": "integer"
+                },
+                "dt_s": {
+                  "type": "number"
+                },
+                "t_common": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "dt_s": {
+                          "type": "number"
+                        },
+                        "n_samples": {
+                          "type": "integer"
+                        },
+                        "period_s": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "dt_s",
+                        "n_samples",
+                        "period_s"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "ref_port": {
+                  "type": "string"
+                },
+                "ports": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "node": {
+                        "type": "string"
+                      },
+                      "x_um": {
+                        "type": "number"
+                      },
+                      "y_um": {
+                        "type": "number"
+                      },
+                      "V_avg_V": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "V_rms_V": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "V_peak_V": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "dV_avg_V": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "dV_rms_V": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "dV_peak_V": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "wave_V": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "node",
+                      "V_avg_V",
+                      "V_rms_V",
+                      "V_peak_V",
+                      "dV_avg_V",
+                      "dV_rms_V",
+                      "dV_peak_V",
+                      "wave_V"
+                    ]
+                  }
+                },
+                "droop_mV": {
+                  "type": "object",
+                  "properties": {
+                    "min": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "max": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "current_weighted": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "min",
+                    "max"
+                  ]
+                },
+                "v_nominal": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "v_delivered_V": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "top_net",
+                "align",
+                "exact",
+                "phase_s",
+                "t_ref_s",
+                "period_s",
+                "n_samples",
+                "dt_s",
+                "t_common",
+                "ref_port",
+                "ports",
+                "droop_mV"
+              ]
+            }
+          }
+        },
+        "required": [
+          "nets"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "top_dspf",
+    "align",
+    "instances"
+  ]
+}

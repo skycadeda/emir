@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:selftest:1",
+  "title": "emir selftest",
+  "description": "The offline self-test on the bundled sample. Exit 0 when `passed`, else 70 with `code` EMIR-E902.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.selftest/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "code": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^EMIR-[EWI][1-9][0-9]{2}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "step",
+          "ok",
+          "message"
+        ]
+      }
+    },
+    "out_dir": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "kept": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "passed",
+    "code",
+    "checks"
+  ]
+}

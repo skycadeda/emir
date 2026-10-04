@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:check:1",
+  "title": "emir check",
+  "description": "The input check. Exit 0 when `passed`, else 2. Each finding carries its code and the command that fixes or diagnoses it; `next_steps` is the run command when the inputs pass, the fixes when they do not.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.check/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "n_fail": {
+      "type": "integer"
+    },
+    "n_warn": {
+      "type": "integer"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "enum": [
+              "FAIL",
+              "WARN",
+              "INFO",
+              "OK"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^EMIR-[EWI][1-9][0-9]{2}$"
+          },
+          "area": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "code",
+          "area",
+          "message",
+          "fix",
+          "command"
+        ]
+      }
+    },
+    "context": {
+      "type": "object"
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "why": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "shell": {
+            "const": true,
+            "description": "present (true) when the command is not an emir command (ls, tail, klayout ...): it needs a shell, which the MCP server does not have (emir_cli refuses it with EMIR-E591)"
+          },
+          "needs_human": {
+            "const": true,
+            "description": "present (true) when the step leads to a run the person decides on (it re-simulates, or runs a licensed tool): ask them first"
+          }
+        },
+        "required": [
+          "why",
+          "command"
+        ],
+        "description": "Exact commands to run next, in order; each runs as printed. An emir command keeps the caller's --format, except a run's `emir report` step (its Markdown is what to relay)."
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "passed",
+    "n_fail",
+    "n_warn",
+    "findings",
+    "next_steps"
+  ]
+}

@@ -1,0 +1,63 @@
+{
+ "example": "03_ngspice",
+ "simulator": "ngspice",
+ "made_by": "examples/03_ngspice/run.sh (EMIR_REGEN_GOLDEN=1 pytest tests/test_examples_opensim.py)",
+ "tolerance": {
+  "rel": 0.001,
+  "abs": 1e-06
+ },
+ "runs": {
+  "rcc": {
+   "verdict": "FAIL",
+   "counts": {
+    "FAIL": 1,
+    "WARN": 0,
+    "CLEAN": 0
+   },
+   "net": "VDD",
+   "mode": "rcc",
+   "governing_metric": "peak",
+   "max_ratio": {
+    "all": 1.041666667383359,
+    "wire": 0.8474550868195808,
+    "via": 1.041666667383359
+   },
+   "ir_drop_mV": 28.067720449995928,
+   "dynamic_mV": 90.00235934953581,
+   "n_violations": 4,
+   "worst_items": {
+    "Rc3:peak": 1.041666667383359,
+    "Rm3:avg": 0.8474550868195808,
+    "Rm2:avg": 0.8474550550182643,
+    "Rm1:avg": 0.8474550391209668
+   },
+   "unsaved_pins": []
+  },
+  "cc": {
+   "verdict": "FAIL",
+   "counts": {
+    "FAIL": 1,
+    "WARN": 0,
+    "CLEAN": 0
+   },
+   "net": "VDD",
+   "mode": "cc-grid",
+   "governing_metric": "peak",
+   "max_ratio": {
+    "all": 1.041666667420834,
+    "wire": 0.8474560233750017,
+    "via": 1.041666667420834
+   },
+   "ir_drop_mV": 28.067739184320157,
+   "dynamic_mV": null,
+   "n_violations": 4,
+   "worst_items": {
+    "Rc3:peak": 1.041666667420834,
+    "Rm1:avg": 0.8474560233750017,
+    "Rm2:avg": 0.8474560233750017,
+    "Rm3:avg": 0.8474560233750017
+   },
+   "unsaved_pins": []
+  }
+ }
+}

@@ -1,0 +1,30 @@
+{
+ "tolerance": {
+  "rel": 1e-06,
+  "abs": 1e-12
+ },
+ "values": {
+  "verdict": "WARN",
+  "current_source.kind": "abstracts",
+  "nets.0.mode": "cc-grid",
+  "nets.0.max_ratio.all": 0.9090909091,
+  "nets.0.worst_items.0.name": "Rt0",
+  "nets.0.ir_drop_mV": 4.0,
+  "hierarchy.align": "sync",
+  "hierarchy.nets.0.pins.0.V_avg_mV": -4.0,
+  "hierarchy.nets.0.pins.1.V_avg_mV": -3.407407407,
+  "hierarchy.nets.0.pins.2.V_avg_mV": -3.62962963,
+  "hierarchy.nets.0.pins.0.V_peak_mV": 5.0,
+  "hierarchy.nets.0.pass_through.0.I_avg_A": 7.407407407e-05,
+  "hierarchy.nets.0.pass_through.0.R_ohm": 3.0,
+  "hierarchy.budget.verdict": "PASS",
+  "hierarchy.budget.rows.0.instance": "XADC",
+  "hierarchy.budget.rows.0.total_mV": 11.5,
+  "hierarchy.budget.rows.0.exact": true,
+  "hierarchy.budget.rows.1.instance": "XPLL",
+  "hierarchy.budget.rows.1.top_mV": 3.62962963,
+  "hierarchy.budget.rows.1.total_mV": 14.96296296,
+  "hierarchy.budget.rows.1.exact": false,
+  "hierarchy.blocks.1.needs_back_annotation": true
+ }
+}

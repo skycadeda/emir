@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:simulate:1",
+  "title": "emir simulate",
+  "description": "One simulation for the DSPF flow: the deck written (`deck`, `files`), the text result (`result`: nutascii, HSPICE ASCII .tr0, or Spectre's PSF ASCII directory) and its names sidecar (`names_sidecar`: the name map, the simulator, its version when it ran, the --sim-args; for Spectre beside the result directory, with no map), which `emir run --cc-sim <result>` reads. `found` of the `signals` currents asked for are in the result; `missing` names the DSPF currents that are not. Spectre and HSPICE are licensed: without --run `ran` is false, `command` is what would run (in `cwd`), and the next step is the same command with --run, after the person's go-ahead.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.simulate/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "simulator": {
+      "enum": [
+        "spectre",
+        "hspice",
+        "xyce",
+        "ngspice"
+      ]
+    },
+    "ran": {
+      "type": "boolean"
+    },
+    "executable": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "simulator_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "command": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "testbench": {
+      "type": "string"
+    },
+    "deck": {
+      "type": "string"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      }
+    },
+    "result": {
+      "type": "string"
+    },
+    "names_sidecar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "log": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "mode": {
+      "enum": [
+        "rcc",
+        "cc-grid"
+      ]
+    },
+    "mode_reason": {
+      "type": "string"
+    },
+    "nets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "path": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "where": {
+      "type": "string"
+    },
+    "signals": {
+      "type": "integer"
+    },
+    "direct": {
+      "type": "integer"
+    },
+    "probed": {
+      "type": "integer"
+    },
+    "found": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "seconds": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "points": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "analysis": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "self_consistent": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "net": {
+              "type": "string"
+            },
+            "vdd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "max_passes": {
+              "type": "integer"
+            },
+            "tol_mV": {
+              "type": "number"
+            },
+            "tol_rel": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "droop_file": {
+              "type": "string"
+            },
+            "pins": {
+              "type": "integer"
+            },
+            "nets": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "net",
+            "vdd",
+            "max_passes",
+            "tol_mV",
+            "droop_file"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "why": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "shell": {
+            "const": true,
+            "description": "present (true) when the command is not an emir command (ls, tail, klayout ...): it needs a shell, which the MCP server does not have (emir_cli refuses it with EMIR-E591)"
+          },
+          "needs_human": {
+            "const": true,
+            "description": "present (true) when the step leads to a run the person decides on (it re-simulates, or runs a licensed tool): ask them first"
+          }
+        },
+        "required": [
+          "why",
+          "command"
+        ],
+        "description": "Exact commands to run next, in order; each runs as printed. An emir command keeps the caller's --format, except a run's `emir report` step (its Markdown is what to relay)."
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "simulator",
+    "ran",
+    "command",
+    "testbench",
+    "deck",
+    "result",
+    "names_sidecar",
+    "mode",
+    "nets",
+    "signals",
+    "found",
+    "missing",
+    "next_steps"
+  ]
+}

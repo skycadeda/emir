@@ -1,0 +1,41 @@
+;; SPDX-License-Identifier: MIT
+;; Copyright (c) 2026 Vijay Gupta and contributors
+;; Part of EMIR, the open-source EM/IR screening tool. Not a Cadence-supplied file.
+;; EMIR Explorer colour packets EMIR_B0..11 (EMIR's colour scale: the blue
+;; ramp 0..9, the warn amber 10, the failure red 11) and EMIR_SEL.
+;; APPEND this to ~/display.drf (create the file if there is none) and
+;; restart Virtuoso. Never replace a project or PDK display.drf with it:
+;; that removes every layer's colours. UNVERIFIED on a live Virtuoso
+;; until agent/cadence/LIVE_TEST.md passes.
+
+drDefineColor(
+ ( display EMIR_C0   16  66 129 )
+ ( display EMIR_C1   23  80 152 )
+ ( display EMIR_C2   30  95 176 )
+ ( display EMIR_C3   37 111 200 )
+ ( display EMIR_C4   52 127 218 )
+ ( display EMIR_C5   75 145 227 )
+ ( display EMIR_C6  101 162 234 )
+ ( display EMIR_C7  129 179 238 )
+ ( display EMIR_C8  156 195 242 )
+ ( display EMIR_C9  183 211 246 )
+ ( display EMIR_C10 250 178  25 )
+ ( display EMIR_C11 208  59  59 )
+ ( display EMIR_WHITE 255 255 255 )
+)
+
+drDefinePacket(
+ ( display EMIR_B0  solid solid EMIR_C0 EMIR_C0 )
+ ( display EMIR_B1  solid solid EMIR_C1 EMIR_C1 )
+ ( display EMIR_B2  solid solid EMIR_C2 EMIR_C2 )
+ ( display EMIR_B3  solid solid EMIR_C3 EMIR_C3 )
+ ( display EMIR_B4  solid solid EMIR_C4 EMIR_C4 )
+ ( display EMIR_B5  solid solid EMIR_C5 EMIR_C5 )
+ ( display EMIR_B6  solid solid EMIR_C6 EMIR_C6 )
+ ( display EMIR_B7  solid solid EMIR_C7 EMIR_C7 )
+ ( display EMIR_B8  solid solid EMIR_C8 EMIR_C8 )
+ ( display EMIR_B9  solid solid EMIR_C9 EMIR_C9 )
+ ( display EMIR_B10 solid solid EMIR_C10 EMIR_C10 )
+ ( display EMIR_B11 solid solid EMIR_C11 EMIR_C11 )
+ ( display EMIR_SEL blank solid EMIR_WHITE EMIR_WHITE )
+)

@@ -1,0 +1,42 @@
+id: mcp-connect
+playbook: 10-mcp
+title: Connect Claude Desktop and Codex to emir over MCP
+requires: []
+fixtures: []
+prompt: |
+  I want to use emir from Claude Desktop and from Codex through MCP. What exactly do I put in their
+  configuration files? Don't edit any configuration files yourself; just tell me.
+expect:
+  disclaimer: false
+  commands:
+    - {cmd: mcp, has: [--list]}
+  forbid:
+    - {cmd: mcp, lacks: [--list]}
+  answer:
+    all: ['mcpServers', 'mcp_servers\.emir', '"mcp"']
+    any:
+      - ['absolute path', 'full path']
+      - ['claude_desktop_config', 'Claude Desktop']
+      - ['config\.toml']
+reference:
+  commands:
+    - emir mcp --list --format json
+  answer: |
+    Claude Desktop: add this to claude_desktop_config.json (Settings, Developer, Edit Config). Desktop starts
+    servers without your shell's PATH and from its own directory, so use the absolute path of emir (from
+    `emir mcp --list`) and --cwd with the directory your files are in:
+
+    ```json
+    {"mcpServers": {"emir": {"command": "/path/to/venv/bin/emir", "args": ["mcp", "--cwd", "/path/to/your/project"]}}}
+    ```
+
+    Codex: add this to ~/.codex/config.toml (the full path of emir if Codex's shell does not have it on PATH):
+
+    ```toml
+    [mcp_servers.emir]
+    command = "emir"
+    args = ["mcp"]
+    ```
+
+    Then ask the agent to run emir_selftest. Calls that would start a licensed tool or a long run are
+    refused (EMIR-E590) until you agree. I did not edit either file.

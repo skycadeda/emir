@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:mcp:1",
+  "title": "emir mcp --list",
+  "description": "What `emir mcp` serves over MCP (stdio): one typed tool per emir command (each returns that command's own JSON document), `emir_cli` for a whole command line, and the resources (error catalog, schemas, playbooks). `confirm` says when a tool needs the person's go-ahead (confirm=true on the call); `clients` holds this machine's configuration snippets.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.mcp/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "sdk": {
+      "type": "object",
+      "properties": {
+        "installed": {
+          "type": "boolean"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "api": {
+          "anyOf": [
+            {
+              "enum": [
+                "MCPServer",
+                "FastMCP"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "requirement": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "installed",
+        "version",
+        "supported"
+      ]
+    },
+    "server": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "transport": {
+          "const": "stdio"
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "agent_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_schemas": {
+          "type": "boolean"
+        },
+        "isolate": {
+          "type": "boolean"
+        },
+        "instructions": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "transport",
+        "command",
+        "cwd"
+      ]
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object"
+          },
+          "outputs": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "annotations": {
+            "type": "object"
+          },
+          "confirm": {
+            "enum": [
+              "never",
+              "conditional",
+              "always"
+            ]
+          },
+          "confirm_when": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "command",
+          "description",
+          "input_schema",
+          "confirm"
+        ]
+      }
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "uri": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uri",
+          "name",
+          "mime_type"
+        ]
+      }
+    },
+    "clients": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "json",
+              "toml",
+              "shell"
+            ]
+          },
+          "snippet": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "format",
+          "snippet"
+        ]
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "why": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "shell": {
+            "const": true,
+            "description": "present (true) when the command is not an emir command (ls, tail, klayout ...): it needs a shell, which the MCP server does not have (emir_cli refuses it with EMIR-E591)"
+          },
+          "needs_human": {
+            "const": true,
+            "description": "present (true) when the step leads to a run the person decides on (it re-simulates, or runs a licensed tool): ask them first"
+          }
+        },
+        "required": [
+          "why",
+          "command"
+        ],
+        "description": "Exact commands to run next, in order; each runs as printed. An emir command keeps the caller's --format, except a run's `emir report` step (its Markdown is what to relay)."
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "sdk",
+    "server",
+    "tools",
+    "resources",
+    "clients",
+    "next_steps"
+  ]
+}

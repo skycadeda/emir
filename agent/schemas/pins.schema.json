@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:pins:1",
+  "title": "emir pins",
+  "description": "The instance pins on one net.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.pins/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "dspf": {
+      "type": "string"
+    },
+    "net": {
+      "type": "string"
+    },
+    "pins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "inst": {
+            "type": "string"
+          },
+          "pin": {
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "layer": {
+            "anyOf": [
+              {
+                "type": [
+                  "string",
+                  "integer",
+                  "number"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "inst",
+          "pin",
+          "node",
+          "x",
+          "y"
+        ]
+      }
+    },
+    "split": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "dspf",
+    "net",
+    "pins",
+    "split"
+  ]
+}

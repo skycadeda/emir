@@ -1,0 +1,10 @@
+* biasrail testbench, cc: the CC netlist: the loads on an ideal 1.2 V rail
+.include loads.sp
+.include cc.sp
+VDD vdd 0 DC 1.2
+XI0 vdd 0 biasrail
+* reltol 1e-4: Xyce's and ngspice's default 1e-3 is as large as what the loop
+* corrects (EMIR-W540); ngspice reads this Xyce line's reltol too
+.options timeint reltol=1e-4
+.tran 0.1n 10n
+.end

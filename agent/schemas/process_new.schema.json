@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:process_new:1",
+  "title": "emir process new",
+  "description": "The fill-in process file `emir process new` wrote (`out`), for a person to type the PDK's EM data into by hand when no readable process data exists: the layers and vias it covers (from the DSPF's layer tokens and $lvl numbers, or the lists given), each via's stacking as inferred from the DSPF (`stacking`: an `inferred ... check` note, or null), the cap models, and what is still empty. It never fills in a value. `next_steps`: the person types the values with their sources, then `emir process check`.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.process_new/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "out": {
+      "type": "string"
+    },
+    "dspf": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "design": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "pdk": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "provenance": {
+      "const": "hand-entered"
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "vias": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "below": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "above": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stacking": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "below",
+          "above",
+          "stacking"
+        ]
+      }
+    },
+    "cap_models": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dspf_layers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "empty": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "what": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "unit",
+              "what"
+            ]
+          }
+        },
+        "optional": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "what": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "unit",
+              "what"
+            ]
+          }
+        }
+      },
+      "required": [
+        "required",
+        "optional"
+      ],
+      "description": "The values present but empty (null): required (emir refuses to run) and optional (what they would check or scale is not used)."
+    },
+    "interactive": {
+      "type": "boolean"
+    },
+    "values_given": {
+      "type": "integer"
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "why": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "shell": {
+            "const": true,
+            "description": "present (true) when the command is not an emir command (ls, tail, klayout ...): it needs a shell, which the MCP server does not have (emir_cli refuses it with EMIR-E591)"
+          },
+          "needs_human": {
+            "const": true,
+            "description": "present (true) when the step leads to a run the person decides on (it re-simulates, or runs a licensed tool): ask them first"
+          }
+        },
+        "required": [
+          "why",
+          "command"
+        ],
+        "description": "Exact commands to run next, in order; each runs as printed. An emir command keeps the caller's --format, except a run's `emir report` step (its Markdown is what to relay)."
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "out",
+    "layers",
+    "vias",
+    "cap_models",
+    "empty",
+    "interactive",
+    "values_given",
+    "next_steps"
+  ]
+}

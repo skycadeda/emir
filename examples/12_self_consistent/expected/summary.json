@@ -1,0 +1,88 @@
+{
+ "example": "12_self_consistent",
+ "simulator": "xyce or ngspice (the loads are resistors and the currents DC: both simulators give the closed forms)",
+ "made_by": "examples/12_self_consistent/run.sh (EMIR_REGEN_GOLDEN=1 pytest tests/test_example_self_consistent.py)",
+ "tolerance": {
+  "rel": 0.001,
+  "abs": 1e-06
+ },
+ "runs": {
+  "open": {
+   "verdict": "FAIL",
+   "mode": "cc-grid",
+   "self_consistent": false,
+   "governing_metric": "avg",
+   "max_ratio": {
+    "all": 3.3333333333333455,
+    "wire": 3.3333333333333455,
+    "via": 2.6666666666666665
+   },
+   "ir_drop_mV": 108.0000000000002,
+   "worst_items": {
+    "Rm3:avg": 3.3333333333333455,
+    "Rm1:avg": 3.333333333333345,
+    "Rm2:avg": 3.333333333333345,
+    "Rc3:avg": 2.6666666666666665,
+    "Rm4:avg": 2.500000000000011,
+    "Rm5:avg": 2.500000000000011,
+    "Rm6:avg": 2.500000000000011,
+    "Rm7:avg": 1.6666666666666714,
+    "Rm9:avg": 1.6666666666666714,
+    "Rm8:avg": 1.666666666666671
+   }
+  },
+  "sc": {
+   "verdict": "FAIL",
+   "mode": "cc-grid",
+   "self_consistent": true,
+   "governing_metric": "avg",
+   "max_ratio": {
+    "all": 3.1381960563229274,
+    "wire": 3.1381960563229274,
+    "via": 2.4443323268999997
+   },
+   "ir_drop_mV": 100.05045294630017,
+   "worst_items": {
+    "Rm3:avg": 3.1381960563229274,
+    "Rm1:avg": 3.138196056322927,
+    "Rm2:avg": 3.138196056322927,
+    "Rc3:avg": 2.4443323268999997,
+    "Rm4:avg": 2.3365859063229273,
+    "Rm5:avg": 2.3365859063229273,
+    "Rm6:avg": 2.3365859063229273,
+    "Rm7:avg": 1.546429610489588,
+    "Rm9:avg": 1.5464296104895878,
+    "Rm8:avg": 1.5464296104895876
+   },
+   "self_consistency": {
+    "converged": true,
+    "diverged": false,
+    "n_passes": 3
+   }
+  },
+  "rcc": {
+   "verdict": "FAIL",
+   "mode": "rcc",
+   "self_consistent": false,
+   "governing_metric": "avg",
+   "max_ratio": {
+    "all": 3.1381960583333335,
+    "wire": 3.1381960583333335,
+    "via": 2.44433232
+   },
+   "ir_drop_mV": 100.05045285,
+   "worst_items": {
+    "Rm1:avg": 3.1381960583333335,
+    "Rm2:avg": 3.1381960583333335,
+    "Rm3:avg": 3.1381960583333335,
+    "Rc3:avg": 2.44433232,
+    "Rm4:avg": 2.3365859083333334,
+    "Rm5:avg": 2.3365859083333334,
+    "Rm6:avg": 2.3365859083333334,
+    "Rm7:avg": 1.5464296125,
+    "Rm8:avg": 1.5464296125,
+    "Rm9:avg": 1.5464296125
+   }
+  }
+ }
+}

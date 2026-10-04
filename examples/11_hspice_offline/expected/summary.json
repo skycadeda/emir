@@ -1,0 +1,76 @@
+{
+ "_about": "example 11: the HSPICE route on synthetic files (HSPICE did not run); README.md works out every number",
+ "_tolerance": 0.0001,
+ "rcc_tr0": {
+  "verdict": "FAIL",
+  "mode": "rcc",
+  "ir_drop_mV": 54.000000000000036,
+  "unsaved_pins": [],
+  "simulator": "hspice",
+  "verification": "not verified",
+  "Rm1": {
+   "avg": 1.6666666666666676,
+   "rms": 0.6264617474256942,
+   "peak": 0.6666666666666666
+  },
+  "Rc3": {
+   "avg": 1.3333333333333341,
+   "rms": 0.9396926211385412,
+   "peak": 0.8333333333333334
+  }
+ },
+ "cc_tr0": {
+  "verdict": "FAIL",
+  "mode": "cc-grid",
+  "ir_drop_mV": 54.00000000000021,
+  "unsaved_pins": [],
+  "simulator": "hspice",
+  "verification": "not verified",
+  "Rm1": {
+   "avg": 1.6666666666666767,
+   "rms": 0.6264617474256977,
+   "peak": 0.6666666666666703
+  },
+  "Rc3": {
+   "avg": 1.3333333333333341,
+   "rms": 0.9396926211385415,
+   "peak": 0.8333333333333334
+  }
+ },
+ "rcc_csd": {
+  "verdict": "FAIL",
+  "mode": "rcc",
+  "ir_drop_mV": 54.000000000000036,
+  "unsaved_pins": [],
+  "simulator": "hspice",
+  "verification": "not verified",
+  "Rm1": {
+   "avg": 1.6666666666666676,
+   "rms": 0.6264617474256942,
+   "peak": 0.6666666666666666
+  },
+  "Rc3": {
+   "avg": 1.3333333333333341,
+   "rms": 0.9396926211385412,
+   "peak": 0.8333333333333334
+  }
+ },
+ "cc_csd": {
+  "verdict": "FAIL",
+  "mode": "cc-grid",
+  "ir_drop_mV": 54.00000000000021,
+  "unsaved_pins": [],
+  "simulator": "hspice",
+  "verification": "not verified",
+  "Rm1": {
+   "avg": 1.6666666666666767,
+   "rms": 0.6264617474256977,
+   "peak": 0.6666666666666703
+  },
+  "Rc3": {
+   "avg": 1.3333333333333341,
+   "rms": 0.9396926211385415,
+   "peak": 0.8333333333333334
+  }
+ }
+}

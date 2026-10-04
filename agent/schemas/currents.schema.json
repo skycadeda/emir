@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:currents:1",
+  "title": "emir --currents",
+  "description": "DC currents for `emir run --currents` / `emir check --currents`: node name -> amps INTO the net at that node (a load drawing current is negative, the feed positive). Finite numbers that sum to zero (KCL), on nodes of one net (`emir pins` lists the instance pins).",
+  "type": "object",
+  "minProperties": 1,
+  "additionalProperties": {
+    "type": "number"
+  }
+}

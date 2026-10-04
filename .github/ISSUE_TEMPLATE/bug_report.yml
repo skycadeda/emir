@@ -1,0 +1,96 @@
+name: Bug report
+description: EMIR crashed, refused good input, or gave a result you can show is wrong.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Do not attach foundry data**: no DSPF, SPEF or netlist
+        extracted with a licensed PDK, no process file holding a foundry's limits, no
+        ICT, tech file, layer map or display file, and no layer, model or device names
+        from a licensed PDK. This repository is public and its history is permanent.
+        If the problem needs such data to show, cut it down to a small invented case
+        (rename nets and layers, round the numbers), or describe its shape in words.
+
+        A security problem (for example a SKILL file that runs code in Virtuoso, or an
+        ICT expression that runs code) goes to the private report in SECURITY.md, not here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what you expected
+      description: The command you ran, what it did, and what you expected instead.
+      placeholder: |
+        I ran `emir run blk.dspf --process pdk.yaml --cc-sim tran.raw --mode cc-grid --net VDD`.
+        It exited 2 with EMIR-E4xx, but the result does save every pin current ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: emir --version
+      placeholder: emir 1.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: info
+    attributes:
+      label: emir info --format json
+      description: >-
+        Where emir found its tools and packages. It prints paths on your machine:
+        replace any you do not want public (a site path, a user name) with `<path>`.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: emir check --format json
+      description: >-
+        The input check for the same inputs: `emir check <dspf> --process <file>
+        [the options of your run] --format json`. Replace paths, net, cell and layer
+        names that come from a licensed PDK or a private design with invented ones
+        (VDD stays VDD; `M1` can become `metalA`). Leave empty if the bug is not
+        about a DSPF run (then say which command it is about above).
+      render: json
+  - type: textarea
+    id: error
+    attributes:
+      label: The error or the result
+      description: >-
+        The `emir.error/1` document (`--format json`) or the text error, with its
+        EMIR code; or the part of the run summary that is wrong and why you think
+        so (a hand calculation, another tool's number).
+      render: text
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce it with data that can be public
+      description: >-
+        Best: an invented DSPF and process file of a few lines, or one of the
+        repository's examples (`examples/NN_*`) with the change that breaks it.
+  - type: dropdown
+    id: install
+    attributes:
+      label: How emir is installed
+      options:
+        - pip (wheel from a GitHub Release)
+        - clone (pip install -e)
+        - offline bundle (bin/emir)
+        - other (say above)
+    validations:
+      required: true
+  - type: input
+    id: tools
+    attributes:
+      label: Simulator and extractor, with versions (if involved)
+      placeholder: "ngspice 45, Xyce 7.10, Spectre 23.1, Quantus 22.1, KLayout 0.30 ..."
+  - type: checkboxes
+    id: no-foundry-data
+    attributes:
+      label: Confidentiality
+      options:
+        - label: >-
+            This report holds no foundry or licensed-PDK data (DSPF, process limits, ICT,
+            layer or model names) and no site details I am not allowed to publish.
+          required: true

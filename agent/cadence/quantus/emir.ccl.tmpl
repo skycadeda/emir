@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Vijay Gupta and contributors
+# Part of EMIR, the open-source EM/IR screening tool. Not a Cadence-supplied file.
+# EMIR -- Quantus command file template. UNVERIFIED until checked on site; verified
+# on site by the local agent when `emir extract --run` passes its LVS MATCH gate
+# and `emir check` passes on the DSPF it writes.
+# Rendered by `emir extract` and by agent/cadence/quantus/render_ccl.py.
+# KIND: r_only (the EM/IR grid) | c_only_coupled, c_only_decoupled (the CC
+#       netlist for --mode cc-grid) | rc_coupled, rc_decoupled (RC netlists)
+# LOAD-BEARING (do not drop): -analysis "em", the three -include_*_model false
+# flags, -temperature, -sub_node_char ":", -disable_instances false,
+# -net_name_space "SCHEMATIC", -output_xy, an absolute LVS database path.
+log_file -file_name "qrc.${KIND}.log"
+
+extract \
+		-selection "all" \
+		-type "${KIND}"
+
+extraction_setup \
+		-analysis "em" \
+		-array_vias_spacing "auto" \
+		-max_fracture_length infinite \
+		-max_fracture_length_unit "MICRONS" \
+		-max_fracture_via_count 1 \
+		-max_via_array_count 4 \
+		-net_name_space "SCHEMATIC"
+
+filter_res \
+		-min_res 0.001 \
+		-remove_dangling_res "false"
+
+output_db \
+		-type dspf \
+		-subtype extended \
+		-add_explicit_vias true \
+		-disable_instances false \
+		-hierarchy_delimiter "/" \
+		-include_cap_model "false" \
+		-include_res_model "false" \
+		-include_parasitic_cap_model "false" \
+		-include_parasitic_res_model "comment" \
+		-include_parasitic_res_length "true" \
+		-include_parasitic_res_width false \
+		-include_parasitic_res_width_drawn true \
+		-output_xy \
+		"CANONICAL_RES" \
+		"PARASITIC_RES" \
+		"GENERIC" \
+		-netlist_coupling_values "single" \
+		-add_bulk_terminal false \
+		-sub_node_char ":" \
+		-device_finger_delimiter "@"
+
+output_setup \
+		-directory_name "qrc_${KIND}" \
+		-file_name "${OUT_FILE}" \
+		-net_name_space "SCHEMATIC" \
+		-temporary_directory_name "qrc_tmp_${KIND}" \
+		-keep_temporary_files "false" \
+		-compressed false
+
+process_technology \
+		-technology_directory "${TECH_DIR}/${CORNER}" \
+		-technology_name "${CORNER}" \
+		-temperature ${TEMPERATURE}
+
+input_db \
+		-type ${LVS_DB_TYPE} \
+		-directory_name "${SVDB}" \
+		-hierarchy_delimiter "/" \
+		-run_name "${RUN_NAME}"

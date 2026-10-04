@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:next:1",
+  "title": "emir next",
+  "description": "The recommended command sequence for what the agent has. Run the steps in order and stop at the first that exits non-zero. Steps with `needs_human` true need the person's go-ahead (a licensed tool, or a long run) before the agent runs them. A step with `status` waiting does not run as printed: its `placeholders` (`<result.raw>` ...) stand for files the steps in `after` produce, to be replaced first.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.next/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "inputs": {
+      "type": "object"
+    },
+    "facts": {
+      "type": "object"
+    },
+    "tools": {
+      "type": "object"
+    },
+    "mode": {
+      "type": "object",
+      "properties": {
+        "chosen": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "chosen",
+        "why"
+      ]
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "what": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "how": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "what",
+          "why",
+          "how"
+        ]
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "n": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "needs_human": {
+            "type": "boolean"
+          },
+          "licensed_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "long_run": {
+            "type": "boolean"
+          },
+          "ask": {
+            "type": "string",
+            "description": "present when the step needs something only the person can give or agree to (values typed from a document): ask them first"
+          },
+          "status": {
+            "enum": [
+              "todo",
+              "waiting"
+            ]
+          },
+          "after": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "placeholders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "route": {
+                  "type": "string"
+                },
+                "mode": {
+                  "enum": [
+                    "rcc",
+                    "cc-grid"
+                  ]
+                },
+                "self_consistent": {
+                  "type": "boolean"
+                },
+                "what": {
+                  "type": "string"
+                },
+                "cost": {
+                  "type": "string"
+                },
+                "accuracy": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "possible": {
+                  "type": "boolean"
+                },
+                "why_not": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recommended": {
+                  "type": "boolean"
+                },
+                "command": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tool": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "arguments": {
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "description": "over MCP (`emir mcp`): the typed tool call that runs this route's command, once the person chose it"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "option": {
+                  "type": "string"
+                },
+                "basis": {
+                  "enum": [
+                    "decap-free",
+                    "decap-aware",
+                    "worst"
+                  ]
+                },
+                "verdict": {
+                  "enum": [
+                    "FAIL",
+                    "WARN",
+                    "CLEAN"
+                  ]
+                },
+                "max_ratio": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "n_violations": {
+                  "type": "integer"
+                },
+                "in_use": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "route",
+                "what",
+                "possible",
+                "recommended"
+              ],
+              "anyOf": [
+                {
+                  "required": [
+                    "mode",
+                    "self_consistent",
+                    "cost",
+                    "accuracy"
+                  ]
+                },
+                {
+                  "required": [
+                    "basis",
+                    "verdict",
+                    "max_ratio",
+                    "n_violations"
+                  ]
+                }
+              ],
+              "description": "A route of `choose-mode` (mode, self_consistent, cost, accuracy, and over MCP the `tool` call of its command) or an EM basis of `choose-em-basis` (basis, its verdict, worst ratio and violations)."
+            }
+          }
+        },
+        "required": [
+          "n",
+          "id",
+          "command",
+          "why",
+          "needs_human",
+          "licensed_tool",
+          "long_run",
+          "status",
+          "after",
+          "placeholders"
+        ],
+        "description": "One step of the plan. The `choose-mode` step (no --mode given, currents from a simulation) carries `choices`: the routes, what each costs and how accurate it is (measured, with its source), whether it can work here (`possible`, `why_not`) and the one the net's size recommends. The person chooses; its command is `emir next` again with <mode> replaced."
+      }
+    },
+    "advice": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "thresholds": {
+      "type": "object"
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "inputs",
+    "facts",
+    "tools",
+    "mode",
+    "missing",
+    "steps",
+    "advice",
+    "rules"
+  ]
+}

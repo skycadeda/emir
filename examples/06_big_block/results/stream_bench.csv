@@ -1,0 +1,7 @@
+# Synthetic mesh, synthetic periodic currents (stream_check.py --repeat 2). emir run single-threaded, the faster of 2 runs, on a shared machine with 24 hardware threads (load_1min: its load average). Times in s, peak RSS (_MB) in MiB; dense ran with --max-memory 64G, auto with the default 2G; rel_diff: dense against streamed, the largest per-branch difference over the largest branch value.
+case,nodes,resistors,taps,points,dense_matrix_GiB,dense_wall_s,dense_peak_rss_MB,stream_wall_s,stream_peak_rss_MB,auto_wall_s,auto_peak_rss_MB,load_1min,auto_method,rel_diff_avg,rel_diff_rms,rel_diff_peak
+s40_k100_t301,1701,3221,100,301,0.002,0.42,84.7,0.4,73.0,0.4,84.6,9.7,dense,4.34e-16,6.49e-16,1.48e-15
+s150_k200_t2001,22701,44901,200,2001,0.067,4.42,1622.4,5.2,240.8,4.26,1241.1,9.6,dense,4.34e-16,4.33e-16,4.77e-15
+s150_k1000_t2001,23501,45701,1000,2001,0.341,12.38,2018.0,7.81,424.1,7.69,424.8,14.6,stream,5.20e-16,3.47e-16,4.01e-15
+s150_k1000_t1001,23501,45701,1000,1001,0.341,10.46,1271.4,4.59,281.9,4.39,280.3,18.7,stream,5.20e-16,5.20e-16,4.57e-15
+s300_k2000_t501,92001,181401,2000,501,2.704,61.22,4592.6,12.8,805.5,11.74,804.2,25.5,stream,6.42e-16,6.51e-16,6.93e-15

@@ -1,0 +1,159 @@
+# Release: on a tag v<version>, build what is released, prove it runs, and attach
+# it to a draft GitHub Release that the maintainer reviews and publishes.
+#
+#   dist/emir-<version>.tar.gz                  sdist (the whole source tree)
+#   dist/emir-<version>-py3-none-any.whl        wheel
+#   dist/emir-<version>-linux-x86_64.tar.gz     offline bundle (scripts/build_bundle.sh:
+#                                               standalone Python + wheels + bin/emir)
+#   dist/SHA256SUMS                             checksums of the three
+#
+# The tag must equal `v` + emir.__version__ (emir/__init__.py), or nothing is built.
+# Publishing to PyPI is prepared at the end of this file and commented out: the
+# maintainer decides (see CONTRIBUTING.md, "Releases").
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: build sdist, wheel and offline bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: The tag names the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          ver=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' emir/__init__.py)
+          if [ "v$ver" != "$TAG" ]; then
+            echo "::error::tag $TAG does not match emir.__version__ $ver (emir/__init__.py)"
+            exit 1
+          fi
+          echo "VERSION=$ver" >> "$GITHUB_ENV"
+      - name: Wheel and offline bundle (scripts/build_bundle.sh self-tests the bundle)
+        run: sh scripts/build_bundle.sh
+      - name: sdist
+        run: |
+          python -m pip install "build>=1" "twine>=6"
+          python -m build --sdist --outdir dist
+      - name: twine check; the sdist is the whole source tree
+        run: |
+          python -m twine check --strict "dist/emir-$VERSION.tar.gz" "dist/emir-$VERSION-py3-none-any.whl"
+          python scripts/check_sdist.py "dist/emir-$VERSION.tar.gz"
+      - name: The bundle runs where it is untarred, from /
+        run: |
+          mkdir -p "$RUNNER_TEMP/untar"
+          tar -xzf "dist/emir-$VERSION-linux-x86_64.tar.gz" -C "$RUNNER_TEMP/untar"
+          cd /
+          "$RUNNER_TEMP/untar/emir-$VERSION/bin/emir" --version
+          "$RUNNER_TEMP/untar/emir-$VERSION/bin/emir" selftest
+      - name: The wheel installs alone and runs, from /
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel"
+          "$RUNNER_TEMP/wheel/bin/python" -m pip install "dist/emir-$VERSION-py3-none-any.whl"
+          cd /
+          "$RUNNER_TEMP/wheel/bin/emir" selftest
+      - name: SHA256SUMS of everything released
+        working-directory: dist
+        run: |
+          rm -f SHA256SUMS
+          sha256sum -- "emir-$VERSION.tar.gz" "emir-$VERSION-py3-none-any.whl" \
+              "emir-$VERSION-linux-x86_64.tar.gz" > SHA256SUMS
+          cat SHA256SUMS
+          ls -l
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: |
+            dist/emir-${{ env.VERSION }}.tar.gz
+            dist/emir-${{ env.VERSION }}-py3-none-any.whl
+            dist/emir-${{ env.VERSION }}-linux-x86_64.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+  github-release:
+    name: draft GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write          # create the release and upload its files
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - name: Release notes from CHANGELOG.md
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # the version's section, cut to GitHub's 125,000-character limit
+          python3 scripts/release_notes.py "${TAG#v}" \
+              --url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$TAG/CHANGELOG.md" \
+              > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+      - name: Create the draft release with the files attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          pre=()
+          if python3 -c 'import re, sys; sys.exit(0 if re.search(r"(a|b|rc|\.dev)[0-9]*$", sys.argv[1]) else 1)' "${TAG#v}"; then
+            pre=(--prerelease)
+          fi
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+              "${pre[@]}" --title "EMIR ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md"
+
+  # ---------------------------------------------------------------- PyPI (off)
+  # Trusted publishing (no token stored in the repository). Before turning it on:
+  #   1. on pypi.org, add a trusted publisher for this repository, workflow
+  #      release.yml, environment `pypi` (the name `emir` was free on PyPI on
+  #      2026-10-02; check again);
+  #   2. in the repository settings, create the environment `pypi` with the
+  #      maintainer as required reviewer;
+  #   3. uncomment the job below.
+  #
+  # pypi:
+  #   name: publish to PyPI
+  #   needs: build
+  #   runs-on: ubuntu-24.04
+  #   timeout-minutes: 10
+  #   environment:
+  #     name: pypi
+  #     url: https://pypi.org/p/emir
+  #   permissions:
+  #     id-token: write        # trusted publishing
+  #   steps:
+  #     - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+  #       with:
+  #         name: dist
+  #         path: dist
+  #     - name: PyPI takes the sdist and the wheel only
+  #       run: rm -f dist/*-linux-x86_64.tar.gz dist/SHA256SUMS
+  #     - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

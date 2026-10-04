@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:verified:1",
+  "title": "the verification records (verified.json)",
+  "description": "What `emir verify-sim` keeps in the EMIR state directory ($EMIR_STATE_DIR, else ~/.emir): one record per verification, newest last, each an emir.verify_sim/1 record (simulator, version, format, emir_version, date, passed, checks; host only when asked). Runs look a passing record up by simulator, version and format (`simulator_verification` in the run summary).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.verified/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "schema": {
+            "const": "emir.verify_sim/1"
+          },
+          "simulator": {
+            "enum": [
+              "spectre",
+              "hspice",
+              "xyce",
+              "ngspice"
+            ]
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version_command": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "format": {
+            "enum": [
+              "psfascii",
+              "tr0ascii",
+              "nutascii"
+            ]
+          },
+          "sim_args": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "emir_version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+"
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "covers": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "branch",
+                "mos",
+                "two-terminal",
+                "source",
+                "subcircuit",
+                "probe",
+                "diode",
+                "bjt",
+                "jfet",
+                "other"
+              ]
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "expected": {},
+                "got": {},
+                "tolerance": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "detail": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kind": {
+                  "enum": [
+                    "branch",
+                    "mos",
+                    "two-terminal",
+                    "source",
+                    "subcircuit",
+                    "probe",
+                    "diode",
+                    "bjt",
+                    "jfet",
+                    "other"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "ok"
+              ]
+            }
+          }
+        },
+        "required": [
+          "schema",
+          "simulator",
+          "version",
+          "format",
+          "emir_version",
+          "date",
+          "passed",
+          "checks"
+        ],
+        "description": "One verification: what `emir verify-sim` appends to verified.json. A run counts only valid records (`passed` a JSON boolean that agrees with the checks, a passing record with its simulator's version); the latest one for a key (simulator, version, format, sim_args) decides; a record with a `host` counts only on that host. `covers` lists the kinds of current its checks prove (each backed by passing checks of that `kind`); a record without it covers no kind of pin."
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "records"
+  ]
+}

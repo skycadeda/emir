@@ -1,0 +1,30 @@
+# How to cite EMIR (Citation File Format 1.2.0, https://citation-file-format.github.io/).
+# The authors follow the copyright line of LICENSE (MIT). `version` follows
+# emir/__init__.py (tests/test_community_files.py).
+cff-version: 1.2.0
+message: "If you use EMIR in your work, please cite it as below."
+type: software
+title: "EMIR: EM / IR-drop screening of extracted analog layout"
+abstract: >-
+  EMIR screens extracted analog layout for electromigration and IR drop: a DSPF
+  (or a GDS layout) and simulated or DC currents give per-segment EM ratios
+  (average, rms, peak) against the process limits, the IR drop, HTML reports and
+  Virtuoso and KLayout viewers. It is built to be driven by AI agents, with JSON
+  output, stable error codes and a recommended next command. A screening tool,
+  not sign-off; a research project, provided as is, with no warranty or
+  guarantee of accuracy.
+authors:
+  - given-names: Vijay
+    family-names: Gupta
+  - name: "EMIR contributors"
+version: 1.1.0.dev0
+license: MIT
+repository-code: "https://github.com/skycadeda/emir"
+url: "https://skycadeda.github.io/emir/"
+keywords:
+  - electromigration
+  - IR drop
+  - EDA
+  - analog layout
+  - DSPF
+  - AI agents

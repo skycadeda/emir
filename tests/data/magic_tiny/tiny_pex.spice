@@ -1,0 +1,52 @@
+* NGSPICE file created from tiny.ext - technology: sky130A
+
+.subckt tiny out vss g
+X0 out.t0 g.t0 vss.t1 vss.t0 sky130_fd_pr__nfet_01v8 ad=0.88 pd=4.88 as=0.88 ps=4.88 w=2 l=0.5
+R0 g.n3 g.n2 152
+R1 g g.n3 0.2005
+R2 g.n2 g.n1 37.1145
+R3 g.t0 g.n0 96.4005
+R4 g.n1 g.t0 96.4005
+R5 vss.n3 vss.n0 9.3005
+R6 vss vss.n13 0.94425
+R7 vss.n3 vss.n13 0.145813
+R8 vss vss.n3 0.973937
+R9 vss.n5 vss.n4 9.3005
+R10 vss.n7 vss.n6 9.3005
+R11 vss.n9 vss.n8 9.3005
+R12 vss.n12 vss.n10 9.3005
+R13 vss.n13 vss.n7 0.618288
+R14 vss.n7 vss.n9 0.173577
+R15 vss.n9 vss.n12 0.173577
+R16 vss.n12 vss.n5 0.173577
+R17 vss.n11 vss.n4 185
+R18 vss.n6 vss.n11 185
+R19 vss.n11 vss.n8 185
+R20 vss.n11 vss.n10 185
+R21 vss.n6 vss.n8 23.0405
+R22 vss.n8 vss.n10 23.0405
+R23 vss.n10 vss.n4 23.0405
+R24 vss.n11 vss.t1 13.2005
+R25 vss.n2 vss.n1 585
+R26 vss.n0 vss.n2 585
+R27 vss.n1 vss.t0 1382.86
+R28 out.n1 out.n0 9.3005
+R29 out.n3 out.n2 9.3005
+R30 out.n5 out.n4 9.3005
+R31 out.n8 out.n6 9.3005
+R32 out.n5 out.n3 0.173577
+R33 out.n8 out.n5 0.173577
+R34 out.n1 out.n8 0.173577
+R35 out out.n1 0.786558
+R36 out.n0 out.n7 185
+R37 out.n7 out.n2 185
+R38 out.n7 out.n4 185
+R39 out.n7 out.n6 185
+R40 out.n2 out.n4 23.0405
+R41 out.n4 out.n6 23.0405
+R42 out.n6 out.n0 23.0405
+R43 out.n7 out.t0 13.2005
+C0 g out 0.07464f
+C1 out vss 0.4455f
+C2 g vss 0.34605f
+.ends

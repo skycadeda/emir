@@ -1,0 +1,14 @@
+# Every issue goes through a form (each one asks for no foundry data).
+# The URLs repeat REPO_URL of emir/repo.py; tests/test_repo_url.py fails unless
+# every copy agrees with it.
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/skycadeda/emir/security/policy
+    about: >-
+      Report it privately as SECURITY.md describes (a SKILL file that runs code in
+      Virtuoso, an ICT expression that runs code ...), never in a public issue.
+  - name: Foundry or site data found in the repository
+    url: https://github.com/skycadeda/emir/security/advisories/new
+    about: >-
+      Report it privately too: a public issue would copy the data again.

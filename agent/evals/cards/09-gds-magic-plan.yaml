@@ -1,0 +1,46 @@
+id: gds-magic-plan
+playbook: 09-gds-only
+title: Plan EM/IR of a sky130 layout that has no DSPF (the magic route)
+requires: []
+fixtures: [sky130_tiny]
+prompt: |
+  I have the layout of a small sky130 block, inputs/tiny.gds (top cell tiny), and no extracted netlist.
+  Before you run anything on it, tell me how you would screen it for EM and IR with this repository's
+  sky130 process file: which tools it needs, what you would run, and what you need from me.
+expect:
+  disclaimer: false
+  commands:
+    - {cmd: selftest}
+    - {cmd: next, has: [--gds], value: {--process: pdks/sky130.yaml}}
+  forbid:
+    - {cmd: run}
+    - {cmd: simulate}
+  answer:
+    all: ['magic']
+    any:
+      - ['geoout', 'geometry', 'patch']
+      - ['testbench']
+      - ['rcc', 'cc-grid', 'mode']
+  limits_from: [pdks/sky130.yaml]
+  unchanged: [pdks]
+reference:
+  commands:
+    - emir selftest --format json
+    - emir next --gds inputs/tiny.gds --process pdks/sky130.yaml --cell tiny --format json
+  answer: |
+    No DSPF yet, so the plan extracts one with magic (`emir next` planned it; nothing has run but the
+    self-test):
+
+    1. `emir extract --tool magic --gds inputs/tiny.gds --cell tiny --process pdks/sky130.yaml --out
+       emir_out/extract_tiny`: magic extracts the cell with every resistor's layer, width, length and place.
+       It needs a magic built with the public geoout patch (`extresist geoout`); if none is found it exits 3
+       (EMIR-E643) and says how to build it. It also needs PDK_ROOT pointing at sky130A for magic's
+       technology. It writes tiny.dspf (also the RC netlist for rcc) and tiny.cc.spice (the CC netlist for
+       cc-grid).
+    2. `emir next --dspf emir_out/extract_tiny/tiny.dspf --process pdks/sky130.yaml --gds inputs/tiny.gds
+       --cell tiny`: the run on the extracted DSPF.
+
+    What I need from you: your Xyce or ngspice testbench for the block (the stimulus, the supplies and a
+    .tran over whole periods), and your choice of mode: rcc (the DSPF itself simulated, exact) or cc-grid
+    (the CC netlist simulated, with or without the self-consistent loop). Diffusion, poly and the other
+    layers the sky130 file gives no EM limit are carried in the IR drop and reported as not checked.

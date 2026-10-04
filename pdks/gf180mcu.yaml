@@ -1,0 +1,127 @@
+# emir process file for GlobalFoundries GF180MCU, variant gf180mcuD (5 metal
+# layers, 1.1 um thick top metal: the tech LEF's "5LM_1TM_11K" stack), built
+# only from the PDK's public, Apache-2.0 files as installed by open_pdks
+# (commit 1689ac3f), and its public design manual. Every value names its
+# source as [FILE]:line. Paths are relative to $GF180_PDK_ROOT (the directory
+# holding gf180mcuD/):
+#
+#   [LEF] gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu9t5v0/techlef/gf180mcu_fd_sc_mcu9t5v0__nom.tlef
+#   [LYP] gf180mcuD/libs.tech/klayout/tech/gf180mcu.lyp   (GDS layer/datatype)
+#   [SPI] gf180mcuD/libs.tech/ngspice/sm141064.ngspice    (metal resistor models)
+#   [MAG] gf180mcuD/libs.tech/magic/gf180mcuD.tech
+#   [DRM] https://gf180mcu-pdk.readthedocs.io/en/latest/physical_verification/design_manual/drm_14_2.html
+#         section 14.2 Electro-migration, Tables 14.3 and 14.4 (source:
+#         https://github.com/google/gf180mcu-pdk, docs/physical_verification/
+#         design_manual/tables_clear/54_Electro-migration{1_150,2_151}.csv)
+#
+# Resistance: the tech LEF warns that it "contains not correct Parasitic
+# Information" ([LEF]:31). Sheet resistance and TCR therefore come from the
+# typical-corner resistor models ([SPI], `.lib res_typical`); where the LEF
+# agrees it is noted. They differ on Metal5 only (LEF 0.060, models 0.040).
+#
+# EM limits: the LEF's DCCURRENTDENSITY values equal the design manual's
+# 125 C unidirectional column (Table 14.3: Metal1-4 0.67, 1.1 um top metal 1.5
+# mA/um; Table 14.4: vias 0.18 mA), so em_tref is 125 C. "Unidirectional" is a
+# DC or same-direction average, which is emir's avg metric. The LEF's
+# ACCURRENTDENSITY AVERAGE values (1.00 / 2.2 / 0.28) are the manual's
+# bi-directional column, a metric emir does not have; they are not used, so
+# the avg check on a bi-directional (signal) net is conservative.
+#
+# NOT CHECKED with this file, because the PDK does not publish the limit:
+#   - rms and peak EM on every layer and via;
+#   - temperature derating of the avg limits: the manual gives 85 and 110 C
+#     columns but no table this file encodes; the 125 C limits are used at
+#     every analysis temperature (conservative below 125 C);
+#   - COMP and Poly2 contacts (CON) and the layers under them (the file starts
+#     at Metal1).
+# Via resistance is not scaled with temperature (emir scales layers only).
+#
+# EM/IR screening, not sign-off.
+
+pdk: gf180mcuD (GlobalFoundries GF180MCU, open_pdks 1689ac3f)
+provenance: public-pdk-data  # every value from the PDK's public files, cited per line
+em_tref: 125.0             # C. [DRM] Tables 14.3/14.4, the 125 C column, which the
+                           # LEF's limits equal ([LEF]:98, 302, 125)
+temp_reference: 25.0       # C. [SPI]:38937 r_tnom=25 (every metal resistor model)
+
+# Extractor names: magic's types (metal1..metal5, via1..via4, [MAG]:155-188) and
+# the KLayout LVS deck's (metal1_con, via2_n_cap, ...) match these names
+# case-insensitively or by the suffix rule, so no `dspf_layers` map is needed.
+
+layers:
+  Metal1:
+    gds: [34, 0]           # [LYP]:424 Metal1 34/0
+    sheet_res: 0.09        # ohm/sq. [SPI]:421 rsh_rm1=0.09 (= [LEF]:102)
+    tc1: 3.33e-3           # 1/C. [SPI]:38937 rm1 r_tc1=3.33e-3
+    tc2: 0.0               # 1/C^2. [SPI]:38937 rm1 r_tc2=0
+    min_width: 0.23        # um. [LEF]:89 WIDTH 0.230
+    jmax_avg: 0.67         # mA/um. [LEF]:98 DCCURRENTDENSITY AVERAGE 0.67
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+  Metal2:
+    gds: [36, 0]           # [LYP]:458 Metal2 36/0
+    sheet_res: 0.09        # ohm/sq. [SPI]:422 rsh_rm2=0.09 (= [LEF]:153)
+    tc1: 3.33e-3           # 1/C. [SPI]:38940 rm2
+    tc2: 0.0               # 1/C^2. [SPI]:38940 rm2
+    min_width: 0.28        # um. [LEF]:139
+    jmax_avg: 0.67         # mA/um. [LEF]:149
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+  Metal3:
+    gds: [42, 0]           # [LYP]:492 Metal3 42/0
+    sheet_res: 0.09        # ohm/sq. [SPI]:423 rsh_rm3=0.09 (= [LEF]:205)
+    tc1: 3.33e-3           # 1/C. [SPI]:38943 rm3
+    tc2: 0.0               # 1/C^2. [SPI]:38943 rm3
+    min_width: 0.28        # um. [LEF]:191
+    jmax_avg: 0.67         # mA/um. [LEF]:201
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+  Metal4:
+    gds: [46, 0]           # [LYP]:526 Metal4 46/0
+    sheet_res: 0.09        # ohm/sq. [SPI]:424 rsh_rm4=0.09 (= [LEF]:257)
+    tc1: 3.33e-3           # 1/C. [SPI]:38946 rm4
+    tc2: 0.0               # 1/C^2. [SPI]:38946 rm4
+    min_width: 0.28        # um. [LEF]:243
+    jmax_avg: 0.67         # mA/um. [LEF]:253
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+  Metal5:
+    gds: [81, 0]           # [LYP]:560 Metal5 81/0
+    sheet_res: 0.04        # ohm/sq. [SPI]:427 rsh_tm11k=40e-3, the 1.1 um top
+                           # metal ([MAG]:3347 agrees: 40 mohm/sq). [LEF]:304
+                           # says 0.060, the 0.6 um top metal's value ([SPI]:425)
+    tc1: 3.7e-3            # 1/C. [SPI]:38955 tm11k r_tc1=3.7e-3
+    tc2: 0.0               # 1/C^2. [SPI]:38955 tm11k r_tc2=0
+    min_width: 0.44        # um. [LEF]:297 WIDTH 0.440
+    jmax_avg: 1.5          # mA/um. [LEF]:302 (= [DRM] Table 14.3, 1.1 um top metal, 125 C)
+    # jmax_rms / jmax_peak: not published by the PDK - not checked
+
+vias:
+  Via1:
+    gds: [35, 0]           # [LYP]:441 Via1 35/0
+    below: Metal1
+    above: Metal2
+    res: 4.5               # ohm/cut. [LEF]:122 RESISTANCE 4.5 ([MAG]:3355: 4500 mohm)
+    vcwidth: 0.26          # um. [LEF]:114 WIDTH 0.26
+    imax_avg: 0.18         # mA/cut. [LEF]:125 DCCURRENTDENSITY AVERAGE 0.18
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  Via2:
+    gds: [38, 0]           # [LYP]:475 Via2 38/0
+    below: Metal2
+    above: Metal3
+    res: 4.5               # ohm/cut. [LEF]:174
+    vcwidth: 0.26          # um. [LEF]:165
+    imax_avg: 0.18         # mA/cut. [LEF]:177
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  Via3:
+    gds: [40, 0]           # [LYP]:509 Via3 40/0
+    below: Metal3
+    above: Metal4
+    res: 4.5               # ohm/cut. [LEF]:226
+    vcwidth: 0.26          # um. [LEF]:217
+    imax_avg: 0.18         # mA/cut. [LEF]:229
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  Via4:
+    gds: [41, 0]           # [LYP]:543 Via4 41/0
+    below: Metal4
+    above: Metal5
+    res: 4.5               # ohm/cut. [LEF]:278
+    vcwidth: 0.26          # um. [LEF]:269
+    imax_avg: 0.18         # mA/cut. [LEF]:281
+    # imax_rms / imax_peak: not published by the PDK - not checked

@@ -1,0 +1,8 @@
+* NGSPICE file created from tiny.ext - technology: sky130A
+
+.subckt tiny out vss g
+X0 out g vss vss sky130_fd_pr__nfet_01v8 ad=0.88 pd=4.88 as=0.88 ps=4.88 w=2 l=0.5
+C0 out g 0.07464f
+C1 out vss 0.4455f
+C2 g vss 0.34605f
+.ends

@@ -1,0 +1,15 @@
+* rcc probe check: supply tree with parasitic resistors
+VDD vdd 0 PULSE(0 1.8 0 100p 100p 2n 4n)
+R0 vdd n1 2.0
+R1 n1 n2 3.5
+R2 n1 n3 1.2
+R3 n3 n4 4.0
+X1 n2 0 sink PARAMS: rl=900
+X2 n4 0 sink PARAMS: rl=1500
+C3 n3 0 50f
+.subckt sink a b PARAMS: rl=1k
+Rl a b {rl}
+.ends
+.tran 50p 4n
+.print tran format=probe v(n1) i(R0) i(R1) i(R2) i(R3) i(VDD) i(X1:Rl)
+.end

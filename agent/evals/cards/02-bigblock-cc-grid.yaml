@@ -1,0 +1,53 @@
+id: bigblock-cc-grid
+playbook: 02-big-block-cc
+title: Screen a big block from its CC simulation and R-only extraction
+requires: []
+fixtures: [adc_top]
+prompt: |
+  This is our ADC top. inputs/adc_top_r.dspf is the R-only extraction of its VDD grid, and
+  inputs/adc_top_cc.raw is the result of the CC simulation of the C-only netlist (the activity repeats
+  every 10 ns; 50 ns were simulated). Screen VDD for EM and IR in cc-grid mode with inputs/process.yaml
+  and tell me where it fails and what to do about it.
+expect:
+  commands:
+    - {cmd: selftest}
+    - {cmd: check, has: [--cc-sim], value: {--mode: cc-grid}}
+    - {cmd: run, has: [--cc-sim, --summary-out], value: {--mode: cc-grid}}
+    - {cmd: report}
+  forbid:
+    - {cmd: run, has: [--force]}
+    - {cmd: run, value: {--mode: rcc}}
+  documents:
+    - schema: emir.run/1
+      fields:
+        verdict: FAIL
+        nets.0.mode: cc-grid
+        worst_net.ratio: {approx: 5.0055, rel: 0.01}
+  answer:
+    verdict: FAIL
+    numbers:
+      - {value: 5.006, rel: 0.01, what: worst ratio}
+    metric: avg
+    all: ['cc-grid']
+    any:
+      - ['widen', '2\.0']
+  limits_from: [inputs/process.yaml]
+reference:
+  commands:
+    - emir selftest --format json
+    - emir next --dspf inputs/adc_top_r.dspf --process inputs/process.yaml --cc-sim inputs/adc_top_cc.raw --mode cc-grid --format json
+    - emir check inputs/adc_top_r.dspf --process inputs/process.yaml --cc-sim inputs/adc_top_cc.raw --mode cc-grid --period 1e-8 --format json
+    - emir run inputs/adc_top_r.dspf --process inputs/process.yaml --cc-sim inputs/adc_top_cc.raw --mode cc-grid --period 1e-8 --summary-out emir_out/summary.json --format json
+    - emir report --from emir_out/summary.json
+  answer: |
+    **Verdict: FAIL** on VDD. Screening, not sign-off.
+
+    - Mode: cc-grid, as you asked. The 100 device-pin currents of the CC simulation were superposed through the R-only
+      grid over whole 10 ns periods (exact waveforms, dense superposition).
+    - Worst: Metal1 segment R1, next to the VDD feed, at 5.006x its avg limit (1.0 mA/um at 110 C): widen it
+      from 0.400 to 2.002 um. R2, the other segment out of the feed corner, is at 4.994x. The grid
+      around the feed needs to be several times wider; the device contacts are at 0.04x.
+    - IR drop: 4.117 mV.
+    - The governing metric is avg; rms and peak are inside their limits.
+    - Not checked: dynamic IR (an R-only extraction has no capacitance).
+    - The process file is marked illustrative: its limits are not a real PDK's.

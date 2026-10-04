@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:error:1",
+  "title": "emir error",
+  "description": "What every command prints in --format json when it cannot do its job. `code` is the registry code (`emir explain`); the exit status is `exit_code`.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.error/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "command": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "code": {
+      "type": "string",
+      "pattern": "^EMIR-[EWI][1-9][0-9]{2}$"
+    },
+    "level": {
+      "const": "error"
+    },
+    "title": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "hint": {
+      "type": "string"
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "why": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "shell": {
+            "const": true,
+            "description": "present (true) when the command is not an emir command (ls, tail, klayout ...): it needs a shell, which the MCP server does not have (emir_cli refuses it with EMIR-E591)"
+          },
+          "needs_human": {
+            "const": true,
+            "description": "present (true) when the step leads to a run the person decides on (it re-simulates, or runs a licensed tool): ask them first"
+          }
+        },
+        "required": [
+          "why",
+          "command"
+        ],
+        "description": "Exact commands to run next, in order; each runs as printed. An emir command keeps the caller's --format, except a run's `emir report` step (its Markdown is what to relay)."
+      }
+    },
+    "details": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "command",
+    "code",
+    "level",
+    "title",
+    "message",
+    "hint",
+    "exit_code",
+    "next_steps",
+    "details"
+  ]
+}

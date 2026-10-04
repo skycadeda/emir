@@ -1,0 +1,172 @@
+# ILLUSTRATIVE TEMPLATE -- NOT A FOUNDRY DECK. Every value is invented.
+#
+# The process file emir reads, with every key the engine and the checker use.
+# Copy it, rename it after your PDK, and replace each value with your PDK's,
+# citing where each one comes from (file and line, or document and table).
+# Delete the keys your PDK does not publish: a missing limit is reported as
+# "not checked", never guessed. `emir check <dspf> --process <file>` validates
+# the copy.
+#
+# Units: lengths um, resistance ohm, currents mA per um of drawn width (wires)
+# or mA per cut (vias), temperatures C. Internally emir works in A, V, um, ohm.
+# The GDS numbers below (100 and up) are deliberately synthetic.
+#
+# R = required. Everything else is optional; the default is given where there
+# is one. A value written null (or left empty) is not given: the default
+# applies, or what it checks is reported as NOT checked.
+#
+# No readable process data for your PDK (the ICT missing or encrypted)?
+# `emir process new --from-dspf <block.dspf> -o <pdk>.yaml` writes this file
+# for exactly the layers and vias your DSPF uses, every value null with its
+# unit and a source slot, to type from the design manual; `emir process check
+# <pdk>.yaml --dspf <block.dspf>` says what is still missing.
+
+pdk: TEMPLATE (illustrative)  # name shown in reports. A name containing
+                              # "illustrative" makes `emir check` warn that the
+                              # limits are not real -- remove that word in a copy.
+                              # Its FIRST WORD is the PDK's directory under
+                              # $PDK_ROOT: `emir extract --tool magic` reads magic's
+                              # $PDK_ROOT/<word>/libs.tech/magic/<word>.magicrc
+                              # (e.g. `pdk: sky130A (SkyWater SKY130)`), unless
+                              # --magicrc is given
+warn_fraction: 0.8            # ratio at which a segment is called WARN; in (0, 1]
+                              # (default 0.8). A tool setting, not PDK data.
+temp_reference: 25.0          # C, temperature `sheet_res` is quoted at (default
+                              # 25). Used only with tc1/tc2 below.
+# provenance: hand-entered    # where the values came from: hand-entered (typed
+                              # from the design manual), imported-ict (`emir
+                              # import-ict` sets it), public-pdk-data, or mixed
+                              # (an entry may then carry its own). Reports say it
+                              # per layer. A hand-entered or mixed file needs a
+                              # source for every value (`sources:` below and in
+                              # each entry): without one, EMIR-W320 on every run.
+em_tref: 100.0                # R. C, temperature the avg EM limits are quoted at.
+                              # No default: a guessed temperature shifts every
+                              # ratio. It is also the default analysis temperature
+                              # (`--em-temp` overrides it).
+jmax_factor:                  # avg-limit derating vs temperature, {C: factor},
+  25: 4.0                     # 1.0 at em_tref; piecewise linear, clamped at the
+  100: 1.0                    # ends. Omit it and the avg limits are used as
+  125: 0.5                    # quoted at every temperature.
+# derating:                   # the other form a design manual prints: Black's
+#   model: black              # equation, J(T)/J(em_tref) = exp[(ea_eV / (n k))
+#   ea_eV: 0.9                # (1/T - 1/Tref)], T and Tref (em_tref) in kelvin,
+#   n: 2                      # k = 8.617333262e-5 eV/K; ea_eV in eV, n the
+                              # current-density exponent. Give derating or
+                              # jmax_factor, never both (EMIR-E321).
+sources:                      # where em_tref, temp_reference, jmax_factor (or
+  em_tref: "ILLUSTRATIVE: invented for the template"   # derating) came from: the
+  jmax_factor: "ILLUSTRATIVE: invented for the template"  # document, table or page
+
+dspf_layers:                  # extractor layer token -> a name in layers/vias.
+  metal_a: Metal1             # Tokens match a layer or via name case-
+  m2_conn: Metal2             # insensitively, then with `_suffix` parts dropped
+  via12: Via1                 # (`metal1_conn` -> Metal1, reported), so map only
+  1: Metal1                   # what does not fold. An integer key is a `$lvl=N`
+                              # level number (for resistors that carry no name).
+
+magic:                        # the magic route (`emir extract --tool magic`), for
+                              # a PDK magic extracts (pdks/sky130.yaml has one)
+  binary: magic-geo           # the magic to try (or a list), after --magic and
+                              # $EMIR_MAGIC: a magic program's bare name on $PATH,
+                              # no path (EMIR-E648); one built with the geoout
+                              # patch (`extresist geoout`)
+  layers:                     # magic's layer names (the PDK's magic technology
+    m1: Metal1                # file, its `types` section) -> names in layers/vias;
+    m2: Metal2                # dspf_layers wins where both name a token. A layer
+    m2c: Via1                 # in neither carries its current in the IR drop and
+                              # is reported as not checked (EMIR-W307).
+  devices:                    # a device model (or a glob) -> its terminal names in
+    "nfet_*": [d, g, s, b]    # the order magic writes its nodes (the model's
+    "pfet_*": [d, g, s, b]    # .subckt order): the DSPF's *|I pin names. A model
+                              # not named gets t1, t2 ... (EMIR-W643).
+  sources:
+    layers: "ILLUSTRATIVE: invented for the template"
+    devices: "ILLUSTRATIVE: invented for the template"
+
+layers:                       # conductor layers, keyed by the name reports use
+  Metal1:
+    gds: [101, 0]             # [layer, datatype]: optional, for the person (no
+                              # path reads it)
+    sheet_res: 0.1            # R. ohm/square at temp_reference
+    tc1: 0.003                # 1/C: R(T) = R * (1 + tc1*dT + tc2*dT^2),
+    tc2: 0.0                  # 1/C^2   dT = T - temp_reference
+    min_width: 0.2            # um, the minimum drawn width: a record of the
+                              # PDK's rule, which no check reads
+    jmax_avg: 2.0             # mA/um, DC average limit at em_tref (derated by
+                              # jmax_factor at other temperatures)
+    jmax_rms_k: 50.0          # (mA/um)^2 per C, the self-heating form an ICT
+                              # gives: rms limit = sqrt(jmax_rms_k * delta_T)
+                              # mA/um, delta_T from `--delta-t` (default 5 C);
+                              # here sqrt(50 * 5) = 15.8 mA/um
+    jmax_peak: 20.0           # mA/um, peak limit (pulse-width independent)
+    width_loss_um: 0.01       # um, the width loss dW of a limit printed as
+                              # I_max = J x (W - dW): the avg, rms and peak wire
+                              # limits apply to the drawn width W less dW (a
+                              # segment no wider than dW is refused, EMIR-E323).
+                              # Omit it (or 0) for a limit per um of drawn width.
+    sources:                  # where each value of this entry came from: the
+      sheet_res: "ILLUSTRATIVE: invented for the template"   # document, table
+      jmax_avg: "ILLUSTRATIVE: invented for the template"    # or page
+    estimate: false           # true flags this layer's limits as estimates in
+                              # every report (default false)
+    ict_name: metal1_conn     # `emir import-ict`: the ICT conductor block for
+                              # this layer, when the name pattern does not find it
+  Metal2:
+    gds: [102, 0]
+    sheet_res: 0.05
+    tc1: 0.003
+    tc2: 0.0
+    min_width: 0.3
+    jmax_avg: 4.0             # mA/um
+    jmax_rms: 10.0            # mA/um, a FIXED rms limit, as a tech LEF publishes
+                              # it (ACCURRENTDENSITY RMS); `--delta-t` does not
+                              # change it. Give jmax_rms or jmax_rms_k, not both.
+                              # No jmax_peak here: the peak metric is then not
+                              # checked on this layer, and reports say so.
+
+vias:                         # cut layers, keyed by the name reports use
+  Via1:
+    gds: [103, 0]             # [layer, datatype] of the cut: optional
+    below: Metal1             # R. the layer under the cut (a name in `layers`)
+    above: Metal2             # R. the layer over the cut
+    res: 5.0                  # R. ohm per cut
+    vcwidth: 0.2              # um, cut side: turns an extracted cut AREA ($A)
+                              # into a cut count. No default; without it such a
+                              # via is checked as one cut (conservative)
+    imax_avg: 0.4             # mA per cut, DC average at em_tref (derated)
+    imax_rms: 1.0             # mA per cut
+    imax_peak: 2.0            # mA per cut
+    sources:                  # as for a layer
+      imax_avg: "ILLUSTRATIVE: invented for the template"
+    estimate: false           # flag the avg limit as an estimate in reports
+    rms_peak_estimate: false  # flag imax_rms / imax_peak as estimates
+                              # (`emir import-ict` sets it when it derives them)
+    ict_name: via1            # `emir import-ict`: the ICT via block
+
+ict_conductor_pattern: "{layer}_conn"   # `emir import-ict`: the ICT conductor
+                              # block name for a layer ({layer} lower-cased,
+                              # {Layer} as written); `ict_name` overrides it.
+                              # import-ict also writes `ict_process` (the ICT's
+                              # process name), for the record only.
+
+cap_models:                   # dynamic IR only (the `emir.dynir` module): sizes
+                              # capacitor and MOS-decap devices that extract as
+                              # geometry instead of a value
+  mimcap_a:                   # a capacitor model named in the DSPF:
+    cj: 2.0e-3                #   F/m^2, area capacitance
+    cjsw: 1.0e-10             #   F/m, perimeter capacitance
+  default:                    # a capacitor device with no model name
+    cj: 2.0e-3
+  nmos_decap_a:               # a MOS decap model named in the DSPF:
+    cox: 1.0e-2               #   F/m^2, C = cox * W * L
+    ron_sq: 1000.0            #   ohm/square; access R = ron_sq * L / W / 6
+    esr_a: 10.0               #   ohm      } a fitted access R, preferred over
+    esr_w: 0.5                #   ohm/um   } ron_sq: R = esr_a + esr_w * W_um
+    esr_l: 2.0                #   ohm*um   }        + esr_l / L_um
+    esr_w_range: [1.0, 10.0]  #   um, W the fit covers (outside: reported)
+    esr_l_range: [0.5, 5.0]   #   um, L the fit covers
+    esr_fit_freq: 1.0e+9      #   Hz, the frequency the fit was made at
+  mos_default:                # a MOS decap whose model has no entry
+    cox: 1.0e-2
+    ron_sq: 1000.0

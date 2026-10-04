@@ -1,0 +1,50 @@
+id: troubleshoot-e417
+playbook: 08-troubleshooting
+title: Why did check fail with EMIR-E417?
+requires: []
+fixtures: [chip_e417]
+prompt: |
+  This fails and I don't understand why:
+
+      emir check inputs/chip/top.dspf --process inputs/chip/process.yaml --net VDD --cc-sim inputs/chip/top.tran --mode cc-grid
+
+  It reports EMIR-E417. What does that mean for my top, and what should I do about it?
+expect:
+  disclaimer: false
+  commands_any:
+    - {cmd: explain}
+    - {cmd: pins, value: {--net: VDD}}
+    - {cmd: next}
+    - {cmd: check}
+  forbid:
+    - {cmd: run, has: [--force]}
+  answer:
+    all: ['E417', 'XPLL']
+    any:
+      - ['abstract', 'hierarch']
+      - ['rcc', 'every branch', 'branch current']
+      - ['several', 'two', 'multiple', 'more than one', 'both']
+reference:
+  commands:
+    - emir selftest --format json
+    - emir check inputs/chip/top.dspf --process inputs/chip/process.yaml --net VDD --cc-sim inputs/chip/top.tran --mode cc-grid --format json
+    - emir explain E417 --format json
+    - emir pins inputs/chip/top.dspf --net VDD --format json
+    - emir next --dspf inputs/chip/top.dspf --process inputs/chip/process.yaml --net VDD --format json
+  answer: |
+    EMIR-E417 means an instance pin reaches the net at several DSPF connections while the simulation saved
+    one current for that pin, so emir cannot know how the current divides between the connections, and
+    cc-grid refuses to guess.
+
+    In your top it is XPLL: its supply pin VDDP reaches VDD at two places (XPLL:VDDP and XPLL:VDDP#2 in
+    `emir pins`), because the PLL is black-boxed and fed from both sides. top.tran saved XPLL:VDDP once.
+
+    What to do, in order of preference:
+    1. Screen the top hierarchically: characterise the PLL once with `emir abstract` (its DSPF with every
+       supply pin shape as a port, its own CC simulation), then `emir run` the top with
+       `--abstract pll.abstract.json@XPLL --place XPLL=<x>,<y>,<orient>` (the placement from you), and
+       back-annotate the PLL with the top's pin voltages. Playbook 03.
+    2. For a small net only: rcc mode, simulating the RC netlist with every branch current saved
+       (`emir save-lines --mode rcc`), which measures how the current divides.
+
+    Do not force past it: putting the whole current on one connection under-reads the other.

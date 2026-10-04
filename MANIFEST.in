@@ -1,0 +1,33 @@
+# the sdist is a complete source tree: the tests need bin/ and scripts/
+include CHANGELOG.md THIRD_PARTY_NOTICES.md .leak-guard-allow .pre-commit-config.yaml
+include CONTRIBUTING.md SECURITY.md CITATION.cff
+# the long description (generated from README.md by scripts/gen_pypi_readme.py)
+include README.pypi.md
+# the agent's entry points (AGENTS.md; CLAUDE.md imports it; the skill's link)
+include AGENTS.md CLAUDE.md
+recursive-include .claude *.md
+recursive-include bin *
+recursive-include scripts *.py *.sh
+recursive-include tests *.py
+# the simulator result samples the reader tests read (tests/data/hspice/README.md)
+recursive-include tests/data *
+# the open-PDK process files (tests/test_pdks.py reads them)
+recursive-include pdks *.yaml *.md
+# the documentation (tests check pages for unfilled placeholders)
+recursive-include docs *.md
+# its site configuration (tests/test_docs.py reads the navigation)
+include mkdocs.yml
+# the agent directory: the contract (error catalog, JSON schemas), the Cadence,
+# open-source and MCP integration files, the playbooks, the skill and the evals
+# (the tests read them; by extension, so no compiled file gets in)
+recursive-include agent *.md *.json *.toml *.sh *.py *.il *.drf *.tmpl *.example *.yaml
+# the examples: inputs, scripts and expected results (tests/test_example*.py
+# run them), not their outputs
+recursive-include examples *.md *.sh *.py *.json *.cir *.sp *.in *.dspf *.yaml *.csv *.tr0 *.csd
+prune examples/*/out
+prune examples/*/emir_out
+# the figures of the documentation and the article, and the article itself
+# (tests/test_make_figures.py checks the figures are there)
+recursive-include docs *.png *.svg
+recursive-include blog *
+global-exclude *.py[cod]

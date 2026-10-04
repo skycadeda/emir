@@ -1,0 +1,21 @@
+{
+ "label": "06_big_block, stream_check.py defaults (synthetic 40 x 40 mesh, 100 taps, 301 points). The streamed and dense paths must agree to 1e-10; the numbers are deterministic (fixed seeds), so they are held to 1e-6.",
+ "checks": [
+  {"path": "case.nodes", "equals": 1701},
+  {"path": "case.resistors", "equals": 3221},
+  {"path": "inprocess.dense_method", "equals": "dense"},
+  {"path": "inprocess.stream_method", "equals": "stream"},
+  {"path": "inprocess.rel_diff.avg", "max": 1e-10},
+  {"path": "inprocess.rel_diff.rms", "max": 1e-10},
+  {"path": "inprocess.rel_diff.peak", "max": 1e-10},
+  {"path": "summary_rel_diff.ir_drop", "max": 1e-10},
+  {"path": "summary_rel_diff.max_ratio", "max": 1e-10},
+  {"path": "runs.dense.method", "equals": "dense"},
+  {"path": "runs.stream.method", "equals": "stream"},
+  {"path": "runs.auto.method", "equals": "dense"},
+  {"path": "runs.auto.exit", "equals": 0},
+  {"path": "runs.auto.verdict", "equals": "FAIL"},
+  {"path": "runs.auto.ir_drop_mV", "value": 4.116996044558749, "rel": 1e-6},
+  {"path": "runs.auto.max_ratio", "value": 5.005533049582803, "rel": 1e-6}
+ ]
+}

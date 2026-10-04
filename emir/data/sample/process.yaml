@@ -1,0 +1,51 @@
+# ILLUSTRATIVE PROCESS DATA -- NOT A FOUNDRY DECK.
+#
+# Every number here is invented for the sample and round on purpose, so the
+# flow can be exercised offline and the expected results worked out by hand
+# (`emir/selftest.py` shows the arithmetic). They are the right SHAPE for the
+# tool and the wrong VALUES for any real silicon; the GDS layer numbers
+# (100/0 and up) are deliberately synthetic too.
+#
+# Point --process at your own PDK's file for anything you intend to act on. A
+# real foundry's Jmax/Imax tables are confidential and must not be copied into
+# a folder that gets passed around.
+#
+# Layer keys are matched against the DSPF's `$token` case-insensitively, with
+# progressively shorter `_`-suffixed forms tried (so `cont_ndiff` folds onto
+# `Cont`). Anything matched by a rule rather than exactly is reported.
+
+pdk: sample (illustrative)
+warn_fraction: 0.8       # ratio at which a segment is called WARN (the tool default)
+temp_reference: 50.0     # C -- temperature the sheet resistances are quoted at
+em_tref: 100.0           # C -- temperature the avg limits are quoted at; the
+                         # sample DSPF is extracted at this temperature too
+
+layers:
+  Poly:
+    gds: [102, 0]        # the layer under Cont; the sample DSPF has no poly segments
+    sheet_res: 12.0      # ohm/square at temp_reference
+    tc1: 0.0
+    tc2: 0.0
+    min_width: 0.15      # um
+    jmax_avg: 0.3        # mA per um of width
+    jmax_peak: 0.6       # mA/um
+  Metal1:
+    gds: [101, 0]        # the GDS layer: optional, not read by emir
+    sheet_res: 0.125     # ohm/square at temp_reference (50 C) ...
+    tc1: 0.004           # 1/C linear TCR: ... so 0.125 * (1 + 0.004 * 50) =
+    tc2: 0.0             #   0.15 ohm/square at 100 C, the value in the DSPF
+    min_width: 0.3       # um
+    jmax_avg: 3.2        # mA per um of width
+    jmax_rms_k: 28.8     # rms limit = sqrt(jmax_rms_k * delta_t) mA/um: 12 at 5 C
+    jmax_peak: 16.0      # mA/um
+
+vias:
+  Cont:
+    gds: [100, 0]
+    below: Poly
+    above: Metal1
+    res: 24.0            # ohm per cut
+    vcwidth: 0.13        # um, cut side: turns a cut AREA ($A) into a cut count
+    imax_avg: 0.75       # mA per cut
+    imax_rms: 1.5        # mA per cut (>= imax_avg)
+    imax_peak: 2.4       # mA per cut (>= imax_avg)

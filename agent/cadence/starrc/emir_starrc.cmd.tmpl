@@ -1,0 +1,26 @@
+* SPDX-License-Identifier: MIT
+* Copyright (c) 2026 Vijay Gupta and contributors
+* Part of EMIR, the open-source EM/IR screening tool.
+*
+* EMIR -- StarRC command file, a SKETCH. UNVERIFIED: never run (no StarRC where
+* EMIR was developed). Option names are from memory or a search snippet (see
+* NOTES.md); confirm each one in your release's StarRC documentation.
+* Run it twice from one LVS database: EXTRACTION: R (the grid DSPF) and
+* EXTRACTION: C (the netlist simulated for cc-grid).
+
+BLOCK: ${CELL}
+* the LVS front end, one of these per your flow (UNVERIFIED names):
+* ICV_RUNSET_REPORT_FILE: ...   CALIBRE_RUNSET: ...   CALIBRE_QUERY_FILE: ...
+TCAD_GRD_FILE: ${NXTGRD}
+MAPPING_FILE: ${LAYER_MAP}
+EXTRACTION: ${EXTRACTION}
+REDUCTION: NO
+POWER_EXTRACT: YES
+POWER_REDUCTION: NO
+NETLIST_FORMAT: DSPF
+NETLIST_FILE: ${CELL}.${KIND}.dspf
+NETLIST_TAIL_COMMENTS: YES
+EXTRA_GEOMETRY_INFO: RES
+NETLIST_NODE_SECTION: YES
+NETLIST_INSTANCE_SECTION: YES
+OPERATING_TEMPERATURE: ${TEMPERATURE}

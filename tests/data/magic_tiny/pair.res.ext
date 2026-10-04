@@ -1,0 +1,126 @@
+scale 1000 1 500000
+rnode "g" 0 0 138 276 0
+rnode "g.t0" 0 0 138 100 0
+rnode "g.n0" 0 0 138 0 0
+rnode "g.n1" 0 0 138 200 0
+rnode "g.n2" 0 0 138 277 0
+rnode "g.n3" 0 0 138 277 0
+resist "g.n1" "g.t0" 48.2
+resist "g.t0" "g.n0" 48.2
+resist "g.n2" "g.n1" 37.114
+resist "g" "g.n3" 0.2
+resist "g.n3" "g.n2" 152
+rnode "out" 0 0 832 560 0
+rnode "out.n0" 0 0 832 129 0
+rnode "out.n1" 0 0 832 129 0
+rnode "out.n2" 0 0 832 57 0
+rnode "out.n3" 0 0 832 57 0
+rnode "out.t0" 0 0 788 100 0
+rnode "out.n4" 0 0 832 57 0
+resist "out.n3" "out.t0" 26.4
+resist "out.n2" "out.n0" 23.04
+resist "out.n3" "out.n2" 185
+resist "out.n0" "out.n3" 185
+resist "out" "out.n1" 1.03606
+resist "out.n1" "out.n4" 0.173077
+resist "out.n4" "out.n2" 9.3
+resist "out.n1" "out.n0" 9.3
+rnode "vss" 0 0 -60 -240 0
+rnode "vss.n0" 0 0 777 -240 0
+rnode "vss.n1" 0 0 777 -240 0
+rnode "vss.n2" 0 0 137 -240 0
+rnode "vss.n3" 0 0 137 -240 0
+rnode "vss.n4" 0 0 457 -240 0
+rnode "vss.n5" 0 0 777 -240 0
+rnode "vss.n6" 0 0 777 -240 0
+rnode "vss.n7" 0 0 457 -240 0
+rnode "vss.n8" 0 0 457 -240 0
+rnode "vss.t2" 0 0 138 100 0
+rnode "vss.t0" 0 0 738 100 0
+rnode "vss.n9" 0 0 137 -240 0
+rnode "vss.n10" 0 0 137 -240 0
+rnode "vss.n11" 0 0 457 -240 0
+rnode "vss.n12" 0 0 644 57 0
+rnode "vss.n13" 0 0 644 57 0
+rnode "vss.n14" 0 0 644 129 0
+rnode "vss.n15" 0 0 644 129 0
+rnode "vss.t1" 0 0 688 100 0
+rnode "vss.n16" 0 0 644 129 0
+rnode "vss.n17" 0 0 644 -200 0
+rnode "vss.n18" 0 0 44 129 0
+rnode "vss.n19" 0 0 44 129 0
+rnode "vss.n20" 0 0 44 57 0
+rnode "vss.n21" 0 0 44 57 0
+rnode "vss.t3" 0 0 88 100 0
+rnode "vss.n22" 0 0 44 57 0
+rnode "vss.n23" 0 0 44 -200 0
+resist "vss.n5" "vss.t0" 191.518
+resist "vss.n7" "vss.t0" 1379.91
+resist "vss.t2" "vss.n7" 1566.52
+resist "vss.n9" "vss.t2" 4.91071
+resist "vss.n8" "vss.n6" 1050.67
+resist "vss.n10" "vss.n8" 1050.67
+resist "vss.n4" "vss.n0" 68.2667
+resist "vss.n2" "vss.n4" 68.2667
+resist "vss.n2" "vss.n10" 585
+resist "vss.n10" "vss.n9" 585
+resist "vss.n4" "vss.n8" 585
+resist "vss.n8" "vss.n7" 585
+resist "vss.n0" "vss.n6" 585
+resist "vss.n6" "vss.n5" 585
+resist "vss.n15" "vss.t1" 26.4
+resist "vss.n12" "vss.n14" 23.04
+resist "vss.n15" "vss.n14" 185
+resist "vss.n12" "vss.n15" 185
+resist "vss.n13" "vss.n16" 0.173077
+resist "vss.n17" "vss.n13" 0.617788
+resist "vss.n16" "vss.n14" 9.3
+resist "vss.n13" "vss.n12" 9.3
+resist "vss.n21" "vss.t3" 26.4
+resist "vss.n20" "vss.n18" 23.04
+resist "vss.n20" "vss.n21" 185
+resist "vss.n21" "vss.n18" 185
+resist "vss.n22" "vss.n19" 0.173077
+resist "vss.n23" "vss.n22" 0.617788
+resist "vss.n22" "vss.n20" 9.3
+resist "vss.n19" "vss.n18" 9.3
+resist "vss.n17" "vss.n1" 0.207813
+resist "vss.n11" "vss.n17" 0.292188
+resist "vss.n3" "vss.n11" 0.5
+resist "vss.n23" "vss.n3" 0.145313
+resist "vss" "vss.n23" 0.1625
+resist "vss.n11" "vss.n4" 9.3
+resist "vss.n3" "vss.n2" 9.3
+resist "vss.n1" "vss.n0" 9.3
+killnode "a_188_0#"
+rnode "a_188_0.t0" 0 0 188 100 0
+rnode "a_188_0.n0" 0 0 232 57 0
+rnode "a_188_0.n1" 0 0 232 129 0
+rnode "a_188_0.n2" 0 0 232 129 0
+rnode "a_188_0.n3" 0 0 232 57 0
+rnode "a_188_0.n4" 0 0 738 277 0
+rnode "a_188_0.t1" 0 0 738 100 0
+rnode "a_188_0.n5" 0 0 738 0 0
+rnode "a_188_0.n6" 0 0 738 200 0
+rnode "a_188_0.n7" 0 0 738 277 0
+rnode "a_188_0.n8" 0 0 738 277 0
+rnode "a_188_0.n9" 0 0 738 380 0
+rnode "a_188_0.n10" 0 0 232 380 0
+rnode "a_188_0.n11" 0 0 232 129 0
+resist "a_188_0.n6" "a_188_0.t1" 48.2
+resist "a_188_0.t1" "a_188_0.n5" 48.2
+resist "a_188_0.n7" "a_188_0.n6" 37.114
+resist "a_188_0.n4" "a_188_0.n7" 152
+resist "a_188_0.n9" "a_188_0.n8" 0.247596
+resist "a_188_0.n8" "a_188_0.n4" 9.3
+resist "a_188_0.n10" "a_188_0.n9" 1.05417
+resist "a_188_0.n11" "a_188_0.n10" 0.603365
+resist "a_188_0.n3" "a_188_0.n11" 0.173077
+resist "a_188_0.n0" "a_188_0.n2" 23.04
+resist "a_188_0.n2" "a_188_0.n11" 9.3
+resist "a_188_0.n0" "a_188_0.n3" 9.3
+resist "a_188_0.t0" "a_188_0.n1" 26.4
+resist "a_188_0.n1" "a_188_0.n2" 185
+resist "a_188_0.n1" "a_188_0.n0" 185
+device msubckt sky130_fd_pr__nfet_01v8 88 0 89 1  "vss.t2" "g.t0" 200 0 "vss.t3" 200 17600,576 "a_188_0.t0" 200 17600,576
+device msubckt sky130_fd_pr__nfet_01v8 688 0 689 1  "vss.t0" "a_188_0.t1" 200 0 "vss.t1" 200 17600,576 "out.t0" 200 17600,576

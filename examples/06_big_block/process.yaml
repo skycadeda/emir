@@ -1,0 +1,32 @@
+# ILLUSTRATIVE PROCESS DATA for the big-block example -- NOT A FOUNDRY DECK.
+# Every number is invented and round; the GDS numbers are deliberately
+# synthetic. Point --process at your own PDK's file for real work.
+pdk: big-block example (illustrative)
+warn_fraction: 0.8
+temp_reference: 110.0      # C; the example DSPFs are extracted at 110 C too
+em_tref: 110.0
+
+layers:
+  Poly:
+    gds: [102, 0]          # the layer under Cont; no poly segments in the DSPFs
+    sheet_res: 10.0
+    min_width: 0.1
+  Metal1:
+    gds: [101, 0]
+    sheet_res: 0.05        # ohm/square
+    tc1: 0.0
+    min_width: 0.1         # um
+    jmax_avg: 1.0          # mA per um of width
+    jmax_rms_k: 3.2        # rms limit sqrt(3.2 * delta_T) mA/um: 4.0 at 5 C
+    jmax_peak: 10.0        # mA/um
+
+vias:
+  Cont:
+    gds: [100, 0]
+    below: Poly
+    above: Metal1
+    res: 10.0              # ohm per cut
+    vcwidth: 0.1           # um, cut side
+    imax_avg: 0.5          # mA per cut
+    imax_rms: 1.0
+    imax_peak: 2.0

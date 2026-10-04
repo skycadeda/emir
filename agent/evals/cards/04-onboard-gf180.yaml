@@ -1,0 +1,52 @@
+id: onboard-gf180
+playbook: 04-onboard-a-pdk
+title: Onboard gf180mcu from its tech LEF and prove it on a strap
+requires: []
+fixtures: [gf180_strap]
+prompt: |
+  We're moving a block to GF180MCU (gf180mcuD, 5 metal layers). Set emir up for that PDK from its tech LEF
+  and show me it works on inputs/strap.dspf: VDD gets 0.25 mA at its pin and the load M0:s draws all of
+  it. Which EM limits apply, and does the strap pass?
+expect:
+  commands:
+    - {cmd: selftest}
+    - {cmd: run, value: {--process: pdks/gf180mcu.yaml}}
+  forbid:
+    - {cmd: run, has: [--force]}
+  documents:
+    - schema: emir.run/1
+      fields:
+        process: {endswith: pdks/gf180mcu.yaml}
+        verdict: FAIL
+        worst_net.ratio: {approx: 1.38889, rel: 0.001}
+        nets.0.worst_items.0.layer: Via1
+  answer:
+    verdict: FAIL
+    numbers:
+      - {value: 1.389, rel: 0.01, what: worst ratio}
+    all: ['gf180mcu\.yaml', 'Via1']
+    any:
+      - ['not published', 'not checked', 'no rms', 'not given']
+  limits_from: [pdks/gf180mcu.yaml]
+  unchanged: [pdks]
+reference:
+  commands:
+    - emir selftest --format json
+    - ls pdks/
+    - |-
+      emir check inputs/strap.dspf --process pdks/gf180mcu.yaml --net VDD --currents '{"VDD": 0.00025, "M0:s": -0.00025}' --format json
+    - |-
+      emir run inputs/strap.dspf --process pdks/gf180mcu.yaml --net VDD --currents '{"VDD": 0.00025, "M0:s": -0.00025}' --summary-out emir_out/summary.json --format json
+    - emir report --from emir_out/summary.json
+  answer: |
+    emir already has gf180mcu: pdks/gf180mcu.yaml was built from the gf180mcuD standard-cell tech LEF, the
+    typical resistor models and the design manual's EM section, with the source of every value. I used it
+    as it is; nothing needed writing.
+
+    Limits that apply (avg, at 125 C, the temperature the file quotes them at): Metal1-Metal4 0.67 mA/um,
+    Metal5 1.5 mA/um, Via1-Via4 0.18 mA/cut. rms and peak limits are not published by the PDK, so emir
+    reports them as not checked.
+
+    The strap: **FAIL**. Screening, not sign-off.
+    - Via1 (one cut) carries 0.25 mA: 1.389x its avg limit. Fix: Via1 1 -> 2 cuts.
+    - Metal1 (0.5 um wide) is at 0.746x: CLEAN.

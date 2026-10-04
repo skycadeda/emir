@@ -1,0 +1,11 @@
+* NGSPICE file created from pair.ext - technology: sky130A
+
+.subckt pair g out vss
+X0 out a_188_0# vss vss sky130_fd_pr__nfet_01v8 ad=0.44 pd=2.88 as=0.44 ps=2.88 w=1 l=0.5
+X1 a_188_0# g vss vss sky130_fd_pr__nfet_01v8 ad=0.44 pd=2.88 as=0.44 ps=2.88 w=1 l=0.5
+C0 out a_188_0# 0.13576f
+C1 g a_188_0# 0.04867f
+C2 out vss 0.3109f
+C3 g vss 0.30459f
+C4 a_188_0# vss 0.79009f
+.ends

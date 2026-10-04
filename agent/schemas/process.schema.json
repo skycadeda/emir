@@ -1,0 +1,662 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:process:1",
+  "title": "emir process file",
+  "description": "PDK EM/IR data for emir (YAML). Units: mA/um and mA/cut for limits, ohm/square and ohm/cut, um, C. Every limit comes from the PDK; never invent one. A null value is not given.",
+  "type": "object",
+  "properties": {
+    "pdk": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "provenance": {
+      "enum": [
+        "hand-entered",
+        "imported-ict",
+        "public-pdk-data",
+        "mixed"
+      ],
+      "description": "Where the file's values came from; reports say it per layer."
+    },
+    "warn_fraction": {
+      "anyOf": [
+        {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "temp_reference": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "em_tref": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "jmax_factor": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      },
+      "propertyNames": {
+        "pattern": "^-?[0-9]+(\\.[0-9]*)?$"
+      }
+    },
+    "derating": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "model": {
+              "const": "black"
+            },
+            "ea_eV": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "n": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "below_tref": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "clamp",
+                    "extrapolate"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "description": "Black's equation, the alternative to a jmax_factor table: J(T)/J(em_tref) = exp[(ea_eV/(n k)) (1/T - 1/Tref)], T in kelvin. Below em_tref the limits stay as quoted (`below_tref: clamp`, the default) unless the file says `extrapolate` (EMIR-W326)."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "unit_confirmed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Paths (`em_tref`, `layers/<name>/jmax_avg` ...) of values outside the range their quantity normally takes that the person checked against the design manual: such a value on a temperature, the derating or a limit blocks the run (EMIR-E331) until it is listed here."
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "Where em_tref, temp_reference, derating and jmax_factor came from."
+    },
+    "dspf_layers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "magic": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "binary": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^magic[A-Za-z0-9_.+-]*$"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^magic[A-Za-z0-9_.+-]*$"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the magic to try, after --magic and $EMIR_MAGIC: a magic program's bare name on $PATH (starting with `magic`, no path: EMIR-E648), or a list; one built with the geoout patch"
+            },
+            "layers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "magic's layer names (the PDK's magic technology file) -> this file's layers and vias; a name not listed folds as `dspf_layers` does"
+            },
+            "devices": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": "a device model (or a glob, e.g. sky130_fd_pr__*fet*) -> its terminal names in the order magic writes its nodes (the PDK's .subckt order): the DSPF's *|I pin names"
+            },
+            "sources": {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "description": "Where each value of this entry came from: key -> \"document, table or page\" (null: not said). A hand-entered file's values each need one (EMIR-W320)."
+            }
+          },
+          "additionalProperties": false,
+          "description": "The magic route (`emir extract --tool magic`): magic's layer names, the devices' terminal names and the magic to run."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "layers": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "gds": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sheet_res": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tc1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tc2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min_width": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "jmax_avg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "jmax_rms": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "jmax_rms_k": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "jmax_peak": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "width_loss_um": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "um, the width loss dW of the design manual's I_max = J x (W - dW), W the drawn width; applied to the avg, rms and peak wire limits"
+          },
+          "estimate": {
+            "type": "boolean"
+          },
+          "ict_name": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Where each value of this entry came from: key -> \"document, table or page\" (null: not said). A hand-entered file's values each need one (EMIR-W320)."
+          },
+          "provenance": {
+            "enum": [
+              "hand-entered",
+              "imported-ict",
+              "public-pdk-data"
+            ],
+            "description": "This entry's own provenance, in a `mixed` file."
+          }
+        },
+        "required": [
+          "sheet_res"
+        ],
+        "additionalProperties": false,
+        "description": "A conductor layer. Limits in mA per um of width; give jmax_rms (fixed) or jmax_rms_k (sqrt(k * delta_T)), not both.",
+        "not": {
+          "required": [
+            "jmax_rms",
+            "jmax_rms_k"
+          ],
+          "properties": {
+            "jmax_rms": {
+              "type": "number"
+            },
+            "jmax_rms_k": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "vias": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "gds": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "below": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "above": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "res": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vcwidth": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "imax_avg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "imax_rms": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "imax_peak": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimate": {
+            "type": "boolean"
+          },
+          "rms_peak_estimate": {
+            "type": "boolean"
+          },
+          "ict_name": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Where each value of this entry came from: key -> \"document, table or page\" (null: not said). A hand-entered file's values each need one (EMIR-W320)."
+          },
+          "provenance": {
+            "enum": [
+              "hand-entered",
+              "imported-ict",
+              "public-pdk-data"
+            ],
+            "description": "This entry's own provenance, in a `mixed` file."
+          }
+        },
+        "required": [
+          "below",
+          "above",
+          "res"
+        ],
+        "additionalProperties": false,
+        "description": "A via (cut) layer. Limits in mA per cut; res in ohm per cut; vcwidth (um, the cut side) turns a cut area into a count."
+      }
+    },
+    "ict_conductor_pattern": {
+      "type": "string"
+    },
+    "ict_process": {
+      "type": "string"
+    },
+    "cap_models": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "cj": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "minimum": 0
+          },
+          "cjsw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "minimum": 0
+          },
+          "cox": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "minimum": 0
+          },
+          "ron_sq": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "minimum": 0
+          },
+          "esr_a": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "minimum": 0
+          },
+          "esr_w": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "esr_l": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "esr_w_range": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "esr_l_range": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "esr_fit_freq": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "exclusiveMinimum": 0
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Where each value of this entry came from: key -> \"document, table or page\" (null: not said). A hand-entered file's values each need one (EMIR-W320)."
+          },
+          "provenance": {
+            "enum": [
+              "hand-entered",
+              "imported-ict",
+              "public-pdk-data"
+            ],
+            "description": "This entry's own provenance, in a `mixed` file."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "em_tref",
+    "layers"
+  ]
+}

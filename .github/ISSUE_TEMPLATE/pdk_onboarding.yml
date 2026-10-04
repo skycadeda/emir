@@ -1,0 +1,67 @@
+name: PDK onboarding
+description: A process file for a PDK under pdks/, or help writing one for your own PDK.
+title: "[pdk] "
+labels: ["pdk"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `pdks/` holds process files built **only from public, redistributable PDK
+        files**, with a source (file and line, section, or URL) on every value
+        (`pdks/README.md`, `pdks/TEMPLATE.yaml`). A licensed PDK's limits never go
+        into this repository, an issue or a pull request: for such a PDK, keep the
+        process file at your site and ask here with invented numbers
+        (`emir import-ict` merges the EM limits of your ICT into it, locally).
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What you need
+      options:
+        - add an open PDK to pdks/
+        - fix or extend a file in pdks/
+        - help writing a process file for a PDK I cannot publish
+    validations:
+      required: true
+  - type: input
+    id: pdk
+    attributes:
+      label: PDK name and version
+      placeholder: "sky130A (open_pdks <commit>), gf180mcuD, IHP SG13G2 ..."
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Public sources and their licence
+      description: >-
+        Where each kind of value comes from (tech LEF, design manual, rule deck,
+        KLayout LVS deck), with links, and the licence the files are published under.
+        Leave empty when the PDK cannot be published.
+      placeholder: |
+        - EM limits: <pdk>/libs.ref/.../techlef/<name>.tlef, DCCURRENTDENSITY (Apache-2.0)
+        - sheet resistance: <pdk> documentation, section ...
+  - type: textarea
+    id: coverage
+    attributes:
+      label: Layers, vias and limits
+      description: >-
+        Which metal and via layers, the EM reference temperature, and which limits
+        the PDK publishes (avg, rms, peak; wires and vias). Limits it does not
+        publish are left out and reported as not checked, never invented.
+  - type: textarea
+    id: check
+    attributes:
+      label: emir check output on the draft file (if you have one)
+      description: >-
+        `emir check <a DSPF> --process <draft>.yaml --format json` with invented
+        names where needed.
+      render: json
+  - type: checkboxes
+    id: no-foundry-data
+    attributes:
+      label: Confidentiality
+      options:
+        - label: >-
+            Every value in this issue comes from public, redistributable files (or is
+            invented); there are no licensed-PDK limits, layer names or model names in it.
+          required: true

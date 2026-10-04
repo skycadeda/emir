@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:gui_install:1",
+  "title": "emir gui-install",
+  "description": "The Virtuoso SKILL files written.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.gui_install/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "dir": {
+      "type": "string"
+    },
+    "files": {
+      "type": "object",
+      "properties": {
+        "main": {
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        },
+        "drf": {
+          "type": "string"
+        },
+        "site": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "main",
+        "app",
+        "drf"
+      ]
+    },
+    "cdsinit": {
+      "type": "string"
+    },
+    "drf_note": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "dir",
+    "files",
+    "cdsinit"
+  ]
+}

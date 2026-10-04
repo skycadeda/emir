@@ -1,0 +1,48 @@
+id: cadence-extract-plan
+playbook: 06-cadence-flow
+title: Prepare a PVS + Quantus extraction and the Spectre save lines
+requires: []
+fixtures: [cadence_stub]
+prompt: |
+  At our Cadence site I need EM/IR on the cell railblock. The layout is inputs/railblock.gds and the
+  netlist inputs/railblock.cdl. Prepare the R-only extraction with PVS and Quantus and tell me what you
+  still need from me. Also write the Spectre save lines for the RC-extracted DSPF inputs/rail.dspf to
+  emir_out/emir_save.scs; the testbench instance of the block is XDUT.
+expect:
+  disclaimer: false
+  commands:
+    - {cmd: selftest}
+    - {cmd: extract, value: {--kind: r_only}, lacks: [--run]}
+    - {cmd: save-lines, value: {--prefix: XDUT.}}
+  forbid:
+    - {cmd: extract, has: [--run]}
+    - {cmd: run, has: [--netlist]}
+  files:
+    - path: emir_out/emir_save.scs
+      match: ['^save XDUT\.Rm1:1 ', 'XDUT\.Rc3:1']
+  answer:
+    all: ['corner', 'temperature']
+    any:
+      - ['rule deck', 'rules', 'PVS_RULES', 'pvs_lvs_rules']
+      - ['tech', 'QRC_TECH_DIR', 'qrc_tech_dir']
+reference:
+  commands:
+    - emir selftest --format json
+    - emir extract --gds inputs/railblock.gds --cdl inputs/railblock.cdl --cell railblock --kind r_only --format json
+    - emir save-lines inputs/rail.dspf --mode rcc --prefix XDUT. --out emir_out/emir_save.scs --format json
+  answer: |
+    The extraction plan is ready but nothing ran (a dry run: PVS and Quantus are licensed, and they would
+    only start after you agree). Before it can run I need from you, or from your site file:
+
+    - the PVS LVS rule deck of the PDK (`--rules`, $PVS_RULES or `pvs_lvs_rules:`);
+    - the Quantus technology directory (`--tech-dir`, $QRC_TECH_DIR or `qrc_tech_dir:`);
+    - the Quantus corner (`--corner`); I will not assume one;
+    - the extraction temperature in C (`--temperature`); I will not assume one either;
+    - where pvs and qrc are installed: neither is on PATH here.
+
+    Then `emir extract ... --kind r_only --run` runs LVS, refuses to extract unless LVS matches, and writes
+    railblock.r_only.dspf.
+
+    The save lines are in emir_out/emir_save.scs: one Spectre `save` line with the 16 branch currents of the
+    rail (XDUT.Rm1:1 ... XDUT.Rc3:1), what an rcc run needs. Include that file in the testbench, simulate
+    with `-format psfascii`, and pass the result to `emir run --cc-sim`.

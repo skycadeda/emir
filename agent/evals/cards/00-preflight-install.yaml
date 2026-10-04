@@ -1,0 +1,37 @@
+id: preflight-install
+playbook: 00-preflight
+title: Is emir installed correctly, and what can it use here?
+requires: []
+fixtures: []
+prompt: |
+  I just cloned emir onto this machine. Before I give you any design data: is it installed correctly,
+  and which circuit simulators and optional Python packages did it find? Don't touch anything else.
+expect:
+  disclaimer: false
+  commands_all:                 # both, in either order (AGENTS.md runs info, then selftest)
+    - {cmd: info}
+    - {cmd: selftest}
+  forbid:
+    - {cmd: run}
+    - {cmd: extract}
+  answer:
+    all:
+      - 'self-?test'
+      - 'pass'
+    any:
+      - ['spectre']
+      - ['xyce', 'ngspice']
+reference:
+  commands:
+    - emir --version
+    - emir info --format json
+    - emir selftest --format json
+  answer: |
+    emir 1.1.0.dev0 is installed and its self-test PASSED (offline, on the bundled sample).
+
+    Simulators: Xyce and ngspice were found; Spectre, Virtuoso and Quantus were not (they are licensed
+    tools, which I would not start without asking you anyway). Optional packages: matplotlib, klayout and
+    mcp are installed, so the PNG charts (with the layout under them), the KLayout markers and the MCP
+    server all work.
+
+    Nothing of yours was read or written.

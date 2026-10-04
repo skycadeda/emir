@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "emir": {
+      "command": "/path/to/venv/bin/emir",
+      "args": [
+        "mcp",
+        "--cwd",
+        "/path/to/your/project"
+      ]
+    }
+  }
+}

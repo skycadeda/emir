@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:names:1",
+  "title": "simulator names sidecar (<result>.names)",
+  "description": "A JSON file written beside a simulation result as `<result>.names` (cc.raw -> cc.raw.names). It maps a simulator's signal names to the DSPF's: a terminal current `inst:pin` (cc-grid) or a branch current `R:1` (rcc), with the sign that turns the saved current into the current INTO the instance pin (or from the resistor's first node to its second): 1 or -1. Xyce and ngspice name currents I(V1), i(v_mp0), V1#branch ...; keys are matched without regard to case. Without the sidecar those names do not match the DSPF and the result reads as holding none of the net's currents. `emir simulate` also records how the result was made: the simulator, its version (when it ran here) and `sim_args`, which the on-site verification (`emir verify-sim`) is keyed on; for Spectre, whose names need no map, the sidecar beside the result directory holds only those (an empty `map`).",
+  "type": "object",
+  "properties": {
+    "map": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "prefixItems": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "number"
+          }
+        ]
+      }
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pin": {
+            "type": "string"
+          },
+          "sign": {
+            "type": "number"
+          },
+          "net": {
+            "type": "string"
+          },
+          "element": {
+            "type": "string"
+          },
+          "terminal": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "path",
+          "pin"
+        ]
+      }
+    },
+    "generator": {
+      "type": "string"
+    },
+    "netlist": {
+      "type": "string"
+    },
+    "probed_netlist": {
+      "type": "string"
+    },
+    "simulator": {
+      "enum": [
+        "spectre",
+        "hspice",
+        "xyce",
+        "ngspice"
+      ]
+    },
+    "simulator_version": {
+      "type": "string"
+    },
+    "sim_args": {
+      "type": "string"
+    },
+    "kinds": {
+      "type": "object",
+      "additionalProperties": {
+        "enum": [
+          "branch",
+          "mos",
+          "two-terminal",
+          "source",
+          "subcircuit",
+          "probe",
+          "diode",
+          "bjt",
+          "jfet",
+          "other"
+        ]
+      }
+    },
+    "kcl": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "device": {
+            "type": "string"
+          },
+          "terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "terms"
+        ]
+      }
+    }
+  },
+  "required": [
+    "map"
+  ],
+  "examples": [
+    {
+      "map": {
+        "I(V_MP0)": [
+          "MP0:s",
+          1
+        ],
+        "I(V_MP1)": [
+          "MP1:s",
+          1
+        ]
+      }
+    }
+  ]
+}

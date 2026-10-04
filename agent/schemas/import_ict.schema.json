@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:import_ict:1",
+  "title": "emir import-ict",
+  "description": "What an ICT import changed in a process file.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.import_ict/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "ict": {
+      "type": "string"
+    },
+    "emir": {
+      "type": "string"
+    },
+    "out": {
+      "type": "string"
+    },
+    "process": {
+      "type": "string"
+    },
+    "temp_reference": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "em_tref": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "jmax_factor": {
+      "type": "object"
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "provenance": {
+      "anyOf": [
+        {
+          "enum": [
+            "imported-ict",
+            "mixed"
+          ],
+          "description": "the file's provenance after the import: imported-ict, or mixed when it also holds values entered by hand or from public PDK data; each imported value names the ICT under `sources:`"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "notices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^EMIR-[EWI][1-9][0-9]{2}$"
+          },
+          "level": {
+            "enum": [
+              "warning",
+              "info"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "level",
+          "message"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "ict",
+    "emir",
+    "out",
+    "changes",
+    "notices"
+  ]
+}

@@ -1,0 +1,29 @@
+# Monthly update pull requests for the Python dependencies (pyproject.toml) and
+# the GitHub Actions (pinned by commit SHA in .github/workflows/; Dependabot moves
+# the SHA and its version comment together). Each one runs CI like any other pull
+# request: the `lowest` job keeps the floors honest, the others the latest versions.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "deps"
+    groups:
+      python-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]

@@ -1,0 +1,187 @@
+# emir process file for SkyWater SKY130 (sky130A), built only from the PDK's
+# public, Apache-2.0 files as installed by open_pdks 1.0.510 (commit c10a5818).
+# Every value names its source as [FILE]:line. Paths are relative to $PDK_ROOT
+# (the directory holding sky130A/):
+#
+#   [LEF] sky130A/libs.ref/sky130_fd_sc_hdll/techlef/sky130_fd_sc_hdll__nom.tlef
+#         The standard-cell tech LEF, nominal corner. The hs, ls, lp and ms
+#         *__nom.tlef files carry the same resistance and EM values.
+#   [LYP] sky130A/libs.tech/klayout/tech/sky130A.lyp   (GDS layer/datatype)
+#   [RES] sky130A/libs.tech/combined/continuous/models_resistors.spice
+#   [NOM] sky130A/libs.tech/combined/continuous/parameters_res_nom.spice
+#   [MAG] sky130A/libs.tech/magic/sky130A.tech         (magic's layer names;
+#         Apache-2.0, open_pdks version 1.0.510-0-gc10a581 at its line 17)
+#   [FET] sky130A/libs.ref/sky130_fd_pr/spice/sky130_fd_pr__nfet_01v8__tt.pm3.spice
+#         (the SPICE library's MOSFET subcircuits and their terminals)
+#   [LVS] sky130A/libs.tech/klayout/lvs/sky130.lvs     (KLayout LVS layer names)
+#
+# Upstream: https://github.com/google/skywater-pdk and
+# https://github.com/RTimothyEdwards/open_pdks (Apache-2.0).
+#
+# NOT CHECKED with this file, because the PDK does not publish the limit:
+#   - EM on li1 (the tech LEF gives li1 no current density);
+#   - peak EM on every layer and via (no ACCURRENTDENSITY PEAK);
+#   - rms EM on vias (the LEF gives vias DC average limits only);
+#   - temperature derating of the avg limits (no derating table is
+#     published): the Tj = 90 C limits are used at every analysis temperature;
+#   - licon, poly and diffusion (no LEF values; the file starts at li1).
+# Via resistance is not scaled with temperature (emir scales layers only).
+#
+# The ReRAM variants (*__rram__nom.tlef) give `via` 9.00 ohm at line 138; this
+# file is the standard process, 4.50 ohm, which [NOM]:30 confirms.
+#
+# EM/IR screening, not sign-off.
+
+pdk: sky130A (SkyWater SKY130, open_pdks 1.0.510)
+provenance: public-pdk-data  # every value from the PDK's public files, cited per line
+em_tref: 90.0              # C. [LEF]:96,123,124 "Iavg_max at Tj = 90oC" (every EM line)
+temp_reference: 30.0       # C. [RES]:115-120, the metal models' "tref = 30".
+                           # The LEF does not say at what temperature RPERSQ is
+                           # quoted; its values agree to about 4 % with the
+                           # models' nominal sheet resistance at 30 C
+                           # ([NOM]:20-24,35: li1 12.3, met1/2 0.124, met3/4
+                           # 0.046, met5 0.0275); li1's 12.8 is 4.1 % above
+
+dspf_layers:               # extractor names that do not fold onto the LEF names
+  li_con: li1              # [LVS]:1143 KLayout LVS deck: li_con
+  via1: via                # [LVS]:930 via1 (68/44)
+  # met1_con..met5_con ([LVS]:1144-1148), met3_ncap and met4_ncap
+  # ([LVS]:1450,1453) fold onto met1..met5 by the suffix rule (reported);
+  # via2..via4 and mcon match the LEF names exactly.
+
+magic:                     # the magic route: emir extract --tool magic
+  # a magic built with the geoout patch (`extresist geoout`: each resistor's
+  # layer, width, length and place), tried after --magic and $EMIR_MAGIC: a
+  # magic program's bare name on $PATH (a path here is refused, EMIR-E648: give
+  # one with --magic or $EMIR_MAGIC). This name is the one the build had where
+  # EMIR was developed, an example (playbook 09 says how to build one)
+  binary: magic-8.3.515-geo
+  layers:                  # magic's type names ([MAG] `types`) -> this file's
+    locali: li1            # [MAG]:236  locali,li1,li
+    viali: mcon            # [MAG]:239  viali,vial,mcon,m1c,v0
+    metal1: met1           # [MAG]:245  metal1,m1,met1
+    via1: via              # [MAG]:247  via1,m2contact,...,via,v,v1
+    metal2: met2           # [MAG]:253  metal2,m2,met2
+    via2: via2             # [MAG]:255  via2,m3contact,m3cut,m3c,v2
+    metal3: met3           # [MAG]:260  metal3,m3,met3
+    via3: via3             # [MAG]:263  via3,v3
+    mimcapcontact: via3    # [MAG]:267  the via3 cut over the MIM top plate (capm)
+    metal4: met4           # [MAG]:270  metal4,m4,met4
+    via4: via4             # [MAG]:273  via4,v4
+    mimcap2contact: via4   # [MAG]:277  the via4 cut over the second MIM plate (capm2)
+    metal5: met5           # [MAG]:280  metal5,m5,met5
+    # magic's other conductors -- diffusion and its contacts (ndiff, ndiffc,
+    # psubdiff, psubdiffcont ...), poly and polycont, the gate (nmos, pmos) and
+    # the wells -- have no EM limit in [LEF]: their current is in the IR drop and
+    # they are reported as not checked (EMIR-W307)
+  devices:                 # terminal names, in the order magic writes a device's nodes
+    # [FET]:35 `.subckt  sky130_fd_pr__nfet_01v8 d g s b`; every nfet_, pfet_,
+    # special_ and esd_ MOSFET subcircuit in sky130A/libs.ref/sky130_fd_pr/spice
+    # names the same four. Its rf_ models do not all (some name DRAIN GATE SOURCE
+    # SUBSTRATE), so they are not listed.
+    "sky130_fd_pr__nfet_*": [d, g, s, b]
+    "sky130_fd_pr__pfet_*": [d, g, s, b]
+    "sky130_fd_pr__special_nfet_*": [d, g, s, b]
+    "sky130_fd_pr__special_pfet_*": [d, g, s, b]
+    "sky130_fd_pr__esd_nfet_*": [d, g, s, b]
+    "sky130_fd_pr__esd_pfet_*": [d, g, s, b]
+    # resistors (r0 r1 b), MIM capacitors (c0 c1) and bipolars (Collector Base
+    # Emitter) are left to the person: their order as magic writes them is not
+    # checked here, so their pins are named t1, t2 ... (EMIR-W643)
+
+layers:
+  li1:
+    gds: [67, 20]          # [LYP]:883 li1.drawing - 67/20
+    sheet_res: 12.8        # ohm/sq. [LEF]:80 RESISTANCE RPERSQ 12.8
+    tc1: 6.045e-4          # 1/C. [RES]:45 tc1rl1
+    tc2: -3.693e-7         # 1/C^2. [RES]:46 tc2rl1
+    min_width: 0.17        # um. [LEF]:71 WIDTH 0.17
+    # jmax_avg / jmax_rms / jmax_peak: not published by the PDK - not checked
+  met1:
+    gds: [68, 20]          # [LYP]:1121 met1.drawing - 68/20
+    sheet_res: 0.125       # ohm/sq. [LEF]:129 RESISTANCE RPERSQ 0.125
+    tc1: 3.179e-3          # 1/C. [RES]:47
+    tc2: 3.094e-7          # 1/C^2. [RES]:48
+    min_width: 0.14        # um. [LEF]:107 WIDTH 0.14
+    jmax_avg: 2.8          # mA/um. [LEF]:123 DCCURRENTDENSITY AVERAGE 2.8
+    jmax_rms: 6.1          # mA/um. [LEF]:124 ACCURRENTDENSITY RMS 6.1
+    # jmax_peak: not published by the PDK - not checked
+  met2:
+    gds: [69, 20]          # [LYP]:1495 met2.drawing - 69/20
+    sheet_res: 0.125       # ohm/sq. [LEF]:164
+    tc1: 3.161e-3          # 1/C. [RES]:49
+    tc2: -7.272e-7         # 1/C^2. [RES]:50
+    min_width: 0.14        # um. [LEF]:151
+    jmax_avg: 2.8          # mA/um. [LEF]:165
+    jmax_rms: 6.1          # mA/um. [LEF]:166
+    # jmax_peak: not published by the PDK - not checked
+  met3:
+    gds: [70, 20]          # [LYP]:1869 met3.drawing - 70/20
+    sheet_res: 0.047       # ohm/sq. [LEF]:206
+    tc1: 3.424e-3          # 1/C. [RES]:51
+    tc2: -7.739e-7         # 1/C^2. [RES]:52
+    min_width: 0.3         # um. [LEF]:195
+    jmax_avg: 6.8          # mA/um. [LEF]:207
+    jmax_rms: 14.9         # mA/um. [LEF]:208
+    # jmax_peak: not published by the PDK - not checked
+  met4:
+    gds: [71, 20]          # [LYP]:2260 met4.drawing - 71/20
+    sheet_res: 0.047       # ohm/sq. [LEF]:248
+    tc1: 3.424e-3          # 1/C. [RES]:53
+    tc2: -7.739e-7         # 1/C^2. [RES]:54
+    min_width: 0.3         # um. [LEF]:236
+    jmax_avg: 6.8          # mA/um. [LEF]:249
+    jmax_rms: 14.9         # mA/um. [LEF]:250
+    # jmax_peak: not published by the PDK - not checked
+  met5:
+    gds: [72, 20]          # [LYP]:2651 met5.drawing - 72/20
+    sheet_res: 0.0285      # ohm/sq. [LEF]:290
+    tc1: 3.5e-3            # 1/C. [RES]:55
+    tc2: -7.5e-7           # 1/C^2. [RES]:56
+    min_width: 1.6         # um. [LEF]:279
+    jmax_avg: 10.17        # mA/um. [LEF]:291
+    jmax_rms: 22.34        # mA/um. [LEF]:292
+    # jmax_peak: not published by the PDK - not checked
+
+vias:
+  mcon:
+    gds: [67, 44]          # [LYP]:1053 mcon.drawing - 67/44
+    below: li1
+    above: met1
+    res: 9.3               # ohm/cut. [LEF]:93 RESISTANCE 9.30
+    vcwidth: 0.17          # um. [LEF]:89 WIDTH 0.17
+    imax_avg: 0.36         # mA/cut. [LEF]:96 DCCURRENTDENSITY AVERAGE 0.36
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  via:
+    gds: [68, 44]          # [LYP]:1427 via.drawing - 68/44
+    below: met1
+    above: met2
+    res: 4.5               # ohm/cut. [LEF]:138 RESISTANCE 4.50
+    vcwidth: 0.15          # um. [LEF]:134
+    imax_avg: 0.29         # mA/cut. [LEF]:141
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  via2:
+    gds: [69, 44]          # [LYP]:1801 via2.drawing - 69/44
+    below: met2
+    above: met3
+    res: 3.41              # ohm/cut. [LEF]:183
+    vcwidth: 0.2           # um. [LEF]:179
+    imax_avg: 0.48         # mA/cut. [LEF]:185
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  via3:
+    gds: [70, 44]          # [LYP]:2192 via3.drawing - 70/44
+    below: met3
+    above: met4
+    res: 3.41              # ohm/cut. [LEF]:224
+    vcwidth: 0.2           # um. [LEF]:220
+    imax_avg: 0.48         # mA/cut. [LEF]:226
+    # imax_rms / imax_peak: not published by the PDK - not checked
+  via4:
+    gds: [71, 44]          # [LYP]:2583 via4.drawing - 71/44
+    below: met4
+    above: met5
+    res: 0.38              # ohm/cut. [LEF]:267 ([NOM]:33 says 3.41; the LEF
+                           # value is used, as for every other via)
+    vcwidth: 0.8           # um. [LEF]:263
+    imax_avg: 2.49         # mA/cut. [LEF]:269
+    # imax_rms / imax_peak: not published by the PDK - not checked

@@ -1,0 +1,81 @@
+scale 1000 1 500000
+rnode "out" 0 0 232 600 0
+rnode "out.n0" 0 0 232 273 0
+rnode "out.n1" 0 0 232 273 0
+rnode "out.n2" 0 0 232 57 0
+rnode "out.n3" 0 0 232 57 0
+rnode "out.n4" 0 0 232 129 0
+rnode "out.n5" 0 0 232 129 0
+rnode "out.n6" 0 0 232 201 0
+rnode "out.n7" 0 0 232 201 0
+rnode "out.t0" 0 0 188 200 0
+rnode "out.n8" 0 0 232 201 0
+resist "out.n7" "out.t0" 13.2
+resist "out.n6" "out.n0" 23.04
+resist "out.n4" "out.n6" 23.04
+resist "out.n2" "out.n4" 23.04
+resist "out.n7" "out.n6" 185
+resist "out.n7" "out.n4" 185
+resist "out.n7" "out.n2" 185
+resist "out.n0" "out.n7" 185
+resist "out" "out.n1" 0.786058
+resist "out.n1" "out.n8" 0.173077
+resist "out.n8" "out.n5" 0.173077
+resist "out.n5" "out.n3" 0.173077
+resist "out.n8" "out.n6" 9.3
+resist "out.n5" "out.n4" 9.3
+resist "out.n3" "out.n2" 9.3
+resist "out.n1" "out.n0" 9.3
+rnode "vss" 0 0 -560 -240 0
+rnode "vss.n0" 0 0 137 -240 0
+rnode "vss.t0" 0 0 138 200 0
+rnode "vss.n1" 0 0 137 -240 0
+rnode "vss.n2" 0 -0 137 -240 0
+rnode "vss.n3" 0 0 137 -240 0
+rnode "vss.n4" 0 0 44 273 0
+rnode "vss.n5" 0 0 44 273 0
+rnode "vss.n6" 0 0 44 57 0
+rnode "vss.n7" 0 0 44 57 0
+rnode "vss.n8" 0 0 44 129 0
+rnode "vss.n9" 0 0 44 129 0
+rnode "vss.n10" 0 0 44 201 0
+rnode "vss.n11" 0 0 44 201 0
+rnode "vss.t1" 0 0 88 200 0
+rnode "vss.n12" 0 0 44 201 0
+rnode "vss.n13" 0 0 44 -200 0
+rnode "vss" 0 0 760 -240 0
+resist "vss.n1" "vss.t0" 1382.86
+resist "vss.n0" "vss.n2" 585
+resist "vss.n2" "vss.n1" 585
+resist "vss.n11" "vss.t1" 13.2
+resist "vss.n10" "vss.n4" 23.04
+resist "vss.n8" "vss.n10" 23.04
+resist "vss.n6" "vss.n8" 23.04
+resist "vss.n11" "vss.n10" 185
+resist "vss.n11" "vss.n8" 185
+resist "vss.n6" "vss.n11" 185
+resist "vss.n11" "vss.n4" 185
+resist "vss.n12" "vss.n5" 0.173077
+resist "vss.n9" "vss.n12" 0.173077
+resist "vss.n7" "vss.n9" 0.173077
+resist "vss.n13" "vss.n7" 0.617788
+resist "vss.n12" "vss.n10" 9.3
+resist "vss.n9" "vss.n8" 9.3
+resist "vss.n7" "vss.n6" 9.3
+resist "vss.n5" "vss.n4" 9.3
+resist "vss" "vss.n3" 0.973437
+resist "vss.n3" "vss.n13" 0.145313
+resist "vss" "vss.n13" 0.94375
+resist "vss.n3" "vss.n0" 9.3
+rnode "g" 0 0 138 476 0
+rnode "g.t0" 0 0 138 200 0
+rnode "g.n0" 0 0 138 0 0
+rnode "g.n1" 0 0 138 400 0
+rnode "g.n2" 0 0 138 477 0
+rnode "g.n3" 0 0 138 477 0
+resist "g.n1" "g.t0" 96.4
+resist "g.t0" "g.n0" 96.4
+resist "g.n2" "g.n1" 37.114
+resist "g" "g.n3" 0.2
+resist "g.n3" "g.n2" 152
+device msubckt sky130_fd_pr__nfet_01v8 88 0 89 1  "vss.t0" "g.t0" 200 0 "vss.t1" 400 35200,976 "out.t0" 400 35200,976

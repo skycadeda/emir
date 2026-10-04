@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "emir": {
+      "command": "emir",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

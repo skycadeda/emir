@@ -1,0 +1,77 @@
+# pre-commit install   (installs both hook types below: every `git commit`
+#                       checks the staged files, then the commit message)
+# pre-commit run --all-files
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check            # rules and line length: [tool.ruff] in pyproject.toml
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      # simulator results keep their fixed-width layout: HSPICE pads its header
+      # record to 80 columns, Xyce ends CSDF value lines with blanks
+      - id: end-of-file-fixer
+        exclude: '\.(tr\d+|csd)$'
+      - id: trailing-whitespace
+        exclude: '\.(tr\d+|csd)$'
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+  - repo: local
+    hooks:
+      - id: leak-guard
+        name: leak guard (no foundry data, site paths, licence servers)
+        entry: python scripts/leak_guard.py
+        language: python
+        types: [file]
+        stages: [pre-commit]
+      - id: leak-guard-message
+        name: leak guard on the commit message (history is published)
+        entry: python scripts/leak_guard.py --commit-msg
+        language: python
+        stages: [commit-msg]
+      # the committed files generated from the package must be current; each
+      # script puts this tree on sys.path. Four need only the standard library;
+      # gen_contract and gen_cli_reference read every command's parser, which
+      # imports numpy and scipy.
+      - id: gen-errors-md
+        name: agent/errors.md matches emir/errors.py (gen_errors_md.py --check)
+        entry: python scripts/gen_errors_md.py --check
+        language: python
+        pass_filenames: false
+        files: ^(emir/|scripts/gen_|agent/)
+      - id: gen-schemas
+        name: agent/schemas/ match emir/schemas.py (gen_schemas.py --check)
+        entry: python scripts/gen_schemas.py --check
+        language: python
+        pass_filenames: false
+        files: ^(emir/|scripts/gen_|agent/)
+      - id: gen-cadence-skill
+        name: agent/cadence/ generated copies are current (gen_cadence_skill.py --check)
+        entry: python scripts/gen_cadence_skill.py --check
+        language: python
+        pass_filenames: false
+        files: ^(emir/|scripts/gen_|agent/)
+      - id: gen-contract
+        name: agent/CONTRACT.md matches the code (gen_contract.py --check)
+        entry: python scripts/gen_contract.py --check
+        language: python
+        additional_dependencies: [numpy, scipy, pyyaml]
+        pass_filenames: false
+        files: ^(emir/|scripts/gen_|agent/CONTRACT\.md$)
+      - id: gen-pypi-readme
+        name: README.pypi.md matches README.md (gen_pypi_readme.py --check)
+        entry: python scripts/gen_pypi_readme.py --check
+        language: python
+        pass_filenames: false
+        files: ^(README(\.pypi)?\.md$|scripts/gen_|emir/repo\.py$)
+      - id: gen-cli-reference
+        name: docs/cli-reference.md matches the parsers (gen_cli_reference.py --check)
+        entry: python scripts/gen_cli_reference.py --check
+        language: python
+        additional_dependencies: [numpy, scipy, pyyaml]
+        pass_filenames: false
+        files: ^(emir/|scripts/gen_|docs/cli-reference\.md$)

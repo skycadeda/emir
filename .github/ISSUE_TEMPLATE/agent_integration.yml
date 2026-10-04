@@ -1,0 +1,79 @@
+name: Agent integration
+description: An AI agent (Claude Code, Codex, Cursor, an MCP client ...) used EMIR wrongly, or could not use it.
+title: "[agent] "
+labels: ["agent"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        EMIR is built to be driven by agents: `AGENTS.md`, the playbooks in
+        `agent/playbooks/`, `emir next`, stable `EMIR-` codes, `--format json`, and
+        `emir mcp`. Tell us where an agent went wrong and what it read. Remove
+        foundry data, site paths and private design names from any transcript.
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options:
+        - Claude Code
+        - Codex
+        - Cursor
+        - another MCP client
+        - other (say below)
+    validations:
+      required: true
+  - type: input
+    id: agent-version
+    attributes:
+      label: Agent and model version
+      placeholder: "the agent's own --version, and the model it ran"
+  - type: dropdown
+    id: connection
+    attributes:
+      label: How it was connected
+      multiple: true
+      options:
+        - started in a clone (read AGENTS.md)
+        - the Claude Code skill
+        - emir mcp (MCP server)
+        - the CLI only, from its own instructions
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What the agent did, and what it should have done
+      description: >-
+        For example: invented a process limit, called a result sign-off, ran a
+        licensed tool without asking, used a flag that does not exist, ignored an
+        EMIR code or a `next_steps` command, misreported a number.
+    validations:
+      required: true
+  - type: textarea
+    id: transcript
+    attributes:
+      label: The relevant part of the transcript (redacted)
+      render: text
+  - type: textarea
+    id: next
+    attributes:
+      label: emir next --format json for the same inputs
+      description: What EMIR itself recommended; paths and names replaced as needed.
+      render: json
+  - type: input
+    id: emir-version
+    attributes:
+      label: emir --version
+    validations:
+      required: true
+  - type: input
+    id: eval
+    attributes:
+      label: Matching task card in agent/evals/ (if any)
+  - type: checkboxes
+    id: no-foundry-data
+    attributes:
+      label: Confidentiality
+      options:
+        - label: The transcript and outputs hold no foundry or licensed-PDK data and no site details.
+          required: true

@@ -1,0 +1,76 @@
+[build-system]
+# >= 77 for the PEP 639 `license = "<SPDX expression>"` and `license-files` keys
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emir"
+dynamic = ["version"]
+description = "EM / IR-drop screening of extracted analog layout: DSPF + simulated currents -> per-segment EM ratios (avg/rms/peak), IR drop, HTML reports, Virtuoso and KLayout viewers"
+# README.md with absolute links (scripts/gen_pypi_readme.py): relative ones break on PyPI
+readme = { file = "README.pypi.md", content-type = "text/markdown" }
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
+authors = [{ name = "Vijay Gupta" }]
+keywords = ["EDA", "electromigration", "IR drop", "analog", "DSPF", "Virtuoso", "Spectre", "Xyce", "ngspice", "KLayout"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: POSIX :: Linux",
+]
+dependencies = ["numpy>=1.24", "scipy>=1.10", "pyyaml>=6.0"]
+# REPO_URL of emir/repo.py (tests/test_repo_url.py keeps the copies equal)
+[project.urls]
+Homepage = "https://github.com/skycadeda/emir"
+Documentation = "https://skycadeda.github.io/emir/"
+Issues = "https://github.com/skycadeda/emir/issues"
+
+[project.optional-dependencies]
+report  = ["matplotlib>=3.6"]                    # the PNG charts of --html
+klayout = ["klayout>=0.29"]                      # .lyrdb marker database for KLayout
+mcp     = ["mcp>=1.19"]                          # `emir mcp`: stdio MCP server (SDK 1.x or 2.x)
+all     = ["matplotlib>=3.6", "klayout>=0.29", "mcp>=1.19"]
+docs    = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5,<10"]  # `mkdocs build --strict` (CI, docs.yml)
+dev     = [
+  "matplotlib>=3.6", "klayout>=0.29",
+  "gdstk>=0.9",                                  # writes the tests' GDS; the chart underlay without KLayout
+  "jsonschema>=4.18",                            # tests validate every --format json output
+  "mcp>=1.19",                                   # tests drive `emir mcp` with a real MCP client
+  "pytest>=7", "ruff>=0.6", "pre-commit>=3", "build>=1",
+]
+
+[project.scripts]
+emir = "emir.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "emir.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["emir*"]
+
+[tool.setuptools.package-data]
+emir = ["data/sample/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "validate: the analytic validation suite (`emir validate`); deselect with -m 'not validate'",
+  "cadence: needs Spectre/Virtuoso/Quantus licences (skipped in CI)",
+  "slow: long-running",
+  "example: runs an examples/NN_*/run.sh and compares it with its expected/ results",
+  "magic: runs a magic that writes resistor geometry (the geoout patch) when there is one",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E9", "F", "B006", "B904", "UP"]

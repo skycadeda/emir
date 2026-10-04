@@ -1,0 +1,12 @@
+{
+ "tolerance": {
+  "rel": 1e-06,
+  "abs": 1e-12
+ },
+ "values": {
+  "verdict": "FAIL",
+  "nets.0.mode": "cc-grid",
+  "nets.0.ir_drop_mV": 14.81481481,
+  "nets.0.max_ratio.all": 1.005291005
+ }
+}

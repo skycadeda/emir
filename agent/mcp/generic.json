@@ -1,0 +1,9 @@
+{
+  "emir": {
+    "transport": "stdio",
+    "command": "emir",
+    "args": [
+      "mcp"
+    ]
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emir:schema:save_lines:1",
+  "title": "emir save-lines",
+  "description": "The simulator save lines a run needs (also what `emir run --save-list`, `--save-branches` and `--split-stub` print in JSON mode): Spectre `save`, HSPICE `.probe` (with `.option probe post=2 post_version=2001`), Xyce `.print`, ngspice `.save` (`simulator`). For HSPICE, Xyce and ngspice, `names` is the map of the `<result>.names` sidecar (`emir schema names`), written to each path in `sidecars`, and `raw` the result the lines write.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emir.save_lines/1"
+    },
+    "emir_version": {
+      "type": "string"
+    },
+    "dspf": {
+      "type": "string"
+    },
+    "net": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "mode": {
+      "enum": [
+        "rcc",
+        "cc-grid",
+        "split-stub"
+      ]
+    },
+    "prefix": {
+      "type": "string"
+    },
+    "simulator": {
+      "enum": [
+        "spectre",
+        "hspice",
+        "xyce",
+        "ngspice"
+      ]
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "count": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sidecars": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "raw": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "names": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "prefixItems": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "number"
+          }
+        ]
+      }
+    },
+    "nets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "direct": {
+      "type": "integer"
+    },
+    "probed": {
+      "type": "integer"
+    },
+    "out": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "emir_version",
+    "dspf",
+    "net",
+    "mode",
+    "lines",
+    "sidecars"
+  ]
+}

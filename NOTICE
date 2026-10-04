@@ -1,0 +1,20 @@
+EMIR -- EM / IR-drop screening of extracted analog layout
+Copyright (c) 2026 Vijay Gupta and contributors
+Licensed under the MIT License (see LICENSE).
+
+EMIR is a research project, provided as is, with no warranty or guarantee of
+accuracy. It is your responsibility to test and verify its results for your
+process, tools and design before relying on them. Screening, not sign-off.
+
+Portions are derived from the Skycadeda Analog Framework (SAF) and Skyforge,
+Copyright (c) 2026 Skycadeda, licensed under the MIT License by their
+copyright holder.
+
+THIRD_PARTY_NOTICES.md names the third-party code and data in this
+repository and what the offline bundle redistributes.
+
+Cadence, Virtuoso, Spectre, Quantus, PVS and OCEAN are trademarks of Cadence
+Design Systems, Inc.; HSPICE and StarRC are trademarks of Synopsys, Inc.;
+Calibre is a trademark of Siemens Industry Software Inc. Other names are the
+property of their owners. EMIR is not affiliated with or endorsed by any of
+them, or by any foundry or PDK provider.
