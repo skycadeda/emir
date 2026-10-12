@@ -187,8 +187,11 @@ def test_mcp_classifies_every_feature_command(tmp_path):
         assert gone not in specs
 
 
-def test_mcp_plan_of_a_layout_carries_the_extract_tool_call(tmp_path):
+def test_mcp_plan_of_a_layout_carries_the_extract_tool_call(tmp_path, monkeypatch):
     pytest.importorskip("klayout.db")           # draws the layout (the klayout extra)
+    # a stand-in patched magic: without one (a GitHub runner) the plan holds
+    # no extraction step, only the build hint
+    monkeypatch.setenv("EMIR_MAGIC", fake_magic(tmp_path, patched=True))
     from emir import mcp_tools
     nxt = mcp_tools.specs()["emir_next"]
     rc, doc, _ = mcp_tools.call(nxt, {"gds": strap(tmp_path), "process": proc_file(tmp_path),

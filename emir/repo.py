@@ -42,10 +42,10 @@ def clone_root() -> str | None:
 EXTRAS = {
     "report": ["matplotlib>=3.6"],
     "klayout": ["klayout>=0.29"],
-    "mcp": ["mcp>=1.19"],
-    "all": ["matplotlib>=3.6", "klayout>=0.29", "mcp>=1.19"],
+    "mcp": ["mcp>=1.21.1"],
+    "all": ["matplotlib>=3.6", "klayout>=0.29", "mcp>=1.21.1"],
     "dev": ["matplotlib>=3.6", "klayout>=0.29", "gdstk>=0.9", "jsonschema>=4.18",
-            "mcp>=1.19", "pytest>=7", "ruff>=0.6", "pre-commit>=3", "build>=1"],
+            "mcp>=1.21.1", "pytest>=7", "ruff>=0.6", "pre-commit>=3", "build>=1"],
 }
 
 

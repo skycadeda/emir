@@ -43,7 +43,7 @@ files names its page in the repository. `emir info` prints where the sample is
 |---|---|---|
 | `report` | matplotlib | the EM/IR chart of `--html` |
 | `klayout` | the klayout package | the KLayout marker database, the layout under a chart, the top cell for `emir extract --tool magic` |
-| `mcp` | the MCP Python SDK (1.19 or newer) | `emir mcp` |
+| `mcp` | the MCP Python SDK (1.21.1 or newer) | `emir mcp` |
 | `all` | all of the above | everything a user runs |
 | `dev` | the above plus gdstk, jsonschema, pytest, ruff, pre-commit, build | the tests |
 | `docs` | MkDocs with the Material theme | this site |

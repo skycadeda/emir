@@ -177,12 +177,23 @@ def test_every_example_takes_its_output_directory_as_an_argument(tmp_path, name)
         (name, p.returncode, p.stderr[-800:], logged[-800:])
 
 
-def _path_without(*tools) -> str:
-    """$PATH without the directories that hold any of `tools` (a GitHub
-    runner has no Xyce or ngspice)."""
-    keep = [d for d in os.environ.get("PATH", "").split(os.pathsep)
-            if d and not any(os.path.exists(os.path.join(d, t)) for t in tools)]
-    return os.pathsep.join(keep)
+def _path_without(tmp_path, *tools) -> str:
+    """$PATH with `tools` hidden (a GitHub runner has no Xyce or ngspice). A
+    directory that holds one of them is replaced by a directory of links to
+    everything else in it: on a runner ngspice is in /usr/bin, beside the
+    dirname and mkdir the examples use, so dropping the directory dropped them."""
+    keep = []
+    for i, d in enumerate(os.environ.get("PATH", "").split(os.pathsep)):
+        if not d or not any(os.path.exists(os.path.join(d, t)) for t in tools):
+            keep.append(d)
+            continue
+        shim = tmp_path / f"path{i}"
+        shim.mkdir()
+        for name in os.listdir(d):
+            if name not in tools:
+                (shim / name).symlink_to(os.path.join(d, name))
+        keep.append(str(shim))
+    return os.pathsep.join(d for d in keep if d)
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
@@ -197,7 +208,7 @@ def test_every_example_takes_its_output_directory_without_simulators(tmp_path, n
     log, out = tmp_path / "log", tmp_path / "out"
     env = {k: v for k, v in os.environ.items() if k not in ("OUT", "EMIR_EXAMPLE_OUT")}
     env.update(EMIR=str(stub), PYTHON=str(stub), EMIR_PYTHON=str(stub), STUB_LOG=str(log),
-               PATH=_path_without("Xyce", "ngspice"))
+               PATH=_path_without(tmp_path, "Xyce", "ngspice"))
     p = subprocess.run([shutil.which("bash"), os.path.join(ROOT, "examples", name, "run.sh"),
                         str(out)], env=env, cwd=str(tmp_path), capture_output=True,
                        text=True, timeout=120)

@@ -38,8 +38,8 @@ from . import __version__
 from .errors import EmirError, notice, step
 
 #: the SDK versions the server is tested with (see tests/test_mcp.py)
-SDK_REQUIREMENT = "mcp>=1.19"
-SDK_MIN = (1, 19)
+SDK_REQUIREMENT = "mcp>=1.21.1"
+SDK_MIN = (1, 21, 1)
 
 #: how big a document resource may be (a playbook is a few kB)
 MAX_DOC_BYTES = 1 << 20

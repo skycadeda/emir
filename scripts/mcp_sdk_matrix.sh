@@ -1,16 +1,16 @@
 #!/bin/sh
 # Run the MCP tests (tests/test_mcp.py) against several releases of the MCP
 # Python SDK, each in a throwaway virtual environment. This is how the
-# supported range (`mcp>=1.19`, both the 1.x FastMCP and 2.x MCPServer lines)
+# supported range (`mcp>=1.21.1`, both the 1.x FastMCP and 2.x MCPServer lines)
 # was established; run it again before moving the floor.
 #
 #   sh scripts/mcp_sdk_matrix.sh                  # the default versions
-#   sh scripts/mcp_sdk_matrix.sh 1.19.0 2.2.0     # these
+#   sh scripts/mcp_sdk_matrix.sh 1.21.1 2.2.0     # these
 #
 # Needs network access (pip) and python3 >= 3.10. Exit 1 if any version fails.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd -P)
-versions=${*:-"1.19.0 1.30.0 2.0.0 2.2.0"}
+versions=${*:-"1.21.1 1.30.0 2.0.0 2.2.0"}
 work=$(mktemp -d "${TMPDIR:-/tmp}/emir-mcp-matrix.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 status=0

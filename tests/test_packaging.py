@@ -380,9 +380,9 @@ def test_the_hint_follows_the_install(monkeypatch, tmp_path):
     monkeypatch.setattr(repo, "clone_root", lambda: None)
     monkeypatch.setattr(repo, "bundle_root", lambda: None)
     assert repo.install_hint("all") == ("pip install 'matplotlib>=3.6' 'klayout>=0.29' "
-                                        "'mcp>=1.19'")
+                                        "'mcp>=1.21.1'")
     monkeypatch.setattr(repo, "bundle_root", lambda: str(tmp_path))
-    assert repo.install_hint("mcp").endswith("python3 -m pip install 'mcp>=1.19'")
+    assert repo.install_hint("mcp").endswith("python3 -m pip install 'mcp>=1.21.1'")
 
 
 def test_a_missing_core_package_is_called_required(monkeypatch):

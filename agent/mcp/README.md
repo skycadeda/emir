@@ -24,7 +24,7 @@ discoverable one for those with one.
 ## Install and check
 
 ```sh
-pip install -e '.[mcp]'            # from the clone root (emir is not on PyPI); a wheel: pip install 'mcp>=1.19'
+pip install -e '.[mcp]'            # from the clone root (emir is not on PyPI); a wheel: pip install 'mcp>=1.21.1'
 emir mcp --list                    # the tools, resources and this machine's snippets
 ```
 
@@ -33,7 +33,7 @@ installed (`--format json` gives the `emir.mcp/1` document). Its `clients`
 field holds every snippet below with this machine's absolute path to
 `emir`, which is what a desktop app needs.
 
-The server needs the official MCP Python SDK, `mcp>=1.19`; both of its lines
+The server needs the official MCP Python SDK, `mcp>=1.21.1`; both of its lines
 work (1.x `FastMCP`, 2.x `MCPServer`).
 
 ## Clients
@@ -108,7 +108,7 @@ also ask you to approve tool calls.
 
 | symptom | cause, fix |
 |---|---|
-| `EMIR-E603` when the server starts | the MCP SDK is missing or older than 1.19: `pip install -e '<clone>[mcp]'` from a clone, else `pip install 'mcp>=1.19'` |
+| `EMIR-E603` when the server starts | the MCP SDK is missing or older than 1.21.1: `pip install -e '<clone>[mcp]'` from a clone, else `pip install 'mcp>=1.21.1'` |
 | the client says the server failed to start | `emir` is not on the client's `PATH`: use the absolute path from `emir mcp --list` |
 | `EMIR-E101` on a file you can see | a relative path from another working directory: pass absolute paths, or `--cwd` |
 | `EMIR-E590` | the call needs the person's go-ahead (above) |
