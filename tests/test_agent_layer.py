@@ -14,8 +14,8 @@ The documents an agent reads are tested like code:
 * ``.claude/skills/emir`` is a relative symlink to ``agent/skills/emir``.
 
 Markers: ``<!-- test: run requires=xyce,klayout -->`` skips a block when a
-tool (xyce, ngspice, magic on PATH) or a Python package (klayout,
-matplotlib, mcp) is missing; ``<!-- test: tool-call -->`` before a JSON block
+tool (xyce, ngspice, magic on PATH; magic_geo, a magic built with the geoout
+patch) or a Python package (klayout, matplotlib, mcp) is missing; ``<!-- test: tool-call -->`` before a JSON block
 checks an MCP tool call (`{"name", "arguments"}`) against the tool's
 parameters.
 """
@@ -228,6 +228,14 @@ def _have(req):
     import importlib.util
     if req in ("klayout", "matplotlib", "mcp", "gdstk"):
         return importlib.util.find_spec(req) is not None
+    if req == "magic_geo":          # without one, emir next plans the build, not the extraction
+        from emir import magic
+        from emir.errors import EmirError
+        try:
+            magic.find_magic(None, log=lambda *a, **k: None)
+        except EmirError:
+            return False
+        return True
     exe = {"xyce": "Xyce"}.get(req, req)
     return shutil.which(exe) is not None
 

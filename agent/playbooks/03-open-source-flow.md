@@ -74,7 +74,9 @@ drop, 90.0 mV.
 
 ### Worked example: a GDS on SKY130 (runs as printed)
 
-<!-- test: run -->
+With a magic built with the `geoout` patch; without one, `missing` names the build instead (EMIR-E643).
+
+<!-- test: run requires=magic_geo -->
 ```sh
 emir next --gds tests/data/magic_tiny/tiny.gds --process pdks/sky130.yaml --cell tiny --format json
 ```
