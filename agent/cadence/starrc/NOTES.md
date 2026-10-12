@@ -26,8 +26,9 @@ temperatures.
 | `*\|OPERATING_TEMPERATURE` | `OPERATING_TEMPERATURE` (UNVERIFIED) |
 | a node without a `*\|S` record is put on its net by splitting its name at `:` | keep the node section on, so the delimiter does not matter |
 
-For the big-block (cc-grid) flow run it twice from one LVS database: `EXTRACTION: R`
-for the grid DSPF and `EXTRACTION: C` (coupling kept) for the netlist to simulate.
+For rcc, extract R and coupling C together (`EXTRACTION: RC`, UNVERIFIED): the RC
+netlist that is simulated with every branch current saved and screened; `EXTRACTION: R`
+gives the grid for DC currents.
 Check the result with `emir check <dspf> --process <process.yaml>`.
 
 `emir_starrc.cmd.tmpl` is a sketch of such a command file.

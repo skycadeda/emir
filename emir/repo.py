@@ -82,7 +82,7 @@ def url(rel: str) -> str:
 
 
 def ref(rel: str) -> str:
-    """Repository path `rel` (`agent/playbooks/03-chip-level-hierarchy.md`,
+    """Repository path `rel` (`agent/playbooks/01-screen-a-block.md`,
     `agent/cadence/spectre/`) as an agent can open it here: the path in this
     clone, else its page on the web (`url`)."""
     root = clone_root()

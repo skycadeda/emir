@@ -11,14 +11,11 @@
                                        what to run next, and why
     emir nets   <dspf>                 list the nets and their sizes
     emir pins   <dspf> --net N         list the instance pins on a net
-    emir save-lines <dspf> [--net N] --mode rcc|cc-grid [--prefix XI0.]
+    emir save-lines <dspf> [--net N] [--prefix XI0.]
                 [--sim spectre|hspice|xyce|ngspice] [--names-out F] [--out FILE]
-                                       the save / print lines a run needs
-    emir probe  <netlist> -o OUT --net N [--dspf D] [--names-out F]
-                                       0 V probes on device terminals
+                                       the lines that save every branch current
     emir simulate <testbench> --sim spectre|hspice|xyce|ngspice --dspf D
-                --mode rcc|cc-grid [--out R] [--run]
-                                       run a simulator for --cc-sim (Spectre and
+                [--out R] [--run]      run a simulator for --cc-sim (Spectre and
                                        HSPICE: the plan only, unless --run)
     emir verify-sim --sim spectre|hspice|xyce|ngspice [--run] [--out D]
                                        prove on this machine that the simulator's
@@ -37,25 +34,25 @@
     emir process check F [--dspf D]    what a process file still lacks
     emir info                          where the tools were found
     emir selftest                      offline proof that the install works
-    emir validate [--out D] [--quick]  the analytic validation suite (13 cases)
+    emir validate [--out D] [--quick]  the analytic validation suite (6 cases)
     emir gui-install [--dir D]         write the Virtuoso SKILL files
-    emir abstract <block.dspf> --process P --cc-sim R --mode cc-grid -o X.abstract.json
-                                       a block characterised for a chip-level
-                                       run: emir run TOP --abstract X@INST
     emir explain <code> | --list       what an error code means, how to fix it
     emir schema <name> | --list        the JSON Schema of a document
     emir mcp [--list]                  serve these commands as MCP tools (stdio;
                                        the [mcp] extra)
 
+The currents come from DC values (--currents: avg = rms = peak = |I|) or from
+a simulation of the RC-extracted netlist with every branch current saved
+(--cc-sim, rcc: avg, rms and peak EM, static and dynamic IR, exactly).
+
 Every command takes --format text|json. With json, stdout carries exactly one
 JSON document (its `schema` field names it; `emir schema` prints the schema)
 and everything else goes to stderr. Failures carry a code (`emir explain`).
 
-Exit status: 0 done; 1 with --fail-on-violation, a FAIL verdict (an IR budget
-FAIL, or an EM basis asked for and not computed: em_basis.honoured false);
-2 bad input or refused (`check`: inputs not OK); 3 a required tool or package
-is missing; 70 internal error or a failed self-test / validation; 130
-interrupted (SIGINT); 143 terminated (SIGTERM).
+Exit status: 0 done; 1 with --fail-on-violation, a FAIL verdict; 2 bad input
+or refused (`check`: inputs not OK); 3 a required tool or package is missing;
+70 internal error or a failed self-test / validation; 130 interrupted
+(SIGINT); 143 terminated (SIGTERM).
 """
 from __future__ import annotations
 
@@ -69,9 +66,8 @@ import threading
 from . import __version__
 from .cadence import cmd_extract
 from .errors import EmirError, collecting, notice
-from .hier_cli import cmd_abstract
 from .mcp_server import cmd_mcp
-from .opensim import cmd_probe, cmd_simulate
+from .opensim import cmd_simulate
 from .process_file import cmd_process
 from .verify_sim import cmd_verify_sim
 from .output import (Out, add_dspf, command_line, document, error_document, error_text,
@@ -107,7 +103,7 @@ def _cmd_check(argv, out):
     ap.add_argument("--all", action="store_true",
                     help="show the OK lines too")
     # `emir check --process P` alone checks a process file with no DSPF: a
-    # new PDK's file before any extraction exists (pdk-onboarding.md)
+    # new PDK's file before any extraction exists (docs/process-files.md)
     act = ap.dspf_positional
     act.nargs, act.default, act.required = "?", None, False
     act.help = ("extracted DSPF (R or RC); leave it out to check the --process file on "
@@ -171,10 +167,8 @@ def _cmd_run(argv, out):
     from .summary import summary_document
     ap = build_parser(prog="emir run")
     ap.add_argument("--fail-on-violation", action="store_true",
-                    help="exit 1 when any net's verdict is FAIL, or when the EM basis "
-                         "asked for (by option or by default) could not be computed on a "
-                         "net (em_basis.honoured false) (for CI and agents); without it a "
-                         "completed run exits 0")
+                    help="exit 1 when any net's verdict is FAIL (for CI and agents); "
+                         "without it a completed run exits 0")
     a = ap.parse_args(argv)
     # the report's provenance line, and the commands the result suggests:
     # the command as typed (`{args}` in a code's command template is reused by
@@ -190,11 +184,12 @@ def _cmd_run(argv, out):
         # one: the file gets this run's error document instead
         if a.summary_out:
             _summary_failed(a.summary_out, e, argv)
+        _html_refused(a.html, e, viewer=a.viewer)
         raise
     if res.planned is not None:
-        # --- feature modes --- a licensed --netlist without --run: what would
-        # run, nothing ran (the `emir simulate` plan document; --summary-out
-        # gets it too, so no earlier run's summary stays there to be relayed)
+        # a licensed --netlist without --run: what would run, nothing ran (the
+        # `emir simulate` plan document; --summary-out gets it too, so no
+        # earlier run's summary stays there to be relayed)
         doc = document("simulate", **res.planned)
         if a.summary_out:
             write_json(a.summary_out, doc)
@@ -206,17 +201,12 @@ def _cmd_run(argv, out):
         out.emit(document("save_lines", dspf=_abs(a.dspf),
                           net=None if a.net in (None, "all") else a.net, mode=mode,
                           prefix=a.save_prefix, simulator="spectre", lines=lines,
-                          count=_count_saved(lines) if mode != "split-stub" else None,
+                          count=_count_saved(lines),
                           sidecars=[]))
         return 0
     out.emit(summary_document(res))
-    # --- feature decap --- a basis asked for and not computed is not a pass
-    from .decap import exit_reason
-    lost = exit_reason(res)
-    if a.fail_on_violation and (res.overall == "FAIL" or res.budget_failed or lost):
-        print("[emir] exit 1: " + ("FAIL verdict" if res.overall == "FAIL" else
-                                   "IR budget FAIL" if res.budget_failed else lost)
-              + " (--fail-on-violation)", file=sys.stderr)
+    if a.fail_on_violation and res.overall == "FAIL":
+        print("[emir] exit 1: FAIL verdict (--fail-on-violation)", file=sys.stderr)
         return 1
     return 0
 
@@ -233,6 +223,23 @@ def _summary_failed(path, exc, argv, command: str = "run"):
                                         ctx={"args": shlex.join(argv), "command": command}))
     except (EmirError, OSError):
         pass
+
+
+def _html_refused(html, exc, viewer=None):
+    """A run refused for its window (`waveform.REFUSALS`): an earlier run's
+    numbers in --html and --viewer are moved to their `stale/` (`set_aside`),
+    and the --html index says the run was refused, with no number (best
+    effort, like `_summary_failed`)."""
+    from .waveform import REFUSALS
+    if not isinstance(exc, EmirError) or exc.code not in REFUSALS or not (html or viewer):
+        return
+    from .netreport import refused_index, set_aside
+    try:
+        moved = set_aside(html, viewer)
+        if html:
+            refused_index(html, exc, moved=moved)
+    except Exception:                           # noqa: BLE001 -- best effort: the
+        pass                                    # refusal itself is what is raised
 
 
 def _count_saved(lines) -> int:
@@ -304,18 +311,14 @@ def _cmd_pins(argv, out):
 def _cmd_save_lines(argv, out):
     from .dspf import parse
     ap = parser("emir save-lines",
-                description="Print the save lines a run needs: Spectre `save`, HSPICE "
-                            "`.probe` (with the ASCII output option), Xyce `.print`, "
-                            "ngspice `.save` (--sim).")
+                description="Print the lines that save every branch current an rcc run "
+                            "reads: Spectre `save`, HSPICE `.probe` (with the ASCII output "
+                            "option), Xyce `.print`, ngspice `.save` (--sim).")
     add_dspf(ap, "the DSPF")
     ap.add_argument("--net", default=None, help="one net (default: all)")
-    from .modes import mode_arg
-    ap.add_argument("--mode", required=True, type=mode_arg, choices=("rcc", "cc-grid"),
-                    help="the mode the run will use, the person's choice (`emir next` "
-                         "lists the trade-offs): rcc saves every branch current (the "
-                         "simulation runs the RC netlist; exact); cc-grid saves the "
-                         "instance-pin currents (a CC simulation of the devices on ideal "
-                         "rails). `cc` is read as cc-grid")
+    ap.add_argument("--mode", default=None, choices=("rcc",),
+                    help="rcc, the one method (it may be left out): every branch current, "
+                         "for a simulation of the RC netlist")
     ap.add_argument("--prefix", default="",
                     help='instance path in the testbench, e.g. "XI0."')
     ap.add_argument("--out", default=None, metavar="FILE",
@@ -330,8 +333,6 @@ def _cmd_save_lines(argv, out):
     ap.add_argument("--raw", default=None, metavar="FILE",
                     help="hspice/xyce: the result file the lines write (HSPICE: the .tr0 "
                          "of `hspice -o <stem>`; default: --names-out without .names)")
-    ap.add_argument("--probes", default=None, metavar="FILE",
-                    help="cc: pins probed by `emir probe` (its --names-out file)")
     a = ap.parse_args(argv)
     d = parse(a.dspf)
     if a.net and not d.has_net(a.net):
@@ -341,24 +342,19 @@ def _cmd_save_lines(argv, out):
     if a.sim != "spectre":
         from .opensim import save_lines_command
         return save_lines_command(a, d, out)
-    if a.names_out or a.raw or a.probes:
-        raise EmirError("EMIR-E513", "--names-out, --raw and --probes are for --sim hspice, "
-                        "xyce or ngspice: Spectre saves currents under the DSPF's own names",
+    if a.names_out or a.raw:
+        raise EmirError("EMIR-E513", "--names-out and --raw are for --sim hspice, xyce or "
+                        "ngspice: Spectre saves currents under the DSPF's own names",
                         command="save-lines")
-    if a.mode == "rcc":
-        from .rcc import save_branches
-        text = save_branches(d, a.net, prefix=a.prefix)
-    else:
-        from .ccsim import save_directives
-        nets = [a.net] if a.net else [n for n in sorted(d.nets) if d.net_taps(n)]
-        text = "\n".join(save_directives(d, n, prefix=a.prefix) for n in nets)
+    from .rcc import save_branches
+    text = save_branches(d, a.net, prefix=a.prefix)
     print(text)
     lines = text.splitlines()
     if a.out:
         from .output import write_text
         write_text(a.out, text + "\n")
         print(f"[emir] {_count_saved(lines)} saved signals -> {a.out}", file=sys.stderr)
-    out.emit(document("save_lines", dspf=_abs(a.dspf), net=a.net, mode=a.mode,
+    out.emit(document("save_lines", dspf=_abs(a.dspf), net=a.net, mode="rcc",
                       prefix=a.prefix, simulator="spectre", lines=lines,
                       count=_count_saved(lines), sidecars=[], out=_abs(a.out)))
     return 0
@@ -404,6 +400,10 @@ def _cmd_info(argv, out):
           f"{os.path.dirname(os.path.abspath(__file__))}")
     rows = site.describe()
     tools, warnings = [], []
+    # the magic the SKY130 route runs (`emir extract --tool magic`): often not
+    # the stock `magic` on $PATH, which may be a build without resistor geometry
+    from .magic import route_magic
+    mr = route_magic()
     from .verify_sim import FORMAT, records_path, verified_route
     for k in site.SIMULATORS:
         p, src = site.tool(k)
@@ -416,6 +416,11 @@ def _cmd_info(argv, out):
             rec = verified_route(k, FORMAT[k])
             entry["verified"] = ({x: rec.get(x) for x in ("version", "format", "date")}
                                  if rec else None)
+        if k == "magic":
+            entry["route_path"] = mr["path"]
+            entry["writes_geometry"] = bool(mr["writes_geometry"] and p is not None and
+                                            os.path.realpath(p) == os.path.realpath(
+                                                mr["path"]))
         tools.append(entry)
         warn = site.magic_warning(p, ver) if k == "magic" else None
         if warn:
@@ -428,14 +433,27 @@ def _cmd_info(argv, out):
     for k, v, src in rows:
         if not v and k in unset:
             v, src = f"(not set: {unset[k]})", ""
+        route = ""
+        if k == "magic" and mr["path"] and not any(
+                t["name"] == "magic" and t.get("writes_geometry") for t in tools):
+            route = f"  (the SKY130 route runs magic-geo: {mr['path']})"
         print(f"  {k:10s} {v:50s} {src}"
               + (f"  (version {versions[k]})" if versions.get(k) else "")
-              + (f"  [verified here {verified[k]['date']}]" if verified.get(k) else ""))
+              + (f"  [verified here {verified[k]['date']}]" if verified.get(k) else "")
+              + route)
     print(f"  {'verified':10s} {records_path():50s} emir verify-sim records "
           f"($EMIR_STATE_DIR)")
     from .selftest import sample_dir
     print(f"  {'sample':10s} {sample_dir():50s} the bundled sample (rail.dspf, "
           f"process.yaml): the quickstart's files")
+    print(f"  {'magic-geo':10s} "
+          + (f"{mr['path']:50s} {mr['source']} (version {mr['version']}): writes resistor "
+             f"geometry" if mr["writes_geometry"] else
+             f"{'NOT FOUND':50s} no magic that writes resistor geometry: `emir extract "
+             f"--tool magic` stops with EMIR-E643, which says how to build one"))
+    pdk_root = os.environ.get("PDK_ROOT") or None
+    print(f"  {'PDK_ROOT':10s} {pdk_root or '(not set)':50s} $PDK_ROOT: the open PDKs "
+          f"(sky130A), for magic's technology")
     with collecting() as notes:
         for w in warnings:
             notice("EMIR-W640", w, log=print)
@@ -450,10 +468,12 @@ def _cmd_info(argv, out):
               + (f"  (optional: {purpose})" if ver is None and not required else ""))
     settings = [{"key": k, "value": v or None, "source": src}
                 for k, v, src in rows if k not in site.SIMULATORS and k != "site file"]
+    settings.append({"key": "PDK_ROOT", "value": pdk_root, "source": "$PDK_ROOT"})
     out.emit(document("info", python=sys.version.split()[0],
                       package_dir=os.path.dirname(os.path.abspath(__file__)),
                       sample_dir=sample_dir(), records_file=records_path(),
-                      tools=tools, settings=settings, site_file=site.site_file(),
+                      tools=tools, magic_route=mr, settings=settings,
+                      site_file=site.site_file(),
                       packages=pkgs, commands=sorted(COMMANDS),
                       exit_codes={str(k): v for k, v in _exit_codes().items()},
                       notices=list(notes)))
@@ -569,8 +589,7 @@ COMMANDS = {
     "validate": _cmd_validate, "gui-install": _cmd_gui_install,
     "explain": _cmd_explain, "schema": _cmd_schema,
     "extract": cmd_extract,
-    "probe": cmd_probe, "simulate": cmd_simulate, "verify-sim": cmd_verify_sim,
-    "abstract": cmd_abstract,
+    "simulate": cmd_simulate, "verify-sim": cmd_verify_sim,
     "mcp": cmd_mcp,
     "process": cmd_process,
 }
@@ -702,8 +721,7 @@ def coded(e: BaseException) -> EmirError:
         return e
     if isinstance(e, MemoryError):
         return EmirError("EMIR-E418", f"out of memory: {e or 'the analysis does not fit'}"
-                         f" -- try --scalars (per-tap scalars, in-phase bounds) or one "
-                         f"--net at a time")
+                         f" -- try one --net at a time")
     if isinstance(e, ImportError):
         name = getattr(e, "name", None) or str(e)
         from .repo import install_hint

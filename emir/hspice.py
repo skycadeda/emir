@@ -4,9 +4,9 @@ HSPICE writes its waveform file in binary unless `.option post=2` (or
 `post=ascii`) asks for text; `post_version=2001` keeps double precision (the
 default 9601 keeps five significant digits, 9007 also cuts names to 16
 characters). This module reads the text form into the same `waves.Waves` the
-PSF ASCII and nutascii readers return, so the run, the cc-grid and rcc modes,
-hierarchy and streaming see no difference; and writes it, for the tests and
-the synthetic example (`examples/11_hspice_offline`).
+PSF ASCII and nutascii readers return, so a run sees no difference; and
+writes it, for the tests and the synthetic example
+(`examples/11_hspice_offline`).
 
 The layout (no Synopsys document describes the text form; this reader
 follows the format rules described in the sources of the open-source readers
@@ -42,7 +42,7 @@ are synthetic):
   sweep, each table starts with its sweep value(s): one when the condition
   count is 1 or 2, else the count less one.
 * time points are the simulator's own, unevenly spaced: averages and rms are
-  time-weighted downstream (`ccsim`), never per sample.
+  time-weighted downstream (`waveform`), never per sample.
 
 A field that reads NaN or Inf is a value, not an end marker (`emir check`
 FAILs on such currents, EMIR-E426); a file that ends inside a value is

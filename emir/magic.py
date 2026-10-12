@@ -29,11 +29,8 @@ From one extraction this module writes, into the --out directory:
       R13 inp.n19 inp.n11 9.3005 $layer=viali $cuts=1x1 $N=1 $X=19 $Y=0.285
 
   then the capacitors and the device instances. It is also the RC netlist an
-  rcc simulation runs (`emir simulate --mode rcc`; Xyce reads `$` fields as
-  parameters, and `emir simulate` leaves them out of its deck).
-* `<cell>.cc.spice` -- the CC netlist cc-grid simulates: the same device
-  instances (the names the DSPF's `*|I` records give) on ideal nets, with the
-  capacitors counted once, no resistance.
+  rcc simulation runs (`emir simulate`; Xyce reads `$` fields as parameters,
+  and `emir simulate` leaves them out of its deck).
 
 The capacitors are the extraction's, each counted once (magic's `extresist`
 moves each coupling capacitor to ground on both its nets for its own RC
@@ -56,11 +53,10 @@ the DSPF writer (`write_dspf` and its helpers). The changes: the
 cell flattened in the script; the capacitances in farads, on the split
 netlist's nets (`lumped_names`); `$N` and the rectangle (`$LLX`..`$URY`) beside
 the annotations, so EMIR's reader needs nothing new; each via at its own cut
-(`via_places`); the `*|I` node is the device's own terminal node; the terminal
-names come from the process file; and there is a CC netlist. Finding and
-probing magic, its work directory, running it, the CC netlist, the checks on
-its output (`floating_caps`, `subckts`, the diagonal wires) and the command are
-EMIR's own.
+(`via_places`); the `*|I` node is the device's own terminal node; and the
+terminal names come from the process file. Finding and probing magic, its work
+directory, running it, the checks on its output (`floating_caps`, `subckts`,
+the diagonal wires) and the command are EMIR's own.
 
 Screening, not sign-off.
 """
@@ -258,6 +254,25 @@ def find_magic(proc_data: dict | None, explicit: str | None = None, log=print) -
         f"{UPSTREAM_PR})", details={"tried": tried})
 
 
+def route_magic(proc_data: dict | None = None) -> dict:
+    """The magic `emir extract --tool magic` would run, without raising:
+    `{path, source, version, writes_geometry, tried}` (`find_magic`'s search;
+    `path` None and `writes_geometry` False when none writes resistor
+    geometry). `emir info` and `emir next --gds` report it, so an agent
+    knows before the extraction whether the route can run here (the stock
+    `magic` on $PATH is often not the one it uses)."""
+    from . import site
+    try:
+        found = find_magic(proc_data, log=None)
+    except EmirError as e:
+        tried = (e.details or {}).get("tried") or []
+        return {"path": None, "source": None, "version": None, "writes_geometry": False,
+                "tried": tried}
+    return {"path": found["path"], "source": found["source"],
+            "version": found["version"] or site.tool_version("magic", found["path"]),
+            "writes_geometry": True, "tried": found["tried"]}
+
+
 #: a plain directory name (the PDK's, under $PDK_ROOT): the magicrc is a
 #: script magic runs, so a path or `..` from the process file is not used
 _SAFE_WORD = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")
@@ -300,13 +315,13 @@ def check_cell(cell: str) -> str:
 
 
 #: what EMIR writes into the files it makes on this route (the DSPF's
-#: `*|PROGRAM`, the CC netlist's first line): a file without it is not EMIR's
+#: `*|PROGRAM`): a file without it is not EMIR's
 MADE_BY = "emir extract --tool magic"
 
 
 def made_by_emir(path: str) -> bool:
-    """Whether `path` is a DSPF or CC netlist this route wrote (`MADE_BY` in
-    its first lines)."""
+    """Whether `path` is a DSPF this route wrote (`MADE_BY` in its first
+    lines)."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             head = f.read(2048)
@@ -338,9 +353,9 @@ def own_work(work: str) -> str:
 
 
 def guard_outputs(out_dir: str, cell: str) -> None:
-    """Refuse (EMIR-E646) to replace a `<cell>.dspf` or `<cell>.cc.spice` in
-    `out_dir` that EMIR did not write."""
-    for ext in (".dspf", ".cc.spice"):
+    """Refuse (EMIR-E646) to replace a `<cell>.dspf` in `out_dir` that EMIR
+    did not write."""
+    for ext in (".dspf",):
         p = os.path.join(out_dir, f"{cell}{ext}")
         if os.path.lexists(p) and not made_by_emir(p):
             raise EmirError("EMIR-E646", f"{p} exists and EMIR did not write it: emir "
@@ -939,33 +954,6 @@ def extra_pins(g: Geometry, ports) -> list:
     return [(port, p) for port in ports for p in g.pins.get(port, ())[1:]]
 
 
-# ------------------------------------------------------------------ the CC netlist
-
-
-def write_cc(path: str, top: str, ports, spice: str, lumped: str) -> dict:
-    """The CC netlist: the device instances of the split netlist (the DSPF's
-    names) with every node on its net, and the lumped netlist's capacitors
-    (each counted once, on the split netlist's nets: `lumped_names`): the
-    devices on ideal nets, what cc-grid simulates."""
-    from .output import write_text
-    devices = []
-    for line in device_lines(spice):
-        inst, nodes, model = device_nodes(line)
-        params = [w for w in line.split()[1:] if "=" in w]
-        devices.append(" ".join([inst, *(net_of(n) for n in nodes), model, *params]))
-    names = lumped_names(spice, lumped)
-    caps = [_renamed(line, names) for _, line in logical_lines(lumped) if line[:1] in "Cc"]
-    text = ([f"* {top}: the CC netlist (emir extract --tool magic): the devices on ideal",
-             "* nets, the capacitors counted once, no resistance. Its instance names are",
-             "* the DSPF's (*|I records), so a cc-grid run maps the currents onto it.",
-             f".subckt {top} {' '.join(ports)}"] + devices + caps + [f".ends {top}", ""])
-    write_text(path, "\n".join(text))
-    return {"devices": len(devices), "capacitors": len(caps)}
-
-
-# ------------------------------------------------------------------ the route
-
-
 def magic_layers(proc_data: dict | None) -> dict:
     """The process file's `magic: layers:` map (magic's names -> its own)."""
     return dict(((proc_data or {}).get("magic") or {}).get("layers") or {})
@@ -978,9 +966,9 @@ def device_table(proc_data: dict | None) -> dict:
 
 def convert(work: str, cell: str, proc_data: dict | None, pins: str = "tied",
             out_dir: str | None = None, log=print) -> dict:
-    """The DSPF and the CC netlist from what magic wrote in `work` for `cell`
-    (`<cell>_pex.spice`, `_lumped.spice`, `.res.ext`, `.res.geo`). Runs
-    nothing: what CI does with committed magic outputs."""
+    """The DSPF from what magic wrote in `work` for `cell` (`<cell>_pex.spice`,
+    `_lumped.spice`, `.res.ext`, `.res.geo`). Runs nothing: what CI does with
+    committed magic outputs."""
     out_dir = out_dir or work
 
     def read(name):
@@ -1005,9 +993,7 @@ def convert(work: str, cell: str, proc_data: dict | None, pins: str = "tied",
     ports = subckt_ports(spice, cell)
     g = read_geometry(res_ext, res_geo, ports)
     dspf = os.path.join(out_dir, f"{cell}.dspf")
-    cc = os.path.join(out_dir, f"{cell}.cc.spice")
     stats = write_dspf(dspf, cell, ports, spice, g, device_table(proc_data), pins=pins)
-    ccs = write_cc(cc, cell, ports, spice, lumped)
     layers = sorted({s.layer for s in g.segments})
     mapped = magic_layers(proc_data)
     merged = sum(s.merged for s in g.segments)
@@ -1035,8 +1021,8 @@ def convert(work: str, cell: str, proc_data: dict | None, pins: str = "tied",
     devnets = sorted({net_of(n) for line in device_lines(spice)
                       for n in device_nodes(line)[1]})
     bare = [n for n in devnets if n not in {net_of(s.a) for s in g.segments}]
-    return {"dspf": dspf, "cc_netlist": cc, "ports": list(ports), **stats,
-            "cc": ccs, "segments": len(g.segments), "merged": merged,
+    return {"dspf": dspf, "ports": list(ports), **stats,
+            "segments": len(g.segments), "merged": merged,
             "layers": [{"magic": name, "process": mapped.get(name)} for name in layers],
             "nets_without_resistance": bare, "floating_capacitance": floating,
             "pins": pins, "nm_per_unit": g.nm_per_unit}
@@ -1079,7 +1065,7 @@ def unchecked_layers(dspf_path: str, proc) -> list:
 
 def extract(a, argv, out) -> int:
     """`emir extract --tool magic`: magic's extraction with every resistor's
-    geometry, then the DSPF and the CC netlist (`convert`)."""
+    geometry, then the DSPF (`convert`)."""
     from . import site
     from .engine import Process
     from .output import command_line, document, safe_component
@@ -1097,8 +1083,8 @@ def extract(a, argv, out) -> int:
     root = site.get("work_dir", default="emir_out")[0] or "emir_out"
     out_dir = os.path.abspath(a.out or os.path.join(str(root),
                                                     f"extract_{safe_component(cell)}"))
-    # magic runs in a directory of EMIR's own under --out; the DSPF and the CC
-    # netlist go into --out, never over a file EMIR did not write
+    # magic runs in a directory of EMIR's own under --out; the DSPF goes into
+    # --out, never over a file EMIR did not write
     work = os.path.join(out_dir, WORK_DIR)
     guard_outputs(out_dir, cell)
     ran = run_magic(a.gds, cell, rcfile, m["path"], work, tolerance=a.tolerance,
@@ -1115,7 +1101,6 @@ def extract(a, argv, out) -> int:
     print(f"  magic    {m['path']} ({m['source']})")
     print(f"  dspf     {res['dspf']}  ({res['resistors']} R in {res['nets_with_resistors']} "
           f"net(s), {res['capacitors']} C, {res['devices']} devices)")
-    print(f"  cc       {res['cc_netlist']}  (the devices on ideal nets, for cc-grid)")
     print(f"  ports    {' '.join(res['ports'])}"
           + (f"  ({res['extra_pins']} further pin(s), {a.port_pins})"
              if res["extra_pins"] else ""))
@@ -1126,8 +1111,8 @@ def extract(a, argv, out) -> int:
     steps = [
         {"why": "the nets and their sizes in the new DSPF",
          "command": command_line("nets", res["dspf"], fmt)},
-        {"why": "what to run next with this DSPF: the currents (rcc: simulate the DSPF "
-                "itself; cc-grid: the CC netlist) and the person's mode; --gds draws the "
+        {"why": "what to run next with this DSPF: the currents (a simulation of the DSPF "
+                "itself, every branch current saved; or DC currents); --gds draws the "
                 "layout under the charts",
          "command": command_line("next", "--dspf", res["dspf"], "--process", a.process,
                                  "--gds", a.gds, "--cell", cell, fmt)}]
@@ -1136,8 +1121,7 @@ def extract(a, argv, out) -> int:
     out.emit(document(
         "extract", tool="magic", dry_run=False, cell=cell, gds=os.path.abspath(a.gds),
         process=os.path.abspath(a.process), work_dir=work, out_dir=out_dir,
-        dspf=res["dspf"],
-        cc_netlist=res["cc_netlist"], rc_netlist=res["dspf"],
+        dspf=res["dspf"], rc_netlist=res["dspf"],
         magic={"path": m["path"], "source": m["source"], "version": m["version"],
                "tried": m["tried"]},
         magicrc=rcfile, files=files, seconds=round(ran["seconds"], 3),

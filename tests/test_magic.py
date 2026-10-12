@@ -2,7 +2,7 @@
 
 Most tests read the committed magic outputs of tests/data/magic_tiny (a
 synthetic one-transistor SKY130 cell, its `vss` rail labelled at both ends),
-so the DSPF and the CC netlist are written and checked without magic. The
+so the DSPF is written and checked without magic. The
 command itself runs against a stand-in magic (a script that answers the
 geometry probe and copies those outputs into place). The test marked `magic`
 extracts tiny.gds with a real magic that writes geometry, when there is one.
@@ -171,18 +171,6 @@ def test_terminals_are_named_from_the_process_file(tmp_path, capsys):
                                                                          "t4"}
 
 
-def test_the_cc_netlist_has_the_dspfs_instances_on_ideal_nets(tmp_path):
-    from emir.dspf import parse
-    res, _ = converted(tmp_path)
-    cc = open(res["cc_netlist"], encoding="utf-8").read()
-    assert ".subckt tiny out vss g" in cc and "R" not in "".join(
-        ln[:1] for ln in cc.splitlines())
-    x = next(ln for ln in cc.splitlines() if ln.startswith("X0 "))
-    assert x.split()[1:5] == ["out", "g", "vss", "vss"]
-    assert {t["inst"] for t in parse(res["dspf"]).inst_pins.values()} == {"X0"}
-    assert sum(ln.startswith("C") for ln in cc.splitlines()) == 3
-
-
 def test_emir_reads_it_as_any_dspf(tmp_path):
     res, _ = converted(tmp_path)
     p = emir("nets", res["dspf"], "--format", "json")
@@ -239,11 +227,11 @@ def test_extract_runs_magic_and_writes_the_dspf(tmp_path):
     jsonschema.validate(doc, schemas.get(schemas.key("extract")))
     assert doc["tool"] == "magic" and doc["cell"] == "tiny"     # the only top cell
     assert doc["magic"]["path"] == exe and doc["magic"]["source"] == "--magic"
-    assert os.path.isfile(doc["dspf"]) and os.path.isfile(doc["cc_netlist"])
+    assert os.path.isfile(doc["dspf"]) and "cc_netlist" not in doc
     assert doc["rc_netlist"] == doc["dspf"] and doc["resistors"] == 44 and doc["ties"] == 1
     assert "pwell" in doc["unchecked_layers"] and "metal1" not in doc["unchecked_layers"]
-    # magic runs in EMIR's own directory under --out; the DSPF and the CC
-    # netlist go into --out itself
+    # magic runs in EMIR's own directory under --out; the DSPF goes into
+    # --out itself
     work = out / "magic"
     assert doc["work_dir"] == str(work) and doc["out_dir"] == str(out)
     assert doc["dspf"] == str(out / "tiny.dspf") and (work / ".emir-magic-work").is_file()
@@ -314,9 +302,11 @@ def test_the_startup_file_comes_from_the_pdk(tmp_path, monkeypatch):
         assert e.value.code == "EMIR-E641"
 
 
-def test_next_plans_the_magic_route_for_a_layout():
+def test_next_plans_the_magic_route_for_a_layout(tmp_path):
+    # a magic that writes resistor geometry (without one the plan asks for it)
+    env = {**os.environ, "EMIR_MAGIC": fake_magic(tmp_path, patched=True)}
     p = emir("next", "--gds", os.path.join(TINY, "tiny.gds"), "--process", SKY, "--cell",
-             "tiny", "--format", "json")
+             "tiny", "--format", "json", env=env)
     assert p.returncode == 0, p.stderr
     steps = {s["id"]: s for s in json.loads(p.stdout)["steps"]}
     assert steps["extract-magic"]["command"].startswith("emir extract --tool magic ")
@@ -520,8 +510,7 @@ def converted_pair(tmp_path, edit=None):
 
 def test_a_net_with_no_label_keeps_its_capacitance(tmp_path):
     """The lumped netlist's `a_188_0#` is the split netlist's `a_188_0`: its
-    capacitors land on that net, in the DSPF and in the CC netlist, and no
-    capacitor node floats. They sat on a node of their own, `a_188_0#`, that
+    capacitors land on that net in the DSPF, and no capacitor node floats. They sat on a node of their own, `a_188_0#`, that
     no resistor or device touched: the net's charging current was lost."""
     from emir.dspf import parse
     from emir.errors import collecting
@@ -541,12 +530,6 @@ def test_a_net_with_no_label_keeps_its_capacitance(tmp_path):
     for ln in text.splitlines():
         if ln.startswith("C"):
             assert {net_of(n) for n in ln.split()[1:3]} <= rnets | {"0"}, ln
-    cc = open(res["cc_netlist"], encoding="utf-8").read()
-    caps = [ln.split() for ln in cc.splitlines() if ln.startswith("C")]
-    assert len(caps) == 5 and all("#" not in " ".join(c) for c in caps)
-    on_mid = sum(number(c[3]) for c in caps if "a_188_0" in c[1:3])
-    assert on_mid == pytest.approx(total, rel=1e-9)
-    assert {n for c in caps for n in c[1:3]} <= {"g", "out", "vss", "a_188_0"}
 
 
 def test_capacitance_on_no_net_is_said(tmp_path):
@@ -596,7 +579,7 @@ def test_magic_flattens_the_cell_with_its_own_labels_only():
 
 def test_a_netlist_of_several_subcircuits_is_refused(tmp_path):
     """magic outputs of a hierarchy extracted cell by cell (another script):
-    the DSPF and the CC netlist would mix the subcells' nets with the top's,
+    the DSPF would mix the subcells' nets with the top's,
     and Xyce rejected them while extract exited 0. Refused: EMIR-E647."""
     from emir import magic
     from emir.errors import EmirError
@@ -689,7 +672,7 @@ def test_out_pointed_at_the_persons_directory_keeps_their_files(tmp_path):
     """--out naming the person's own directory: magic ran there, removed a
     layout called input.gds (left a link to itself) and overwrote their
     <cell>.dspf. Now magic runs in magic/ under it, EMIR's own, and a
-    <cell>.dspf or <cell>.cc.spice EMIR did not write is refused (EMIR-E646)."""
+    <cell>.dspf EMIR did not write is refused (EMIR-E646)."""
     pytest.importorskip("klayout.db")
     d = tmp_path / "mine"
     d.mkdir()
@@ -700,7 +683,7 @@ def test_out_pointed_at_the_persons_directory_keeps_their_files(tmp_path):
     assert (d / "tiny.dspf").is_file() and (d / "magic" / "magic.log").is_file()
     # a second run replaces EMIR's own files
     assert _extract(tmp_path, d, gds=str(d / "input.gds")).returncode == 0
-    for name in ("tiny.dspf", "tiny.cc.spice"):
+    for name in ("tiny.dspf",):
         e = tmp_path / f"e_{name}"
         e.mkdir()
         (e / name).write_text("* the person's own file\n")
@@ -888,35 +871,3 @@ def test_an_empty_layout_is_said_to_hold_no_cell(tmp_path):
     c = lookup("EMIR-E212")
     assert c.title == "no cell in the layout"
     assert "gds:" not in c.hint and "conductor" not in c.meaning
-
-
-def test_choose_mode_says_what_each_route_measured_on_a_magic_layout(tmp_path):
-    """On a magic network the open loop and the loop read a signal net low
-    (example 08's gate net vb in the loop: rms -6.55 %); choose-mode quoted
-    only the synthetic meshes, where every net is a supply. For a DSPF the
-    magic route wrote, each route now also says what example 08 measured,
-    its gate net included, and names example 08's README as the source."""
-    from emir.modes import MAGIC_ACCURACY, MAGIC_SOURCE
-    res, _ = converted(tmp_path)
-
-    def choices(dspf, net="vss", process=SKY):
-        p = emir("next", "--dspf", dspf, "--process", process, "--net", net, "--format",
-                 "json")
-        assert p.returncode == 0, p.stderr
-        steps = {s["id"]: s for s in json.loads(p.stdout)["steps"]}
-        assert "choose-mode" in steps, list(steps)
-        return {(c["mode"], c["self_consistent"]): c for c in steps["choose-mode"]["choices"]}
-    got = choices(res["dspf"])
-    for key, text in MAGIC_ACCURACY.items():
-        assert got[key]["accuracy"].endswith(text) and MAGIC_SOURCE in got[key]["source"]
-    assert "LOW" in got[("cc-grid", True)]["accuracy"] and "signal net" in got[
-        ("cc-grid", False)]["accuracy"]
-    sample = os.path.join(ROOT, "emir", "data", "sample")
-    plain = choices(os.path.join(sample, "rail.dspf"), "VDD", os.path.join(sample,
-                                                                         "process.yaml"))
-    assert all(MAGIC_SOURCE not in c["source"] for c in plain.values())
-    # every number quoted is example 08's README's
-    readme = open(os.path.join(ROOT, MAGIC_SOURCE), encoding="utf-8").read()
-    for text in MAGIC_ACCURACY.values():
-        for num in re.findall(r"[+-]\d+\.\d+ %", text):
-            assert num in readme, num

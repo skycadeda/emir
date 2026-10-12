@@ -1,5 +1,5 @@
 id: cadence-extract-plan
-playbook: 06-cadence-flow
+playbook: 04-cadence-flow
 title: Prepare a PVS + Quantus extraction and the Spectre save lines
 requires: []
 fixtures: [cadence_stub]
@@ -29,7 +29,7 @@ reference:
   commands:
     - emir selftest --format json
     - emir extract --gds inputs/railblock.gds --cdl inputs/railblock.cdl --cell railblock --kind r_only --format json
-    - emir save-lines inputs/rail.dspf --mode rcc --prefix XDUT. --out emir_out/emir_save.scs --format json
+    - emir save-lines inputs/rail.dspf --prefix XDUT. --out emir_out/emir_save.scs --format json
   answer: |
     The extraction plan is ready but nothing ran (a dry run: PVS and Quantus are licensed, and they would
     only start after you agree). Before it can run I need from you, or from your site file:

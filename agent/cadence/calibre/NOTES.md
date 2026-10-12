@@ -41,7 +41,7 @@ CC); and resistor annotations named RLAYER, RLENGTH, RLOCATION and RWIDTH exist
 | `*\|I` instance-pin records WITH x y (without them the pin is dropped and no simulated current attaches) | the instance section with locations |
 | a via cut count (`$N`, `$VC`, `$SAVC`, or `$A` with `vcwidth` in the process file); without one each via is checked as ONE cut (conservative, EMIR-W207) | UNVERIFIED |
 | `*\|OPERATING_TEMPERATURE` when R was scaled to temperature | UNVERIFIED |
-| for cc-grid: a C+CC netlist from the SAME LVS run as the R-only DSPF | extraction type C+CC |
+| for rcc: the RC extraction (R with coupling C), simulated and screened | extraction type RCC (UNVERIFIED) |
 
 Check a Calibre DSPF with `emir check <dspf> --process <process.yaml>` before a run:
 its findings name every missing annotation with a code.

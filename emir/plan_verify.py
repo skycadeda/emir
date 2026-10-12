@@ -51,11 +51,6 @@ def inputs(a) -> dict:
 def _planned_sim(f: Facts, plan: Plan) -> str | None:
     """The simulator whose result the planned run reads."""
     for s in plan.steps:
-        parts = s["command"].split()
-        if s["id"] == "run" and "--self-consistent" in parts:
-            # the self-consistent loop simulates with its --sim (Spectre by default)
-            return parts[parts.index("--sim") + 1] if "--sim" in parts else "spectre"
-    for s in plan.steps:
         if s["id"] in ("simulate", "simulate-plan"):
             cmd = s["command"]
             if cmd.startswith("spectre "):
@@ -113,11 +108,7 @@ def _verify(f: Facts, plan: Plan):
     where = next((k for k, s in enumerate(plan.steps)
                   if s["id"] in ("simulate-plan", "simulate", "save-lines")
                   or s["id"].startswith("save-lines:")), None)
-    if where is None:
-        # the self-consistent loop: before its check (after the Spectre split stub)
-        where = next((k for k, s in enumerate(plan.steps) if s["id"] == "check"), None)
     _add(f, plan, sim, where)
-
 
 
 def _add(f: Facts, plan: Plan, sim: str, where, why: str | None = None):
@@ -139,8 +130,9 @@ def _add(f: Facts, plan: Plan, sim: str, where, why: str | None = None):
     cmd = command_line("verify-sim", "--sim", sim, *(["--run"] if licensed else []), f.fmt())
     plan.add("verify-sim", cmd,
              f"prove on this machine that {sim}'s route into emir gives the right numbers "
-             f"(hand-checkable testbenches: ideal loads and real devices, rcc and cc-grid; "
-             f"seconds) before the first run that uses {sim}: {why or _why_not(sim)}"
+             f"(hand-checkable testbenches: ideal loads and real devices, every branch "
+             f"current read by rcc; seconds) before the first run that uses {sim}: "
+             f"{why or _why_not(sim)}"
              + (f" ({sim} is licensed: ask the person; without --run it only plans)"
                 if licensed else ""),
              licensed_tool=sim if licensed else None, long_run=False)
@@ -154,24 +146,22 @@ def _add(f: Facts, plan: Plan, sim: str, where, why: str | None = None):
             s["after"].append("verify-sim")
 
 
-def _planned_pins(f: Facts, plan: Plan, meta: dict) -> dict | None:
+def _planned_pins(f: Facts, plan: Plan) -> dict | None:
     """The kinds of current the planned run reads from a finished result
-    (`verify_sim.run_pins` over the target nets in the chosen mode, the
-    result's names sidecar saying how each pin was read), or None when
-    neither the DSPF nor the mode is known."""
+    (`verify_sim.run_pins` over the target nets: their branch currents), or
+    None when the DSPF is not known or the run reads no simulation."""
     from .verify_sim import run_pins
     info = f.dspf_info
-    mode = (plan.mode or {}).get("chosen")
-    if not info.get("ok") or mode not in ("rcc", "cc-grid"):
+    if not info.get("ok") or (plan.mode or {}).get("chosen") != "rcc":
         return None
-    return run_pins(info["_dspf"], {n: {"mode": mode} for n in f.target_nets()},
-                    meta.get("pin_kinds"))
+    return run_pins(info["_dspf"], {n: {"mode": "rcc"} for n in f.target_nets()})
 
 
 @rule(62, "verify-sim-result")
 def _verify_result(f: Facts, plan: Plan):
-    """A finished --cc-sim: the simulator that wrote it, verified here?"""
-    if f.get("run_summary"):
+    """A finished --cc-sim: the simulator that wrote it, verified here? (A run
+    refused for its window wrote no summary: its fix is planned as a new run.)"""
+    if f.get("run_summary") and not f.get("refused"):
         f._cache.pop("verify_pending", None)
         _after_run(f, plan)
         return
@@ -182,9 +172,9 @@ def _verify_result(f: Facts, plan: Plan):
     from . import waves
     from .verify_sim import KINDS, missing_covers, status
     meta = waves.peek(f.get("cc_sim"))
-    st = status(meta, sim_hint=f.get("sim"), pins=_planned_pins(f, plan, meta))
-    never = [k for k in st.get("pin_kinds") or [] if not k["verify_sim_covers"]]
-    if never and st.get("reason") != "pin kinds not covered":
+    st = status(meta, sim_hint=f.get("sim"), pins=_planned_pins(f, plan))
+    never = [k for k in st.get("current_kinds") or [] if not k["verify_sim_covers"]]
+    if never and st.get("reason") != "current kinds not covered":
         plan.note("emir verify-sim does not cover the result's "
                   + "; ".join(f"{KINDS[k['kind']]} ({', '.join(k['examples'])}"
                               + (" ..." if k["count"] > len(k["examples"]) else "") + ")"
@@ -192,7 +182,7 @@ def _verify_result(f: Facts, plan: Plan):
                   + ": those currents stay UNVERIFIED on this machine whatever it finds "
                     "(EMIR-W464)")
     if st["status"] == "verified":
-        gap = ([] if st.get("pin_kinds") is not None
+        gap = ([] if st.get("current_kinds") is not None
                else missing_covers(st.get("record"), st["simulator"]))
         if gap:
             # the run's kinds are not known here: the record must cover every
@@ -202,10 +192,10 @@ def _verify_result(f: Facts, plan: Plan):
             return
         plan.note(f"{st['simulator']}: the result's route was verified on this machine "
                   f"({(st.get('record') or {}).get('date')})"
-                  + (" for every kind of current the run reads" if st.get("pin_kinds")
+                  + (" for every kind of current the run reads" if st.get("current_kinds")
                      else ""))
         return
-    if st.get("reason") == "pin kinds not covered":
+    if st.get("reason") == "current kinds not covered":
         # what the run will say (EMIR-W464): a verification of this emir
         # covers some of those kinds (plan it), or none can (say so)
         if st.get("command"):
@@ -292,7 +282,7 @@ def _verified_since(v: dict) -> bool:
                 records=valid_records()[0])
     if lk["status"] != "verified":
         return False
-    kinds = v.get("pin_kinds")
+    kinds = v.get("current_kinds")
     if kinds is None:
         return not missing_covers(lk["record"], v.get("simulator"))
     have = set(record_covers(lk["record"]))

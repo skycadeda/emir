@@ -163,7 +163,7 @@ procedure( emirIpcExit(cid status)
           ?buttonLayout 'Close) )
       ( pend == "save"
         hiDisplayAppDBox(?name 'emirSaveOk ?dboxBanner "EMIR"
-          ?dboxText sprintf(nil "Save lines written to\n%s\nInclude it in the testbench (the log lists the mode of each net)."
+          ?dboxText sprintf(nil "Save lines written to\n%s\nInclude it in the testbench."
                             emirMainSaveFile)
           ?dialogType hicMessageDialog ?buttonLayout 'Close) )
       ( pend == "run"
@@ -202,14 +202,14 @@ procedure( emirFormOut()
 ;; reporting what is missing. The Python checker does the real validation;
 ;; this only refuses to build a command that could not possibly run.
 procedure( emirMainArgs()
-  prog( (f dspf proc sim cur nets mode temp pwr out lib cell s)
+  prog( (f dspf proc sim per cur nets temp pwr out lib cell s)
     f = emirMainForm
     dspf = emirTrim(f->emirMainDspf->value)
     proc = emirTrim(f->emirMainProc->value)
     sim  = emirTrim(f->emirMainSim->value)
+    per  = emirTrim(f->emirMainPeriod->value)
     cur  = emirTrim(f->emirMainCur->value)
     nets = emirTrim(f->emirMainNets->value)
-    mode = f->emirMainMode->value
     temp = emirTrim(f->emirMainTemp->value)
     pwr  = emirTrim(f->emirMainPower->value)
     out  = emirFormOut()
@@ -220,17 +220,12 @@ procedure( emirMainArgs()
         ?dboxText "Give the DSPF file." ?dialogType hicErrorDialog
         ?buttonLayout 'Close)
       return(nil) )
-    ;; the mode is the person's choice: a run that reads a simulation result
-    ;; refuses to start until Mode says rcc or cc-grid (DC currents need none)
-    when( and(sim != "" mode == "choose")
-      emirChooseMode()
-      return(nil) )
     s = list(dspf)
     unless( proc == "" s = append(s list("--process" proc)) )
     unless( sim == ""  s = append(s list("--cc-sim" sim)) )
+    unless( per == ""  s = append(s list("--period" per)) )
     unless( cur == ""  s = append(s list("--currents" cur)) )
     s = append(s list("--net" if( nets == "" "all" nets)))
-    unless( or(sim == "" mode == "choose") s = append(s list("--mode" mode)) )
     unless( temp == "" s = append(s list("--em-temp" temp)) )
     unless( pwr == ""  s = append(s list("--power-nets" pwr)) )
     unless( lib == ""  s = append(s list("--lib" lib)) )
@@ -274,36 +269,17 @@ procedure( emirDoRun()
     c = when( a emirCmd("run" a list("--summary-out" strcat(emirMainOut "/summary.json"))) )
     when( c emirIpcStart(c "run") )))
 
-;; The mode is the person's to choose; the form never picks one. The Mode
-;; field starts at "choose", and a run or the save lines refuse to start until
-;; it says rcc or cc-grid.
-procedure( emirChooseMode()
-  hiDisplayAppDBox(?name 'emirNoMode ?dboxBanner "EMIR"
-    ?dboxText strcat("Choose the Mode first -- it is your choice, EMIR does not pick one.\n"
-      "rcc: the RC netlist simulated, every branch current read: exact, but slow and\n"
-      "  hard to converge on a big block.\n"
-      "cc-grid: the devices simulated on ideal rails, their pin currents superposed\n"
-      "  through the R grid: fast, open loop (rms and peak read high).\n"
-      "`emir next` lists the trade-offs, measured.")
-    ?dialogType hicErrorDialog ?buttonLayout 'Close)
-  nil )
-
 ;; Save lines go to <output>/emir_save.scs, not only to the log: on a real
 ;; block the 400-line log would lose the start, and a pin that was never
-;; saved would later count as zero current. The Mode decides what is saved
-;; (rcc: every branch current; cc-grid: the instance-pin currents); the
+;; saved would fail the run's check. Every branch current is saved (rcc); the
 ;; testbench instance prefix is what the testbench calls the extracted block
 ;; (e.g. XDUT.).
 procedure( emirDoSaveLines()
-  prog( (f dspf nets mode prefix a c)
+  prog( (f dspf nets prefix a c)
     f = emirMainForm
     dspf   = emirTrim(f->emirMainDspf->value)
     nets   = emirTrim(f->emirMainNets->value)
     prefix = emirTrim(f->emirMainPrefix->value)
-    mode   = f->emirMainMode->value
-    when( mode == "choose"
-      emirChooseMode()
-      return(nil) )
     emirMainOut = emirFormOut()
     when( dspf == ""
       hiDisplayAppDBox(?name 'emirNoDspf2 ?dboxBanner "EMIR"
@@ -311,7 +287,7 @@ procedure( emirDoSaveLines()
         ?buttonLayout 'Close)
       return(nil) )
     emirMainSaveFile = strcat(emirMainOut "/emir_save.scs")
-    a = list(dspf "--mode" mode "--out" emirMainSaveFile)
+    a = list(dspf "--out" emirMainSaveFile)
     unless( or(nets == "" nets == "all") a = append(a list("--net" nets)) )
     unless( prefix == "" a = append(a list("--prefix" prefix)) )
     c = emirCmd("save-lines" a nil)
@@ -406,7 +382,7 @@ procedure( emirMainFill(lib cell)
     t ))
 
 procedure( emirMain(@optional lib cell)
-  prog( (lc libF cellF dspfF procF simF curF netF modeF prefF tempF pwrF outF
+  prog( (lc libF cellF dspfF procF simF perF curF netF prefF tempF pwrF outF
          htmlT viewT openT btn lst)
     unless( lib
       lc = emirCurLibCell()
@@ -422,11 +398,11 @@ procedure( emirMain(@optional lib cell)
     procF = hiCreateStringField(?name 'emirMainProc ?prompt "Process file" ?value "")
     simF  = hiCreateStringField(?name 'emirMainSim
               ?prompt "Spectre result (psfascii file or -raw dir)" ?value "")
+    perF  = hiCreateStringField(?name 'emirMainPeriod
+              ?prompt "Period of the block (s, e.g. 10n; a transient needs it)" ?value "")
     curF  = hiCreateStringField(?name 'emirMainCur
               ?prompt "or DC currents JSON {\"node\": A}" ?value "")
     netF  = hiCreateStringField(?name 'emirMainNets ?prompt "Net (or all)" ?value "all")
-    modeF = hiCreateCyclicField(?name 'emirMainMode ?prompt "Mode"
-              ?choices list("choose" "rcc" "cc-grid") ?value "choose")
     prefF = hiCreateStringField(?name 'emirMainPrefix
               ?prompt "Testbench instance prefix (save lines), e.g. XDUT." ?value "")
     tempF = hiCreateStringField(?name 'emirMainTemp
@@ -454,19 +430,19 @@ procedure( emirMain(@optional lib cell)
         list(dspfF  0:30   670:26  110)
         list(procF  0:60   670:26  110)
         list(simF   0:90   670:26  270)
-        list(curF   0:120  670:26  270)
-        list(netF   0:150  330:26  110)
-        list(modeF  340:150 330:26 60)
-        list(prefF  0:180  670:26  330)
-        list(tempF  0:210  670:26  270)
-        list(pwrF   0:240  670:26  270)
-        list(outF   0:270  670:26  110)
-        list(htmlT  0:302  150:26)
-        list(viewT  160:302 150:26)
-        list(openT  320:302 250:26)
-        list(btn    0:334  670:32)
-        list(lst    0:372  670:290))
-      ?initialSize 690:690
+        list(perF   0:120  670:26  330)
+        list(curF   0:150  670:26  270)
+        list(netF   0:180  670:26  110)
+        list(prefF  0:210  670:26  330)
+        list(tempF  0:240  670:26  270)
+        list(pwrF   0:270  670:26  270)
+        list(outF   0:300  670:26  110)
+        list(htmlT  0:332  150:26)
+        list(viewT  160:332 150:26)
+        list(openT  320:332 250:26)
+        list(btn    0:364  670:32)
+        list(lst    0:402  670:290))
+      ?initialSize 690:720
       ?minSize 690:690
       ?buttonLayout 'Close
       ?dontBlock t
@@ -479,7 +455,7 @@ procedure( emirMain(@optional lib cell)
 ;; the "Spectre save lines..." menu item: the form, and what to fill in
 procedure( emirSaveLinesForm()
   emirMain()
-  emirMainSay("Save lines: set DSPF, Net, Mode (your choice: rcc or cc-grid) and the testbench instance prefix, then press Save lines.")
+  emirMainSay("Save lines: set DSPF, Net and the testbench instance prefix, then press Save lines.")
   t )
 
 ;; ---------------- menus ----------------

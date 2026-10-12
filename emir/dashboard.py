@@ -147,12 +147,12 @@ def _bar(ratio, sev):
 
 def legend_html(mode: str, warn: float, ir_top: float = 0.0, *, unchecked: bool = False,
                 lost: bool = False, markers: bool = True, rings: bool = True,
-                extra: str = "", model: bool = False) -> str:
+                extra: str = "") -> str:
     """A legend in HTML (`emir.style.legend`, the scale of every chart): the
     ramp as a CSS gradient with its ticks, and every other colour named."""
     from . import style as S
     lg = S.legend(mode, warn, ir_max=ir_top, unchecked=unchecked, lost=lost,
-                  markers=markers, rings=rings, model=model)
+                  markers=markers, rings=rings)
     ticks = "".join(
         f'<span style="left:{100 * pos:.1f}%;transform:translateX('
         f'{0 if pos <= 0.001 else -100 if pos >= 0.999 else -50}%)">{_e(lab)}</span>'
@@ -162,8 +162,6 @@ def legend_html(mode: str, warn: float, ir_top: float = 0.0, *, unchecked: bool 
         sw = ('<i class="sw ring"></i>' if kind == "ring" else
               f'<i class="sw" style="background:transparent;outline:2px solid {colour};'
               f'outline-offset:-2px"></i>' if kind == "outline" else
-              f'<i class="sw" style="background:transparent;outline:2px dotted {colour};'
-              f'outline-offset:-2px"></i>' if kind == "dotted" else
               f'<i class="sw" style="background:{colour}"></i>')
         keys.append(f"<span>{sw} {_e(text)}</span>")
     return (f'<div class="emleg" data-for="{mode}"><div><b>{_e(lg["title"])}</b> '

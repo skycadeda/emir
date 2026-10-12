@@ -69,7 +69,8 @@
       "type": "array",
       "items": {
         "type": "string"
-      }
+      },
+      "description": "the instance pins (inst:pin) that reach the net at more than one place: one terminal, several `*|I` records, each with its own node in `pins`"
     }
   },
   "required": [

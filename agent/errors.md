@@ -9,7 +9,7 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 | status | meaning |
 |---|---|
 | 0 | done (check: the inputs are OK) |
-| 1 | a FAIL verdict, an IR budget FAIL, or an EM basis asked for and not computed (em_basis.honoured false), with --fail-on-violation |
+| 1 | a FAIL verdict, with --fail-on-violation |
 | 2 | bad input, or refused |
 | 3 | a required external tool or Python package is missing |
 | 70 | internal error (EX_SOFTWARE): a bug, or a failed self-test |
@@ -151,28 +151,12 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - command: `emir check <args>`
 - otherwise: `emir check <dspf>`
 
-### EMIR-E211 no instance pins on the net
-
-- level: error, exit 2
-- meaning: The net has no `*|I` instance-pin record, so there is nothing to save or to attach simulated currents to.
-- hint: Drive the net with --currents, or check the extraction's pin records.
-- command: `emir pins <dspf> --net <net>`
-- otherwise: `emir nets <dspf>`
-
 ### EMIR-E212 no cell in the layout
 
 - level: error, exit 2
 - meaning: The GDS file holds no cell: it is empty, or not the layout that was meant.
 - hint: Check that the file is the block's layout (open it in KLayout), and write the layout again from the layout editor if it is empty.
 - command: `klayout <path>`
-
-### EMIR-E216 no node coordinates
-
-- level: error, exit 2
-- meaning: No solved node has coordinates, so decap cannot be placed on the net.
-- hint: Extract with node location annotation ($X $Y) enabled.
-- command: `emir check <args>`
-- otherwise: `emir check <dspf>`
 
 ### EMIR-E217 not a DSPF
 
@@ -202,18 +186,11 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - command: `grep -i -n -e '^ *.subckt' -e '^ *x' <path>`
 - otherwise: `emir <command> --help`
 
-### EMIR-E262 nothing to probe
-
-- level: error, exit 2
-- meaning: No terminal of a device of the chosen kinds (--types) is on the chosen nets in the chosen subcircuit (--subckt, default the DSPF's design).
-- hint: Check the net names (SPICE compares them without case), --subckt and --types.
-- command: `grep -i -n -e '^ *.subckt' -e '^ *x' <path>`
-
 ### EMIR-E263 element not in the testbench
 
 - level: error, exit 2
-- meaning: The print or save lines would name resistors or instances the testbench does not define: it is not the testbench of this DSPF (the RC netlist for rcc, a CC netlist for cc), or the block sits under another instance path.
-- hint: Simulate the testbench of this DSPF; check --prefix and --mode.
+- meaning: The print or save lines would name resistors the testbench does not define: it is not the testbench of this DSPF (the RC netlist rcc simulates), or the block sits under another instance path.
+- hint: Simulate the testbench of this DSPF; check --prefix.
 - command: `grep -i -n -e '^ *.include' -e '^ *x' <path>`
 
 ### EMIR-E270 several top cells
@@ -255,8 +232,8 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-W203 no instance-pin records
 
 - level: warning
-- meaning: The DSPF has no `*|I` records: simulated currents cannot be attached to any net; only --currents can drive it.
-- hint: Extract with instance-pin records, or drive the net with --currents.
+- meaning: The DSPF has no `*|I` records: it names no device pin, so DC --currents can name only its nodes, and rcc's KCL check counts every device node as one nothing drives.
+- hint: Extract with instance-pin records.
 - command: `emir check <args>`
 - otherwise: `emir check <dspf>`
 
@@ -300,45 +277,11 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - command: `emir check <args>`
 - otherwise: `emir check <dspf>`
 
-### EMIR-W260 DSPF pins without a probe
-
-- level: warning
-- meaning: Some instance pins of the DSPF on the probed nets got no probe: their currents will be missing from the result, and a run takes them as ZERO (EMIR-W403).
-- hint: Check that the netlist's instance names are the DSPF's, and --subckt / --types.
-
-### EMIR-W261 probed pins not in the DSPF
-
-- level: warning
-- meaning: Some probed terminals do not name an instance pin of the DSPF on the net; the run ignores their currents.
-- hint: The netlist's instance or pin names differ from the DSPF's; --pins names a subcircuit's ports.
-
-### EMIR-W262 pin names by position
-
-- level: warning
-- meaning: A probed subcircuit instance's .subckt is not in the netlist (a PDK device), so its terminals are named 1, 2, ... unless the DSPF settles the name.
-- hint: Give --pins SUBCKT=p1,p2,... with its port names in order.
-
 ### EMIR-W263 block assumed at the top level
 
 - level: warning
 - meaning: The block's subcircuit is not instantiated in the netlist, so the simulator names written assume it is the top level of the simulation.
 - hint: Give --prefix with the instance path the testbench uses (e.g. XI0.).
-
-### EMIR-I201 capacitor devices
-
-- level: info
-- meaning: Capacitor devices with geometry but no value; sized from `cap_models` in the process file for dynamic IR.
-- hint: Nothing to do unless dynamic IR needs them sized.
-- command: `emir check <args>`
-- otherwise: `emir check <dspf>`
-
-### EMIR-I202 MOS devices
-
-- level: info
-- meaning: MOS devices are kept as possible decaps.
-- hint: Nothing to do.
-- command: `emir check <args>`
-- otherwise: `emir check <dspf>`
 
 ### EMIR-I203 DSPF read
 
@@ -408,7 +351,7 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 
 - level: error, exit 2
 - meaning: A layer needs `gds` and `sheet_res`; a via needs `gds`, `res`, `below` and `above`.
-- hint: Add the key the message names.
+- hint: Add the key the message names, its value from the PDK's documents.
 - command: `emir schema process`
 
 ### EMIR-E307 gds is not a [layer, datatype] pair
@@ -477,15 +420,8 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-E316 unknown key in a process entry
 
 - level: error, exit 2
-- meaning: A layer, via or cap_models entry holds a key the format does not have. It is most likely a typo, and a misspelt limit is a limit silently not checked.
+- meaning: A layer or via entry holds a key the format does not have. It is most likely a typo, and a misspelt limit is a limit silently not checked.
 - hint: Correct the key; `emir schema process` lists the keys of each entry.
-- command: `emir schema process`
-
-### EMIR-E317 cap_models entry not usable
-
-- level: error, exit 2
-- meaning: A `cap_models` entry holds a value the decap model cannot use: a value that is not a number, a negative capacitance (cox, cj, cjsw) or access resistance (esr_a, ron_sq), an entry whose capacitances are all 0 (its devices would be sized at 0 F, their decoupling deleted), a fit frequency (esr_fit_freq) that is not positive, a fit range that is not two numbers low to high from 0, or a fitted access resistance (esr_a + esr_w W + esr_l / L; esr_w and esr_l are signed) that is negative at a device's own geometry. A negative capacitance or resistance would reach the transient as a source of energy, and once ended in a misleading fallback (not at periodic steady state). The one check of cap_models: refused by `emir check` (and so by `emir run`), and by the dynamic solve under --no-check.
-- hint: Correct the entry from the PDK's decap characterisation (pdks/TEMPLATE.yaml documents the keys); a model with cox only is an ideal capacitor, allowed and flagged (EMIR-W438).
 - command: `emir schema process`
 
 ### EMIR-E320 required value not entered
@@ -781,7 +717,7 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-I308 extraction and analysis temperatures differ
 
 - level: info
-- meaning: The DSPF was extracted at another temperature than the EM analysis; R is scaled by the layer TCR.
+- meaning: The DSPF was extracted at another temperature than the EM analysis. A DC solve (--currents) scales each wire's R by its layer's TCR; rcc (a simulation) keeps the resistances the simulation ran (EMIR-I407).
 - hint: Nothing to do.
 
 ### EMIR-I320 optional values left empty
@@ -897,51 +833,28 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-E412 no result file in the directory
 
 - level: error, exit 2
-- meaning: The result directory holds no file (matching --analysis).
-- hint: Name the analysis with --analysis, or point at the file itself.
+- meaning: The result directory holds no file (matching --analysis), or a result file of several analyses (nutascii plots) holds none matching --analysis, or none over time when no --analysis is given.
+- hint: Name the analysis with --analysis (the message lists the file's plots), or point at the file itself.
 - command: `ls <path>`
 
 ### EMIR-E414 rcc needs a time-domain result
 
 - level: error, exit 2
 - meaning: RCC mode reads branch currents over time; a harmonic (PSS fd) result carries no time base.
-- hint: Use the transient or PSS time-domain output, or --mode cc-grid.
+- hint: Use the transient output, two or more whole periods long (a PSS time-domain file holds one period: refused, EMIR-E431).
 
 ### EMIR-E415 branch currents not saved
 
 - level: error, exit 2
 - meaning: RCC mode needs every branch current of the net, and some (or all) are missing from the result.
-- hint: Add the save lines `emir save-lines --mode rcc` prints and re-simulate.
-- command: `emir save-lines <dspf>[ --net <net>] --mode rcc`
-
-### EMIR-E416 instance-pin currents not saved
-
-- level: error, exit 2
-- meaning: None of the net's instance-pin currents are in the result.
-- hint: Add the save lines `emir save-lines --mode cc-grid` prints and re-simulate.
-- command: `emir save-lines <dspf>[ --net <net>] --mode cc-grid`
-
-### EMIR-E417 instance pin with several connections
-
-- level: error, exit 2
-- meaning: An instance pin reaches the net at several DSPF connections but the simulation saves ONE current per pin; how it divides cannot be guessed. A black-boxed block whose supply pin has several shapes is the usual case.
-- hint: A black-boxed block: screen the net hierarchically -- `emir abstract` the block (each pin shape a *|P port), then `emir run` the top with --abstract FILE@INST and --place for the placement. A small net: rcc mode (every branch current saved) measures how the current divides. `emir next` plans either route.
-- command: `emir next --dspf <dspf>[ --net <net>][ --process <process>]`
+- hint: Add the save lines `emir save-lines` prints and re-simulate.
+- command: `emir save-lines <dspf>[ --net <net>]`
 
 ### EMIR-E418 analysis does not fit in memory
 
 - level: error, exit 2
-- meaning: The superposition (or another array) would need more memory than is available.
-- hint: Use --scalars (per-tap scalars, in-phase bounds), or one --net at a time.
-- command: `emir run <args> --scalars`
-
-### EMIR-E419 period longer than the result
-
-- level: error, exit 2
-- meaning: The --period does not fit in the simulated time.
-- hint: Simulate longer, or give the right --period.
-- command: `emir check <args>`
-- otherwise: `emir check <dspf>`
+- meaning: An array of the analysis (an rcc result's branch currents, a grid's factorisation) would need more memory than is available.
+- hint: Screen one --net at a time.
 
 ### EMIR-E420 empty time window
 
@@ -951,39 +864,12 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - command: `emir check <args>`
 - otherwise: `emir check <dspf>`
 
-### EMIR-E421 tap file unusable
-
-- level: error, exit 2
-- meaning: A tap file (CSV or JSON) has no rows, or a row without a usable i_avg.
-- hint: Write one row per tap with name, x_um, y_um, layer, i_avg.
-- command: `head -n 5 <path>`
-
-### EMIR-E422 dynamic IR needs waveforms
-
-- level: error, exit 2
-- meaning: Dynamic IR integrates tap waveforms; the scalar tap path has none.
-- hint: Drop --scalars, or skip dynamic IR.
-
-### EMIR-E423 no capacitance for dynamic IR
-
-- level: error, exit 2
-- meaning: There is no capacitance anywhere on the net, so dynamic IR is the static solve.
-- hint: Use an RC DSPF or give a decap list.
-
 ### EMIR-E424 names sidecar unusable
 
 - level: error, exit 2
-- meaning: The `<result>.names` file beside a simulation result maps the simulator's signal names (I(V1), i(@m1[id]) ...) to the DSPF's inst:pin names. It is not valid JSON, or not of the form {"map": {NAME: ["inst:pin", sign]}}.
+- meaning: The `<result>.names` file beside a simulation result maps the simulator's signal names (I(XI0:RM1), @r.xi0.rm1[i] ...) to the DSPF's R:1 names. It is not valid JSON, or not of the form {"map": {NAME: ["R:1", sign]}}.
 - hint: Fix or remove the sidecar; `emir schema names` prints its format.
 - command: `emir schema names`
-
-### EMIR-E425 pin name is not a terminal of the device
-
-- level: error, exit 2
-- meaning: A DSPF instance pin names a terminal its device does not have: the netlist says the element is a MOSFET, BJT, JFET, resistor, capacitor or diode, and the pin is none of its terminal names (d g s b; c b e s; 1 2, p n, a k ...), their long forms (drain, bulk, substrate, collector, anode ...) or positions (1 to 4). Its current is not taken from another terminal by a guess.
-- hint: Check the DSPF's *|I records against the netlist's element (is it really a subcircuit? then `--probe` reads its pins through 0 V probes).
-- command: `emir pins <dspf> --net <net>`
-- otherwise: `emir nets <dspf>`
 
 ### EMIR-E426 currents that are not numbers in the result
 
@@ -998,39 +884,42 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - hint: Simulate with `.option post_version=2001` (full names, double precision) and save each current once.
 - command: `emir save-lines --help`
 
-### EMIR-E430 EM basis needs --dynamic
+### EMIR-E428 no period for a transient
 
 - level: error, exit 2
-- meaning: --em-basis decap-aware or worst reads the decap-aware branch currents, which come from the dynamic solve of cc-grid (--dynamic); the run does not have it. Refused before the input check, so --force and --no-check do not run past it. When --dynamic cannot run with the other options (--abstract, --currents, --scalars) no command is given: the message names what blocks it.
-- hint: Add --dynamic (cc-grid, a transient result), or drop --em-basis: the verdict is then the static one.
-- command: `emir check <args> --dynamic`
+- meaning: rcc averages every branch current over the record's last whole periods of the block's activity, and EMIR never guesses that period: a transient result needs --period, and so does a --netlist run (its simulation is a transient: nothing is simulated). (An operating point, one time point, needs none.) rcc is exact for the simulated record over the whole periods you give (--period); whether the testbench has settled is yours to establish, as for any .meas. The run is refused: no number is printed.
+- hint: Give --period, the period of the block's activity: its clock, or the period of the testbench's PULSE or SIN sources. Ask the person; never guess it from the waveforms. A record held at DC: any --period with two or more whole ones in the record gives the same numbers.
+- command: `emir next --dspf <dspf>[ --process <process>][ --cc-sim <cc_sim>][ --netlist <netlist>][ --net <net>][ --sim <sim>]`
+- otherwise: `emir next --dspf <dspf>`
 
-### EMIR-E460 pin current not printable
-
-- level: error, exit 2
-- meaning: A cc-mode current is the current into a subcircuit instance's pin (or into a pin that is not one of a primitive device's terminals), which neither Xyce nor ngspice prints.
-- hint: Put a 0 V probe in series with each pin: `emir simulate --probe`, or `emir probe` and then --probes.
-- command: `emir probe --help`
-
-### EMIR-E461 not a probe sidecar
+### EMIR-E429 the last two periods differ
 
 - level: error, exit 2
-- meaning: The --probes file is a names sidecar without the `probes` list that `emir probe --names-out` writes.
-- hint: Pass the --names-out file of `emir probe`.
-- command: `emir probe --help`
+- meaning: The record's last two whole periods of --period differ by more than 2 % in the average, rms or peak of a branch that matters (one carrying 1 % of its net's largest current; the message names it and the change): the period is not the block's, or the block is still starting up at the end of the record. The run is refused: no number is printed.
+- hint: Give the right --period (ask the person; never guess it), or simulate longer if the block is still starting up. A peak that differs on a coarse record: simulate with a smaller maximum time step.
+- command: `emir next --dspf <dspf>[ --process <process>][ --cc-sim <cc_sim>][ --net <net>][ --period <period>][ --sim <sim>]`
+- otherwise: `emir next --dspf <dspf>`
+
+### EMIR-E431 record too short for the period
+
+- level: error, exit 2
+- meaning: rcc needs at least two whole periods of --period in the record, so that the last two can be compared (its window is the last whole periods, up to three). The simulation holds fewer. The run is refused: no number is printed.
+- hint: Simulate at least two periods (the message says to what time); a period longer than the whole record may be the wrong --period.
+- command: `emir next --dspf <dspf>[ --process <process>][ --cc-sim <cc_sim>][ --net <net>][ --period <period>][ --sim <sim>]`
+- otherwise: `emir next --dspf <dspf>`
 
 ### EMIR-E462 no transient analysis
 
 - level: error, exit 2
 - meaning: The testbench (and the files it includes) has no .tran statement at its top level, and the currents over time are needed (`emir simulate`).
-- hint: Add a .tran over whole periods of the block's activity (for the operating point, a short .tran with the sources held at DC).
+- hint: Add a .tran over whole periods of the block's activity (for a DC bias, a short .tran with the sources held at DC, and any --period that fits twice in it).
 - command: `grep -i -n tran <path>`
 
 ### EMIR-E463 binary HSPICE result
 
 - level: error, exit 2
 - meaning: The result is HSPICE's binary waveform file (.trN written with `.option post=1`, the default when post is given without a value). EMIR reads the ASCII form.
-- hint: Re-run HSPICE with `.option post=2 post_version=2001` (ASCII, double precision); `emir save-lines --sim hspice` prints that line with the probes.
+- hint: Re-run HSPICE with `.option post=2 post_version=2001` (ASCII, double precision); `emir save-lines --sim hspice` prints that line with the .probe lines.
 - command: `emir save-lines --help`
 
 ### EMIR-E464 HSPICE ASCII result cannot be read
@@ -1043,7 +932,7 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-E465 several sweep tables in the result
 
 - level: error, exit 2
-- meaning: The result holds one table per sweep value (a .tran with a sweep, or a CSDF block per step), and EM is checked on one waveform at a time.
+- meaning: The result holds one table per sweep value (a .tran with a sweep, or a CSDF block per step), or several plots a nutascii file could be read from, and EM is checked on one waveform at a time.
 - hint: Pick one table with --analysis sweep:N (1-based; the message lists them), or simulate the case of interest alone.
 
 ### EMIR-E466 CSDF result cannot be read
@@ -1056,16 +945,8 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-E467 not a transient result
 
 - level: error, exit 2
-- meaning: The HSPICE or CSDF result is swept over frequency or a DC variable, not time; EM needs the currents over time.
-- hint: Pass the transient result (.trN, or the .tran's CSDF file).
-
-### EMIR-W401 fewer than two periods simulated
-
-- level: warning
-- meaning: The result spans fewer than two periods: the window cannot settle.
-- hint: Simulate longer.
-- command: `emir check <args>`
-- otherwise: `emir check <dspf>`
+- meaning: The HSPICE, CSDF or nutascii result is swept over frequency or a DC variable, not time; EM needs the currents over time.
+- hint: Pass the transient result (.trN, the .tran's CSDF file, or the transient plot of a nutascii file: --analysis tran).
 
 ### EMIR-W402 few time points
 
@@ -1075,77 +956,11 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - command: `emir check <args>`
 - otherwise: `emir check <dspf>`
 
-### EMIR-W403 some instance pins not saved
-
-- level: warning
-- meaning: Some instance-pin currents are missing from the result; their current is taken as ZERO.
-- hint: Add the missing pins from `emir save-lines --mode cc` and re-simulate.
-- command: `emir save-lines <dspf>[ --net <net>] --mode cc`
-
-### EMIR-W404 harmonics truncated
-
-- level: warning
-- meaning: A large share of the AC energy sits in the top harmonics: rms is truncated LOW.
-- hint: Raise the harmonic count, or read the PSS time-domain output.
-
 ### EMIR-W405 currents inconsistent with the DSPF
 
 - level: warning
 - meaning: The RCC loop residual is large: the simulated branch currents do not fit this DSPF (wrong netlist/DSPF pairing, a missing save, a sign).
 - hint: Check that the simulated netlist was extracted with this DSPF.
-
-### EMIR-W406 self-consistency diverging
-
-- level: warning
-- meaning: The self-consistent loop's guard stopped it: its residual (the droop the currents produce against the droop they were fed) grew by more than 10 % on two passes in a row, or the droop to feed back reached half the supply (where no net's supply is known, a ground net alone: three times the open loop's droop). The run reports pass 0, the open-loop cc-grid answer, instead of a pass that may be wrong; `self_consistency.stopped` says which. (A later pass whose simulation runs past its time limit or fails is EMIR-W543.)
-- hint: Report the open-loop result as open loop, and which way it reads as the message says: on the measured meshes the open loop read high (conservative), but a loop diverges when the load's current rises as its supply falls (a constant-power load, a regulator), and then pass 1 drew more current than pass 0 and the open loop reads LOW, not conservative. Look at the passes in the summary (`self_consistency`: each one's residual, `total_avg_A`, `worst_ratio`).
-
-### EMIR-W407 self-consistency did not converge
-
-- level: warning
-- meaning: The self-consistent loop stopped at --max-passes before its residual fell below its tolerance (max(--tol-rel x the largest droop, --tol-mV)) or the answer settled (EMIR-I520); the run reports pass 0 (the open loop), not the last pass: a pass between the open loop and the fixed point can be far from both. The summary's `self_consistency.passes` show each pass's residual.
-- hint: Report the result as open loop; raising --max-passes helps when the residual was still falling.
-- command: `emir run <args> --max-passes 16`
-
-### EMIR-W408 decap access R extrapolated
-
-- level: warning
-- meaning: Some MOS decaps are outside the geometry range their access-R model was fitted on.
-- hint: Re-fit the model over this range if it matters.
-
-### EMIR-W409 MOS decaps excluded
-
-- level: warning
-- meaning: Some MOS decaps cannot be sized: their `cap_models` entry is missing or has no cox (a hand-entered file leaves it null until the person fills it). They are excluded, which OVERSTATES droop, and in decap-aware EM their straps carry nothing, so they are NOT checked: the run lists them under not_checked (decap_straps_not_covered), and a basis that needs decap-aware EM (worst, decap-aware) is not honoured there (em_basis.not_computed: decaps-not-sized; --fail-on-violation exits 1). `emir process check --dspf` and `emir check --dynamic` warn before the run.
-- hint: Ask the person for each model's cox (F/m^2) from the PDK's decap characterisation, with its source; never estimate it.
-- command: `emir schema process`
-
-### EMIR-W410 capacitor devices excluded
-
-- level: warning
-- meaning: Some capacitor devices could not be sized (no `cap_models` entry, or no cj/cjsw, or no geometry) and are excluded, which OVERSTATES droop; in decap-aware EM their straps carry nothing and are NOT checked (as for EMIR-W409).
-- hint: Ask the person for the model's cj and cjsw from the PDK, with their source.
-- command: `emir schema process`
-
-### EMIR-W411 resampling lost peak current
-
-- level: warning
-- meaning: Resampling the tap waveforms to uniform steps lost part of the peak: dynamic droop is UNDERSTATED. On a periodic window (cc-grid --dynamic) the steps are refined where the waveforms need it, and the warning says that a waveform feature (an edge, a spike's tip) still kept less than 99 % of its own height on them: decap-aware EM is then not computed (EMIR-W434).
-- hint: Raise the step count (--dyn-steps; the run's next step gives one).
-
-### EMIR-W412 decap time constants near the step
-
-- level: warning
-- meaning: Some decap lumps have R*C within 10x of the time step: neither resolved nor negligible; their droop contribution is approximate.
-- hint: Raise the step count.
-
-### EMIR-W413 averaging window not settled
-
-- level: warning
-- meaning: The averaging window could not be made long or settled enough; the metrics may still carry start-up transient.
-- hint: Simulate longer, or give --period.
-- command: `emir check <args>`
-- otherwise: `emir check <dspf>`
 
 ### EMIR-W414 simulator route failed its verification here
 
@@ -1168,101 +983,6 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - hint: Simulate through `emir simulate` (it records the simulator's version in the names sidecar), then run again; or tell the person that this run's simulator route is not verified.
 - command: `emir simulate --help`
 
-### EMIR-W428 decaps not covered without --dynamic
-
-- level: warning
-- meaning: A cc-grid run without --dynamic over a net with decap devices (MOS decaps, capacitor devices): its verdict is the static one (decap-free), whose superposition draws every edge of the load from the feed and gives a decap's straps nothing, so they are not checked. The summary's net carries em_basis.fallback no-dynamic; `emir next --run-summary` plans the same run with --dynamic as the person's step. Decap-aware EM, and the bases built on it (decap-aware, worst), need --dynamic.
-- hint: Relay that the decaps' straps are not covered; --dynamic (the person's choice: it costs a transient solve over whole periods) gives decap-aware EM, which covers them.
-
-### EMIR-W429 negligible waveform features ignored
-
-- level: warning
-- meaning: Waveform features (an edge, a spike's tip) narrower than the finest sub-step the dynamic solve can take were left unresolved, and each carries below 1e-6 (dynir.NEGLIGIBLE) of its pin's charge and of its pin's integral of i^2 per period, beyond the linear interpolation between the grid's points: the droop, the averages and a branch's rms^2 move by no more than that share of the pin's, so they do not keep decap-aware EM from being computed (EMIR-W434). Their own peak, for less than the finest step, is not in the decap-aware currents: a decap's strap near the pin may carry up to the feature's height for that long.
-- hint: Relay it with the peaks; if the peak of so narrow a feature matters, ask the person whether it is real (a simulator's glitch is common).
-
-### EMIR-W430 decap-aware EM not computed: no feed
-
-- level: warning
-- meaning: The net has no port, so there is no feed for the decaps' current to be drawn from: decap-aware EM is not computed, and the verdict uses decap-free there. Under a basis that needs decap-aware EM (worst or decap-aware) the net's verdict is then not on the basis asked for: the summary's em_basis.honoured is false and --fail-on-violation exits 1 (as for W431-W434).
-- hint: Give the DSPF's port (*|P) if the net has one; relay that the decaps' straps are not covered on this net.
-
-### EMIR-W431 decap-aware EM not computed: the reference is not the feed
-
-- level: warning
-- meaning: --ground puts the solve's reference somewhere other than the feed, so the decaps' charge would be drawn from the wrong node: decap-aware EM is not computed and the verdict uses decap-free on that net (not the basis asked for: em_basis.honoured false, --fail-on-violation exits 1). The run's next steps give the same run without --ground.
-- hint: Drop --ground (the reference is then the feed; --feed moves both).
-- command: `emir run <args>`
-
-### EMIR-W432 decap-aware EM not computed: not at periodic steady state
-
-- level: warning
-- meaning: The RC state did not repeat within the pass limit (a decap time constant long against the window), so the branch currents still hold part of the start-up: decap-aware EM is not used, and the verdict uses decap-free on that net (not the basis asked for: em_basis.honoured false, --fail-on-violation exits 1). The droop says the same (EMIR-W451).
-- hint: Simulate more periods (a longer window).
-
-### EMIR-W433 decap-aware EM not computed: the window is not whole periods
-
-- level: warning
-- meaning: No period was given or detected, so the window is not a whole number of periods and the periodic steady state the decaps settle to belongs to another signal: decap-aware EM is not computed, the verdict uses decap-free there (not the basis asked for: em_basis.honoured false, --fail-on-violation exits 1).
-- hint: Give the block's period with --period (or simulate long enough that it is detected).
-
-### EMIR-W434 decap-aware EM not computed: the step is too coarse
-
-- level: warning
-- meaning: The dynamic transient's steps, refined where the waveforms need it, could not carry the decap-aware currents: a feature of the waveforms (an edge, a spike's tip) keeps less than 99 % of its own height on them (the finest sub-step the net's factorisations allow, or the refinement's budget, reached), or the feed's current reads above the load's own on the same steps (the trapezoidal rule rang on a decap faster than the step). Decap-aware EM is not computed and the verdict uses decap-free there (not the basis asked for: em_basis.honoured false, --fail-on-violation exits 1). A feature whose charge and energy are negligible never counts (EMIR-W429). The run's next steps give the same run with the --dyn-steps that resolves it (never fewer, so it does not repeat itself), up to 2000000 (decap.DYN_STEPS_MAX); past that none is given and the message says so.
-- hint: Re-run with more steps (--dyn-steps N, as the next step gives it); when none is given, ask the person whether the feature is real.
-- command: `emir run <args> --dyn-steps <n>`
-
-### EMIR-W435 decap-aware rms corrected for the step
-
-- level: warning
-- meaning: The dynamic transient's steps lost more than 2 % of a pin's AC rms, measured like with like (the pin's waveform on the steps against on the simulator's own samples, both exact for a current linear between points): the decap-aware rms of every segment is corrected up by the worst pin's factor, and on segments near the warn fraction where it is above 10 % the larger of decap-free and decap-aware stands in. The steps resolve every waveform feature when they can, so this is rare; the run's next steps give the same run with twice the steps.
-- hint: For a tighter number, re-run with more steps (--dyn-steps).
-- command: `emir run <args> --dyn-steps <n>`
-
-### EMIR-W436 segments the decap-free verdict does not cover
-
-- level: warning
-- meaning: The verdict uses decap-free (--em-basis decap-free), and on some segments the decap-aware current is higher and at or above the warn fraction: a decap's straps and the mesh around it carry the decap's charging current, which the decap-free verdict does not see. The worst basis covers them.
-- hint: Show the person both bases (emir report); the basis is their choice.
-- command: `emir next --run-summary <summary>`
-
-### EMIR-W437 EM verdict on a basis the person chose
-
-- level: warning
-- meaning: The EM verdict uses a basis given with --em-basis, not the default (worst); decap-free and decap-aware each read lower than worst on some segments. A warning so that every report shows it: relay the default's verdict beside it.
-- hint: Confirm the person chose it; relay both verdicts (emir report).
-
-### EMIR-W438 decap-aware EM leans on the decap model
-
-- level: warning
-- meaning: The decap-aware numbers rest on an assumption the run flags: coupling caps are more than 25 % of the capacitance counted (their far plate an AC ground); capacitor devices sized through the `default` cap model; MOS decaps with the closed-form access resistance (R_channel/6, known to read it several-fold high: their straps' current reads low); MOS decaps with no access resistance at all (an ideal capacitor: the feed path reads low and the straps high); an ESR fitted far from the window's frequency; or decap lumps folded onto their nodes (access R*C below a tenth of the finest step: their ESR dropped, named with their share of the decap capacitance).
-- hint: Give cap_models entries for the devices' own models, a fitted esr_a/esr_w/esr_l near the activity's frequency; read the decap-aware numbers with that in mind.
-
-### EMIR-W439 decaps between two resistive rails
-
-- level: warning
-- meaning: Some decaps (MOS decaps, capacitor devices, or valued capacitors to another rail) sit between this net and another net that has resistance in the DSPF. Each net is solved alone, with the other plate an ideal AC ground; in the circuit both rails move, so the current through these decaps, their straps and the mesh near them reads LOW (by up to (R_this + R_other) / R_this below the decap's corner frequency; in examples/13_decap_aware's two-rail case the straps read low and the feed path high: results/decap.md).
-- hint: Read those straps' decap-aware currents as low; check them on the other net's run too.
-
-### EMIR-W450 dynamic IR not computed
-
-- level: warning
-- meaning: --dynamic was asked for, but this net's dynamic droop could not be integrated: the result has no time-domain waveforms (a harmonic PSS result), the net is in pieces, or there is no capacitance on it (an R-only extraction carries none). The static results stand.
-- hint: For capacitance, run cc-grid on an RC extraction of the rails (the grid solve uses its R; --dynamic uses its C), or let the process file's `cap_models` size the decap devices; for waveforms, use a transient or the PSS time-domain output.
-- command: `emir schema process`
-
-### EMIR-W451 dynamic IR not at periodic steady state
-
-- level: warning
-- meaning: The cc-grid dynamic transient integrates the window repeatedly until the RC state repeats; it stopped at its pass limit first (a decap time constant long against the window), so the droop still holds part of the start-up from the DC solution.
-- hint: Simulate more periods (a longer window), or read the dynamic droop as approximate.
-
-### EMIR-W452 dense superposition over the memory budget
-
-- level: warning
-- meaning: --superposition dense was asked, but the dense transfer matrix (branches x taps x 8 bytes) exceeds --max-memory, so the run streamed in time chunks instead (the same answer; the summary's `superposition` says which path ran).
-- hint: Raise --max-memory (within the machine's memory) to force the dense path, or leave --superposition auto.
-
 ### EMIR-W460 names sidecar not written
 
 - level: warning
@@ -1281,26 +1001,12 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - meaning: The --names-out file is not `<result>.names` for the --raw result, and emir looks for the sidecar only there.
 - hint: Write it as <result>.names, or move it there before the run.
 
-### EMIR-W463 probed netlist has no analysis
-
-- level: warning
-- meaning: The netlist `emir probe` rewrote (and the files it includes) has no .tran: it is a block or a library, not a testbench, so `emir simulate` cannot run it as it is (EMIR-E462), and no simulate step is suggested.
-- hint: Probe the testbench that includes the block instead (its included files are probed too), or include the probed copy in a testbench with a .tran.
-- command: `emir probe --help`
-
 ### EMIR-W464 simulator route not verified on this machine
 
 - level: warning
-- meaning: The run's currents come from a simulator result, and this machine holds no passing `emir verify-sim` record that counts for that simulator, version, output format and simulator arguments (`simulator_verification` in the run summary; its `reason` says why: `no record`, `stale` -- a pass from another emir minor version --, or `other host`), or none that covers every kind of current the run read (`pin kinds not covered`: `partly verified` when some kinds are covered; `pin_kinds` lists them: diode, BJT and JFET terminals are never covered), or the result is in an output format emir verify-sim never writes (`format not covered`: CSDF, Spectre's nutascii). The numbers may still be right; nothing on this machine has shown that the simulator's names, signs and file format reach EMIR as EMIR reads them. A failed latest record is EMIR-W414, an unknown version EMIR-W416.
-- hint: Run `emir verify-sim --sim <simulator>` once on this machine (a licensed simulator: ask the person first; it plans the run without --run), then re-run. When the summary gives no `command` (a kind or a format verify-sim does not cover), no verification helps: tell the person which currents stay unverified (the message names them), or simulate through `emir simulate`, whose output format and probes verify-sim covers.
+- meaning: The run's currents come from a simulator result, and this machine holds no passing `emir verify-sim` record that counts for that simulator, version, output format and simulator arguments (`simulator_verification` in the run summary; its `reason` says why: `no record`, `stale` -- a pass from another emir minor version --, or `other host`), or none that covers the branch currents the run read (`current kinds not covered`: a record made before records said what they cover), or the result is in an output format emir verify-sim never writes (`format not covered`: CSDF, Spectre's nutascii). The numbers may still be right; nothing on this machine has shown that the simulator's names, signs and file format reach EMIR as EMIR reads them. A failed latest record is EMIR-W414, an unknown version EMIR-W416.
+- hint: Run `emir verify-sim --sim <simulator>` once on this machine (a licensed simulator: ask the person first; it plans the run without --run), then re-run. When the summary gives no `command` (a format verify-sim does not cover), no verification helps: tell the person the currents stay unverified, or simulate through `emir simulate`, whose output format verify-sim covers.
 - command: `emir verify-sim --sim <sim>`
-
-### EMIR-W465 terminal currents do not close KCL
-
-- level: warning
-- meaning: A device's saved terminal currents (HSPICE i1..i4) sum to zero with neither sign of the source (emitter) current, so that sign could not be confirmed from the result and the documented one (out of the source) was used.
-- hint: Probe the device's terminals instead (`emir probe`, a 0 V source in series: its current sign is the source's, documented), and check that every terminal current of the device was saved.
-- command: `emir probe --help`
 
 ### EMIR-W466 HSPICE names cut to 16 characters
 
@@ -1332,35 +1038,11 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - meaning: Every branch current of the net is in the result (rcc).
 - hint: Nothing to do.
 
-### EMIR-I405 every instance-pin current saved
+### EMIR-I407 rcc's IR at the simulated resistances
 
 - level: info
-- meaning: Every instance-pin current of the net is in the result (cc-grid).
-- hint: Nothing to do.
-
-### EMIR-I430 decap-aware EM computed
-
-- level: info
-- meaning: The dynamic solve gave the net's decap-aware EM: the step, the passes, the periodic-average check, the largest step correction, the capacitance counted, and every basis's verdict.
-- hint: Nothing to do; the summary's `dynamic_em` holds the numbers.
-
-### EMIR-I431 coupling to signal nets left out of decap-aware EM
-
-- level: info
-- meaning: Coupling capacitance from the net to a signal net is not counted as decap in the decap-aware solve (in the CC simulation its current flows from the ideal rail, through no instance pin); the droop keeps it as an AC ground, as before. The decap-aware EM then has its own solve.
-- hint: Nothing to do; `dynamic_em.capacitance.coupling_signal_excluded_F` says how much.
-
-### EMIR-I432 EM basis does not apply in rcc
-
-- level: info
-- meaning: --em-basis with --mode rcc: the RC simulation drives the decaps and every branch current is measured, so the basis does not apply (`used: measured`).
-- hint: Nothing to do.
-
-### EMIR-I450 superposition streamed
-
-- level: info
-- meaning: The exact waveform superposition ran in time chunks (one multi-column back-substitution per chunk of samples) instead of building the dense transfer matrix: the matrix (branches x taps x 8 bytes) would exceed --max-memory, or the result has fewer than twice as many time samples as taps, where streaming is the cheaper path. The answer is the same; only the memory and the solve count differ.
-- hint: Nothing to do. --max-memory bounds the memory; --superposition dense or stream forces a path.
+- meaning: rcc computes the static and dynamic IR from the resistances the simulation ran, the DSPF's, at the temperature the DSPF states (else the process file's temp_reference): the IR is the simulated circuit's. The EM limits are taken at the analysis temperature (--em-temp), which differs from it; the run summary records both (`ir_resistance`).
+- hint: Nothing to do for the simulated circuit. For IR at the analysis temperature, extract (or simulate) the block at that temperature and run again.
 
 ### EMIR-I463 simulator route verified on this machine
 
@@ -1373,12 +1055,6 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - level: info
 - meaning: The HSPICE ASCII result is format 9601 or 9007: five significant digits per value (a KCL residual near 3e-5 of the current on a synthetic case).
 - hint: For more digits, simulate with `.option post_version=2001`.
-
-### EMIR-I465 terminal current sign set from KCL
-
-- level: info
-- meaning: HSPICE's manuals draw a MOSFET's I3 (a BJT's emitter current) out of the device, and whether a run reports it that way was not confirmed; EMIR took the sign that makes the device's saved terminal currents sum to zero.
-- hint: Nothing to do; the message names the devices and the sign used.
 
 ### EMIR-I466 simulator of the result not identified
 
@@ -1396,37 +1072,12 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - command: `emir check <args>`
 - otherwise: `emir check <dspf>`
 
-### EMIR-E502 --self-consistent needs one net
-
-- level: error, exit 2
-- meaning: The self-consistent loop feeds the droop of the nets it is given back as their pins' supplies: name them with --net (one net; or with Xyce, ngspice or HSPICE several, comma-separated, closed in one loop). `all` (or no --net) is refused, and so are several nets with Spectre, whose split is the person's, one net at a time.
-- hint: Give --net with the rail(s) to close (--net VDD, or --net VDD,VSS with Xyce, ngspice or HSPICE).
-- command: `emir nets <dspf>`
-
-### EMIR-E503 --self-consistent needs --vdd
-
-- level: error, exit 2
-- meaning: The loop reports the net's voltage in the testbench (0 for a ground net), and it was neither given nor readable from the testbench (Spectre netlists are not read; with Xyce, ngspice and HSPICE the rail must be ground or one independent DC source to ground at the top level).
-- hint: Ask the person for the voltage of this net in the testbench, then give --vdd (several nets: one per net, --vdd VDD=1.2,VSS=0; a net left out is read from the testbench).
-
-### EMIR-E504 --self-consistent needs --netlist
-
-- level: error, exit 2
-- meaning: The loop re-simulates, so it needs the netlist, not a finished result.
-- hint: Give --netlist.
-
-### EMIR-E505 --self-consistent with rcc
-
-- level: error, exit 2
-- meaning: Self-consistency is a cc-grid correction; RCC simulates the R network already.
-- hint: Drop --self-consistent or --mode rcc.
-
 ### EMIR-E506 --mode rcc needs a simulation
 
 - level: error, exit 2
-- meaning: RCC mode reads branch currents from a simulation result.
-- hint: Give --cc-sim (a result) or --netlist.
-- command: `emir save-lines <dspf>[ --net <net>] --mode rcc`
+- meaning: RCC mode reads branch currents from a simulation result; DC --currents take no mode.
+- hint: Give --cc-sim (a result) or --netlist, or drop --mode rcc.
+- command: `emir save-lines <dspf>[ --net <net>]`
 
 ### EMIR-E507 command-line usage error
 
@@ -1450,13 +1101,6 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - hint: Give --process and one of --currents, --cc-sim, --netlist.
 - command: `emir next --dspf <dspf>[ --process <process>]`
 
-### EMIR-E510 --split-stub needs --net
-
-- level: error, exit 2
-- meaning: The rail-split fragment is written for one net.
-- hint: Give --net.
-- command: `emir nets <dspf>`
-
 ### EMIR-E511 unknown error code
 
 - level: error, exit 2
@@ -1479,72 +1123,12 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - command: `emir <command> --help`
 - otherwise: `emir --help`
 
-### EMIR-E520 mode not chosen
+### EMIR-E514 two sources of currents
 
 - level: error, exit 2
-- meaning: The command reads, plans or runs a simulation, and its mode -- rcc or cc-grid -- was not given. The mode is the person's choice: emir never picks one (`--mode auto` is gone). A run with DC --currents needs no mode.
-- hint: Ask the person, then pass --mode. rcc: simulate the RC-extracted netlist and read every branch current -- exact, but the RC transient is slow and converges poorly on big blocks. cc-grid: simulate the devices on ideal rails and superpose their pin currents through the R-only grid -- fast and scales, open loop (avg and IR close to rcc at small droop, rms and peak read high); `--mode cc-grid --self-consistent` feeds the droop back and re-simulates. `emir next` lists the routes with their measured cost and accuracy.
-- command: `emir next[ --dspf <dspf>][ --process <process>][ --cc-sim <cc_sim>][ --netlist <netlist>][ --net <net>][ <plan_args>]`
-
-### EMIR-E521 the mode cannot serve this command
-
-- level: error, exit 2
-- meaning: The command works in one mode only, and the other was asked for: a block abstract (`emir abstract`) is built from the instance-pin currents of a CC simulation superposed through the block's R-only grid, so it is cc-grid only.
-- hint: Pass --mode cc-grid (with a CC simulation of the block), or screen the block itself with `emir run --mode rcc`.
-
-### EMIR-E522 the rail split matched no instance pin
-
-- level: error, exit 2
-- meaning: The self-consistent loop gives each instance pin on the net its own supply node and source; in the testbench it found device terminals on the net, but none of them is an instance pin of the DSPF (different instance names, or the wrong subcircuit), so no current could be fed back.
-- hint: Check that the testbench simulates this DSPF's CC netlist, with the DSPF's instance names; give --save-prefix with the block's instance path.
-- command: `emir probe <path> -o emir_out/probe/probed.cir --dspf <dspf>[ --net <net>]`
-- otherwise: `emir pins <dspf> --net <net>`
-
-### EMIR-E523 --vdd does not match the testbench
-
-- level: error, exit 2
-- meaning: --vdd, the net's voltage in the testbench, differs (by more than 1 mV or 1 %) from the DC source the testbench drives the net with (or ground): the wrong net, the wrong testbench, or a mistyped voltage. Nothing was simulated.
-- hint: Check the net and the testbench with the person; give --vdd as the testbench drives it, or leave --vdd out to take the testbench's value.
-
-### EMIR-E524 the netlist does not hold the rail split
-
-- level: error, exit 2
-- meaning: The Spectre route of the self-consistent loop needs the per-tap rail split in the CC netlist: a `vsource type=pwl file=` per pin reading the droop file emir rewrites every pass, and every pin of the net reconnected to its split node (`emir run --split-stub` prints the lines). Without it Spectre simulates the open loop on every pass and the loop would call that converged. Raised before Spectre runs when the netlist's text names no pin's file or a split node feeds nothing, and after a pass that fed a droop and moved no pin current.
-- hint: Add the `--split-stub` lines to the CC netlist, reconnect each pin as its comments list, and run again.
-- command: `emir run <dspf> --net <net> --split-stub`
-
-### EMIR-E525 --self-consistent with --cc-sim or --currents
-
-- level: error, exit 2
-- meaning: The self-consistent loop simulates --netlist on every pass and reads only those results: a --cc-sim result or --currents given with it would be ignored.
-- hint: Drop --cc-sim / --currents (the loop simulates), or drop --self-consistent to screen that result open loop.
-
-### EMIR-E526 will not overwrite a file emir did not write
-
-- level: error, exit 2
-- meaning: The self-consistent loop rewrites its droop file on every pass (the include of the split's sources; for Spectre the manifest droop.scs and each pin's .pwl file), and each pass writes its result (pass<k>.raw, Spectre's result directory, pass<k>.tr0) with its .log and .names, and the simulator's own outputs beside it (sc.raw.log; HSPICE's .lis, .st0 ...); the SPICE simulators' loop also writes its split testbench and the split copies of its includes (split.<sim>.cir, <include>.split_<sim>.sp). Where it writes them (emir_out/selfconsist/<net>/, or the --droop-file's directory) there is such a file that emir did not write (a droop file without emir's header, at the default place or the one --droop-file names: --droop-file naming the testbench, the DSPF or any file of the person's is refused before anything is written; a result without emir's stamp <result>.emir beside it, or a split file not listed in emir's stamp split.<sim>.cir.emir).
-- hint: Move that file, or point the loop elsewhere with --droop-file (its directory takes the results too).
-- command: `ls -l <path>`
-
-### EMIR-E540 a terminal on the net is not a DSPF pin
-
-- level: error, exit 2
-- meaning: The waveform self-consistent loop moves every terminal on the net with its own droop waveform. In the testbench a device terminal on the net is no instance pin of the DSPF (and no other terminal of a device whose pin is): it would stay on the ideal rail while the rest of the net droops, and the charge it gives back or draws (an idle device is a decap) would be missing from the loop. Nothing was simulated.
-- hint: Check that the testbench simulates this DSPF's CC netlist with the DSPF's instance names (give --save-prefix with the block's instance path); a device that is really outside the extracted block belongs on another rail in the testbench. `emir probe` shows which terminal matched which pin.
-- command: `emir probe <path> -o emir_out/probe/probed.cir --dspf <dspf>[ --net <net>]`
-- otherwise: `emir pins <dspf> --net <net>`
-
-### EMIR-E541 --vdd does not name the nets
-
-- level: error, exit 2
-- meaning: --self-consistent was given several nets (--net A,B) and one --vdd, which cannot say which net it is; or a per-net --vdd (NET=V,...) names a net --net does not close.
-- hint: Give one voltage per net (--vdd VDD=1.2,VSS=0; a net left out is read from the testbench's source for it), or leave --vdd out to read every rail from the testbench.
-
-### EMIR-E550 --dynamic needs simulated waveforms
-
-- level: error, exit 2
-- meaning: --dynamic integrates the tap current waveforms through the RC grid; DC --currents and --scalars carry no time base.
-- hint: Give --cc-sim with a transient (or PSS time-domain) result and drop --scalars, or drop --dynamic.
+- meaning: DC currents (--currents) and a simulation (--cc-sim or --netlist) were both given: a run takes its currents from one of them, and the summary would name the other.
+- hint: Give --cc-sim (or --netlist) for rcc, or --currents for a DC screen, not both; ask the person which they meant.
+- command: `emir next --dspf <dspf>[ --process <process>]`
 
 ### EMIR-E580 extraction setting missing
 
@@ -1556,7 +1140,7 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-E590 the person's go-ahead is needed
 
 - level: error, exit 2
-- meaning: An MCP tool call would start a licensed tool (Spectre), run long, rewrite a file in place, loosen the EM verdict (`emir_run` with an `em_basis` other than the default, or `dynamic` with `ground`, with `dyn_steps` below 2000 or without `period`, each of which can leave decap-aware EM not computed), or run a command the MCP server has not classified, and the call did not carry confirm=true. Nothing was run; `details.reasons` says why.
+- meaning: An MCP tool call would start a licensed tool (Spectre), run long, rewrite a file in place, or run a command the MCP server has not classified, and the call did not carry confirm=true. Nothing was run; `details.reasons` says why.
 - hint: Ask the person. Only if they agree, make the same call again with confirm=true.
 
 ### EMIR-E591 not runnable over MCP
@@ -1568,82 +1152,8 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-E592 tool arguments do not match the tool
 
 - level: error, exit 2
-- meaning: An MCP tool call named an argument the tool does not have (a misspelt option, which would otherwise be dropped without a word), or left out one the tool requires. Nothing was run; `details` lists the unknown and the missing arguments and the tool's parameters.
-- hint: Use the parameter names of the tool's input schema (the client's tool list; `emir mcp --list` prints them in a shell), and give every required one.
-
-### EMIR-W520 large droop on an open-loop cc-grid run
-
-- level: warning
-- meaning: The net's IR drop is above about 2 % of its supply (--vdd), and the run was open loop: its devices drew their current from the undropped rail, so the currents and the IR drop read high by an amount that grows with the droop.
-- hint: Report the result as open loop, and ask the person about the self-consistent run (`--mode cc-grid --self-consistent`): it re-simulates with each pin's supply at the rail plus its own droop waveform until the droop and the currents agree. On the synthetic inverter meshes it took the governing branch to +0.01 % (avg), +0.34 % (rms) and +0.78 % (peak) of rcc at 4.1 % droop, where the open loop read +1.0 %, +34 % and +70 % (examples/06_big_block/results/selfconsist_waveform.md); what it leaves is the grid's own capacitance, which grows with the grid (and is not fed back from an R-only DSPF: EMIR-W544).
-- command: `emir next --dspf <dspf>[ --process <process>][ --net <net>] --mode cc-grid --self-consistent[ --vdd <vdd>]`
-
-### EMIR-W540 the testbench's reltol is above 1e-4
-
-- level: warning
-- meaning: The self-consistent loop simulates the testbench with its own options, and its relative tolerance is above 1e-4 (or not set: the simulator's default is 1e-3 in Xyce, ngspice and Spectre). On a synthetic mesh of examples/06_big_block (results/selfconsist_waveform.csv, k32_n20_reltol3), Xyce at 1e-3 moved the open loop's governing avg, rms and peak against rcc by 0.29 to 0.41 points and the converged loop's by 0.09 to 0.45: more than the loop's own residual error.
-- hint: Set the relative tolerance to 1e-4 or below in the testbench (Xyce: `.options timeint reltol=1e-4`; ngspice and HSPICE: `.options reltol=1e-4`; Spectre: reltol=1e-4 in its options statement), and simulate the RCC reference the same way when comparing.
-
-### EMIR-W541 the split's KCL does not close
-
-- level: warning
-- meaning: Every pass checks that the split pins' currents add up to the current of the testbench's rail source (the window average within 1e-5, every instant within 1e-4 of its peak). They do not: part of the rail's current reaches it some other way -- a terminal the split does not move (an element type it does not probe), a load, capacitor or block of the testbench on the same rail. That part stays on the ideal rail and its droop is not fed back.
-- hint: Look at the pass's `kcl` entry in the summary (`self_consistency.passes`); move the other loads off the block's rail in the testbench, or extract them with the block.
-
-### EMIR-W542 droop waveform compressed more coarsely
-
-- level: warning
-- meaning: The droop fed back on a pass needed more PWL points per pin than the loop allows (max(1 500, 0.3 x pass 0's time points); every point is a simulator breakpoint) at its compression tolerance (0.3 x the loop's tolerance, at least 0.05 mV), so it was compressed again, coarser, until it fits: the pass's `pwl_tol_mV` says how coarse. Accuracy is lost: the droop fed is less exact. Within the loop's own tolerance the loop goes on as before; coarser than it, the loop can no longer settle (EMIR-I520's metric rule), only converge by its residual, which is measured against the PWL as written and so holds that error, else it ends at --max-passes and reports pass 0 (EMIR-W407). Measured: a 40 ns transient of a synthetic mesh (examples/06_big_block/results/selfconsist_waveform.md, k32_n10_long) was fed at about 0.67 x its tolerance with 7 400 points a pin, and settled within 0.06 % of rcc on the governing branch.
-- hint: Look at the passes' `pwl_points` and `pwl_tol_mV`. Every period the transient holds adds points: a CC testbench simulated for fewer periods (the window the run chooses is its settled tail) needs fewer.
-
-### EMIR-W543 a self-consistent pass's simulation did not finish
-
-- level: warning
-- meaning: A pass after pass 0 ran past its time limit (max(20 x pass 0's simulation time, 60 s, --sim-timeout)) or its simulation failed. A diverging droop makes a simulator crawl or fail, but a long block's pass can also be just slow: a pass took 2.7 to 4.2 times the open loop's simulation time over 4 ns on one net of the synthetic meshes at reltol 1e-4 (5.1 to 5.5 with both rails), and about 9.5 times over 40 ns, every PWL point a breakpoint (examples/06_big_block/results/selfconsist_waveform.md). The loop stops and the run reports pass 0, the open loop (`self_consistency.stopped`: `time limit` or `simulation failed`); the passes before are in the summary.
-- hint: Report the result as open loop. When the passes' residuals were falling, the person may give the passes longer (--sim-timeout) or look at the failed pass's simulator log (the message names it).
-
-### EMIR-W544 the droop fed back has no grid capacitance
-
-- level: warning
-- meaning: The DSPF has no capacitance on the net (an R-only extraction), so the loop feeds back the R-only grid's droop. A real grid's capacitance gives charge locally, so the droop at the pins is shallower than the R-only grid's: the loop's devices then draw too little at their peaks, and the device contacts and the branches that capacitance would feed read low, more so the more capacitance the grid has. Measured on a synthetic 384-node mesh at 4.1 % droop with 20 fF per grid node (examples/06_big_block/results/selfconsist_waveform.md, hd16b_c20): device peaks -1.1 % to -4.8 % (median -4.2 %), minor-branch peaks down to -20 %, the governing branch conservative; the open loop read those devices +15 % to +30 % high. Fed back from the RC DSPF of the same mesh (hd16b_c20rc) the device peaks were within 0.1 % (-0.08 % to +0.01 %). The decaps the process file sizes are fed back with the grid either way (EMIR-W547 when some cannot be sized).
-- hint: Give the RC extraction of the rail (the loop then feeds back the RC grid's droop, each capacitor to ground), or report the device and minor-branch peaks as possibly low.
-
-### EMIR-W545 the loop's branches are scored on the R-only grid
-
-- level: warning
-- meaning: The DSPF has capacitance on the net, so the self-consistent loop fed back the RC grid's droop and the devices' currents agree with it; but without --dynamic (or with --em-basis decap-free) the branch currents are scored on the R-only grid, so the current the grid's own capacitors carry is missing from every branch, and a branch that capacitance feeds (a minor branch) reads low or high. The open loop's high device currents hid this; the loop removes them. Measured on a synthetic 384-node mesh at 4.1 % droop with 20 fF per grid node (examples/06_big_block/results/selfconsist_waveform.md, hd16b_c20rc): scored on the R-only grid, minor-branch peaks -19.5 % to +25.3 % against RCC (the open loop's -7.1 % to +90.1 %) and the governing branch's peak +3.9 %; scored through the RC grid, as --dynamic's decap-aware EM scores them, within 0.52 % and +0.25 %.
-- hint: Report the minor branches as possibly low, and offer the person the same run with --dynamic and the block's period (--period: decap-aware EM needs a window of whole periods, EMIR-W433; it re-simulates the loop): its default EM basis, worst, takes per segment the larger of the R-only and the RC grid's current (conservative: it keeps the R-only grid's high readings); decap-aware takes the RC grid's alone (within 0.52 % there). The basis is the person's choice. Not raised when the loop converged at pass 0 (nothing was fed back) or the pins' currents are constant (no capacitor carries any).
-
-### EMIR-W546 the transient is not saved from 0
-
-- level: warning
-- meaning: The testbench's .tran saves from a start time above 0 (its tstart): the loop knows no currents before it, and every pin's PWL source holds its first value from 0, so every pass runs the start with the droop of tstart held, not its own: the state the window starts from is not the loop's, and the IR and the currents can read low (non-conservative).
-- hint: Save the transient from 0 (no tstart on the .tran line) for the self-consistent run.
-
-### EMIR-W547 decaps left out of the loop's feedback
-
-- level: warning
-- meaning: The self-consistent loop feeds back the droop of the grid with its capacitance: the DSPF's capacitors, the capacitor devices and the MOS decaps the process file's cap_models size (each MOS decap behind its access resistance, as --dynamic models it). Some decap devices on the net cannot be sized (no cap_models entry for their model, no geometry, or a fit negative at their geometry), so they are left out: the droop fed back is deeper than the real one, so the devices draw too little and read LOW (not conservative); the governing branch, without the decaps' local charge, reads high; and the decaps' straps are not checked (decap-aware EM gives them nothing, EMIR-W409): neither accurate nor conservative. Measured with all 8 decaps of a synthetic 4 % droop mesh left out (5 pF behind 2 ohm on 0.5 ohm straps; examples/13_decap_aware/results/decap_loop.md): the devices' peaks -5.87 % to -1.00 % against RCC, the governing branch +13.90 % rms and +31.94 % peak on the decap-aware basis; with them sized and fed back, every branch class, and the straps' rms and peak, within 1.2 % and the devices' peaks -0.04 % to +0.02 %.
-- hint: Add the decaps' cap_models entries (cox, and the access resistance fit, from the PDK's decap characterisation, with its source), check them with `emir process check --dspf`, and run the loop again; until then report the devices as possibly low, the governing branch as possibly high and the decaps' straps as not checked.
-- command: `emir process check <process> --dspf <dspf>`
-
-### EMIR-W550 --max-memory above the physical memory
-
-- level: warning
-- meaning: --max-memory is more than this machine's physical memory allows, and a dense matrix that size would be killed by the operating system (exit 137, with no error document): the budget was lowered to 80 % of the physical memory.
-- hint: Give --max-memory within the machine's memory (`free -g` shows it).
-
-### EMIR-I520 self-consistency converged
-
-- level: info
-- meaning: The self-consistent loop stopped because the droop the pass's currents produce is within its tolerance (max(--tol-rel x the largest droop, --tol-mV)) of the droop the pass simulated, and the governing branch's avg, rms and peak moved less than 0.5 % from the pass before (`stop_rule: residual`); or it settled (`stopped: settled`, `stop_rule: metrics`): on two passes in a row the governing branch, every item the run reports and every device's own avg, rms and peak current each moved less than 0.5 %, with the residual under 5 % of the droop and not growing. A settled loop's residual stays above its tolerance (the message gives both); the answer held still. The run reports that pass, and every pass is in the summary (`at_pass_limit` when it was the last one --max-passes allowed).
-- hint: Nothing to do.
-
-### EMIR-I521 the testbench's rail
-
-- level: info
-- meaning: --vdd of a self-consistent run (Xyce, ngspice, HSPICE), against the DC source the testbench drives the net with: they match, or --vdd was not given and the testbench's value is used, or the testbench's rail could not be read and --vdd is used as given. The loop does not depend on it: each pin's source sits in series with the testbench's own rail.
-- hint: Nothing to do.
+- meaning: An MCP tool call named an argument the tool does not have (a misspelt option, which would otherwise be dropped without a word), left out one the tool requires, or gave a value outside a parameter's enum. Nothing was run; `details` lists the unknown, the missing and the invalid arguments and the tool's parameters.
+- hint: Use the parameter names and values of the tool's input schema (the client's tool list; `emir mcp --list` prints them in a shell), and give every required one.
 
 ## 6xx external tools
 
@@ -1671,7 +1181,7 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-E604 unsupported simulator
 
 - level: error, exit 2
-- meaning: `emir run --netlist` without --self-consistent drives Spectre only (results from any simulator can be read if written as PSF ASCII, nutascii, HSPICE ASCII or CSDF; `emir simulate` drives HSPICE, Xyce and ngspice; the self-consistent loop, `--mode cc-grid --self-consistent`, drives all four).
+- meaning: `emir run --netlist` drives Spectre only (results from any simulator can be read if written as PSF ASCII, nutascii, HSPICE ASCII or CSDF; `emir simulate` drives HSPICE, Xyce and ngspice).
 - hint: Simulate with `emir simulate` (or yourself) and pass the result with --cc-sim.
 - command: `emir info`
 
@@ -1708,7 +1218,7 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 
 - level: error, exit 3
 - meaning: `emir extract --tool magic` needs a magic built with the `geoout` patch: it writes each resistor's layer, width, length and place (`extresist geoout on`, <cell>.res.geo), which EMIR's per-segment check needs. No magic tried accepted the option (`details.tried` lists each, where it came from and what it said). The patch is public: branch extresist-geoout of https://github.com/codervijay/magic, offered upstream as https://github.com/RTimothyEdwards/magic/pull/562.
-- hint: Build it: `git clone -b extresist-geoout https://github.com/codervijay/magic`, then `./configure --prefix=$HOME/magic-geo && make && make install` in it, and name it with --magic, $EMIR_MAGIC or the process file's `magic: binary:`. Without it, extract a DSPF with another tool (playbook 06).
+- hint: Build it: `git clone -b extresist-geoout https://github.com/codervijay/magic`, then `./configure --prefix=$HOME/magic-geo && make && make install` in it, and name it with --magic, $EMIR_MAGIC or the process file's `magic: binary:`. Without it, extract a DSPF with another tool (playbook 04).
 - command: `emir info`
 
 ### EMIR-E644 magic wrote no resistor geometry
@@ -1728,7 +1238,7 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-E646 will not overwrite a file EMIR did not write (magic route)
 
 - level: error, exit 2
-- meaning: `emir extract --tool magic` writes <cell>.dspf and <cell>.cc.spice into --out, and magic runs in `magic/` under it, a directory of EMIR's own (a `.emir-magic-work` file marks it) where EMIR replaces magic's files on every run. There is a <cell>.dspf or <cell>.cc.spice that EMIR did not write (it lacks EMIR's header), or a `magic/` directory that holds files and is not EMIR's: EMIR never overwrites them.
+- meaning: `emir extract --tool magic` writes <cell>.dspf into --out, and magic runs in `magic/` under it, a directory of EMIR's own (a `.emir-magic-work` file marks it) where EMIR replaces magic's files on every run. There is a <cell>.dspf that EMIR did not write (it lacks EMIR's header), or a `magic/` directory that holds files and is not EMIR's: EMIR never overwrites them.
 - hint: Move that file or directory, or give another --out (the default is emir_out/extract_<cell>).
 - command: `ls -la <path>`
 
@@ -1770,7 +1280,7 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-E663 simulator route verification failed
 
 - level: error, exit 70
-- meaning: `emir verify-sim` ran the simulator on its known testbench, and a current, a verdict, a ratio or an IR drop read back through EMIR differs from the analytic answer (or the two modes differ) beyond the stated tolerance: on this machine the route from that simulator to EMIR does not give the right numbers.
+- meaning: `emir verify-sim` ran the simulator on its known testbench, and a current, a verdict, a ratio or an IR drop read back through EMIR differs from the analytic answer beyond the stated tolerance: on this machine the route from that simulator to EMIR does not give the right numbers.
 - hint: Do not rely on runs from this simulator here. Read the failing checks (the document's `checks`), keep the output (`--out`), and report it with the simulator's version.
 
 ### EMIR-E680 extraction tool not found
@@ -1798,7 +1308,7 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 ### EMIR-W643 device terminals named by position
 
 - level: warning
-- meaning: The process file's `magic: devices:` names no terminals for some device models magic extracted, so their `*|I` pins are named t1, t2 ... by position. A cc-grid simulation must then name them the same way (`emir simulate --probe --pins MODEL=t1,t2,...`).
+- meaning: The process file's `magic: devices:` names no terminals for some device models magic extracted, so their `*|I` pins are named t1, t2 ... by position (DC --currents name them so).
 - hint: Add the models' terminal names (in the order magic writes the nodes, as the PDK's .subckt lists them) under `magic: devices:` in the process file.
 - command: `emir schema process`
 
@@ -1947,184 +1457,9 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 - meaning: The run has more segments than the viewer data holds by default, so the clean segments (below 0.5x) and the IR segments off the rails were left out, worst first up to the cap: the Explorer and the marker database stay responsive on a big block.
 - hint: Nothing to do; --viewer-all writes every segment.
 
-## 8xx hierarchy
+## 8xx hierarchy (removed)
 
-### EMIR-E801 block abstract unusable
-
-- level: error, exit 2
-- meaning: A file given to --abstract is not an emir.abstract/1 document: not JSON, another document, or a field the run needs is missing.
-- hint: Write it with `emir abstract`; `emir schema abstract` prints the format.
-- command: `emir schema abstract`
-
-### EMIR-E802 abstract instance not in the top DSPF
-
-- level: error, exit 2
-- meaning: The INST of --abstract FILE@INST (or of --place, --phase, --phase-sweep) has no instance-pin record on the top-level net(s) analysed.
-- hint: Name the instance as the top DSPF writes it in its *|I records; `emir pins` lists them.
-- command: `emir pins <dspf> --net <net>`
-- otherwise: `emir nets <dspf>`
-
-### EMIR-E803 block net has no port
-
-- level: error, exit 2
-- meaning: A block net to abstract has no *|P port on its resistors: the current the block draws must leave through its pins, and the pins must be DSPF ports (with coordinates) to be found.
-- hint: Extract the block with every supply pin shape as a port (*|P with coordinates); `emir nets` marks the nets that have one.
-- command: `emir nets <dspf>`
-
-### EMIR-E804 nothing to abstract
-
-- level: error, exit 2
-- meaning: No net of the block DSPF has both a *|P port and instance pins, so no pin current can be characterised.
-- hint: Give --net with the block's supply nets; `emir nets` lists them.
-- command: `emir nets <dspf>`
-
-### EMIR-E805 abstract needs a time-domain result
-
-- level: error, exit 2
-- meaning: An abstract keeps one period of every pin's current waveform; a harmonic (PSS fd) result carries no time base.
-- hint: Use the transient or the PSS time-domain output of the block's simulation.
-
-### EMIR-E806 block pin at several connections, no placement
-
-- level: error, exit 2
-- meaning: A block pin reaches the top net at several *|I records and the abstract has several ports for it: which port lands on which record is decided by coordinates, which needs the block's placement in the top frame.
-- hint: Give --place INST=dx,dy,orient (the block's origin in the top frame and its orientation, R0 R90 R180 R270 MX MY MXR90 MYR90); `emir pins` lists the records with their coordinates.
-- command: `emir pins <dspf> --net <net>`
-- otherwise: `emir nets <dspf>`
-
-### EMIR-E807 abstract ports do not match the top connections
-
-- level: error, exit 2
-- meaning: The abstract has one port for a block pin that the top DSPF connects at several places, or several ports for a pin the top connects at one: how the current divides between them cannot be decided.
-- hint: One port, several records: re-extract the block with every pin shape a *|P port of its own and run `emir abstract` again. Several ports, one record: re-extract the top keeping each pin shape a connection of its own.
-- command: `emir pins <dspf> --net <net>`
-- otherwise: `emir nets <dspf>`
-
-### EMIR-E808 placed port lands on no record
-
-- level: error, exit 2
-- meaning: With --place, a block port moved into the top frame has no *|I record of its pin within the tolerance, more than one, or the same record as another port.
-- hint: Check the origin and orientation in --place against `emir pins`; --place-tol sets the tolerance (um).
-- command: `emir pins <dspf> --net <net>`
-- otherwise: `emir nets <dspf>`
-
-### EMIR-E809 no abstract lands on the net
-
-- level: error, exit 2
-- meaning: None of the --abstract instances has a pin record on the top-level net(s) to analyse.
-- hint: Check the instance names and --net; `emir pins` lists the records of the net.
-- command: `emir pins <dspf> --net <net>`
-- otherwise: `emir nets <dspf>`
-
-### EMIR-E810 sync alignment impossible
-
-- level: error, exit 2
-- meaning: --align sync places every block's stored period on one common time grid: a period is not a whole number of the common step, or the common period of all blocks is too long to hold.
-- hint: Blocks on unrelated clocks: --align async (and read its warning); otherwise --align inphase, the upper bound.
-- command: `emir run <args> --align inphase`
-
-### EMIR-E811 option not combined with --abstract
-
-- level: error, exit 2
-- meaning: --abstract drives the top-level run from block abstracts (and the top's own devices from --cc-sim); --currents, --netlist, --self-consistent, --scalars with another --align, --ground, --taps-out and --mode rcc drive or reference it otherwise, and are not combined with it. --dynamic is not either: the top-level solve is resistive, and each block's internal dynamic droop is in its abstract.
-- hint: Drop the other option. Devices of the top outside the blocks take their currents from the top's CC simulation (--cc-sim).
-
-### EMIR-E812 port-voltages file unusable
-
-- level: error, exit 2
-- meaning: The --port-voltages file is not an emir.port_voltages/1 document, has no entry for the instance or the block net, names other ports, or was written from another result of this block (its period or phase reference differ).
-- hint: Write it with `emir run ... --port-voltages-out F` from the same abstract and pass F@INST; `emir schema port_voltages` prints the format.
-- command: `emir schema port_voltages`
-
-### EMIR-E813 top net has no feed
-
-- level: error, exit 2
-- meaning: The top-level net has no *|P port, so nothing says where its current enters (the pad).
-- hint: Give --feed NODE, the node the net is fed at.
-- command: `emir nets <dspf>`
-
-### EMIR-W801 aperiodic abstract repeated
-
-- level: warning
-- meaning: A block's abstract has no period (its simulation window was not periodic); --align sync repeats its whole window as if it were one period.
-- hint: Characterise the block with --period over whole periods of its activity, or use --align inphase.
-
-### EMIR-W802 async is not an upper bound for related clocks
-
-- level: warning
-- meaning: --align async combines the blocks as if their clocks were unrelated: avg is exact, rms the long-time value and peak the worst over every relative phase. Blocks on related clocks can line up worse than that average on rms.
-- hint: Related clocks: --align inphase (the upper bound) or --align sync with --phase-sweep.
-- command: `emir run <args> --align inphase`
-
-### EMIR-W803 stored pin-current period lost peak
-
-- level: warning
-- meaning: Putting a pin current on the uniform grid kept less than 99 % of its peak: rms and peak downstream read low.
-- hint: Raise --points at `emir abstract` (one period is stored with that many samples).
-
-### EMIR-W804 block verdict with its pins shorted
-
-- level: warning
-- meaning: A block net with several ports was judged with every port at one ideal potential. A supply fed from several sides also carries pass-through current from the top level, which this verdict does not include (it can read low).
-- hint: After the top run, re-check the block with the top's pin voltages: `emir run ... --port-voltages-out F`, then `emir abstract ... --port-voltages F@INST`.
-
-### EMIR-W805 large droop at a block pin
-
-- level: warning
-- meaning: The top-level droop at a block pin exceeds 2 % of the block's nominal supply (--vdd at `emir abstract`). The block's currents were characterised at the nominal supply.
-- hint: Close the loop: re-simulate the block at the delivered voltage, re-abstract and re-run the top until the pin voltages settle (the first pass over-reads current, the conservative direction).
-
-### EMIR-W806 block pin with no current
-
-- level: warning
-- meaning: A top-level record of an abstracted instance names a pin its abstract does not cover, or an abstract net lands on no analysed top net: its current is taken as zero there.
-- hint: Abstract every supply net of the block (--net), and check the pin names against `emir pins`.
-- command: `emir pins <dspf> --net <net>`
-- otherwise: `emir nets <dspf>`
-
-### EMIR-W807 top-level pins with no current
-
-- level: warning
-- meaning: Instance pins on the top net belong to no --abstract instance; with abstracts driving the run their current is taken as zero.
-- hint: Abstract those instances too, if they draw current from the net.
-- command: `emir pins <dspf> --net <net>`
-- otherwise: `emir nets <dspf>`
-
-### EMIR-W808 abstract at another temperature
-
-- level: warning
-- meaning: A block abstract was characterised at another EM analysis temperature than this run: its port conductances and internal verdict are at that temperature.
-- hint: Abstract the blocks with the same process file and --em-temp as the top run.
-
-### EMIR-I801 pads held at one potential
-
-- level: info
-- meaning: The top net has several *|P ports (pads); they are held at one ideal potential, the feed of the run.
-- hint: Nothing to do; --feed NODE feeds the net at one node instead.
-
-### EMIR-I802 block ports matched by coordinates
-
-- level: info
-- meaning: The ports of a block pin with several connections were matched to the top's *|I records through --place.
-- hint: Nothing to do.
-
-### EMIR-I803 IR budget of a one-pin supply is exact
-
-- level: info
-- meaning: For a one-pin supply, top drop at the pin plus the block's internal drop is the exact worst droop; for several pins it is an upper bound (an internal node's top-induced shift is a weighted mean of its pin voltages).
-- hint: Nothing to do.
-
-### EMIR-I804 back-annotation of a one-pin supply
-
-- level: info
-- meaning: A one-pin supply carries no pass-through current: its back-annotated branch currents equal the block-alone ones; only the droop adds the top-level drop at the pin.
-- hint: Nothing to do.
-
-### EMIR-I805 block abstract read
-
-- level: info
-- meaning: An --abstract file was read: its block, nets and ports.
-- hint: Nothing to do.
+No codes: 27 retired (below).
 
 ## 9xx internal
 
@@ -2170,42 +1505,161 @@ Branch on the code, never on the message. `E` codes are errors (refusals, input-
 
 ## Retired codes
 
+- EMIR-E211: removed with cc-grid, which read each instance pin's current: 1.1 checks with rcc, which reads every branch current of an RC simulation, or with DC --currents
 - EMIR-E213: `emir layout` was removed: a port with no text label on the conductors
 - EMIR-E214: `emir mesh` was removed: a port label not on any conductor
 - EMIR-E215: `emir mesh` was removed: ports on disconnected pieces of metal
+- EMIR-E216: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
 - EMIR-E240: `emir layout` was removed: the block's instance in its testbench
 - EMIR-E241: `emir layout` was removed: the port order of the block in its testbench
 - EMIR-E242: `emir layout` was removed: which label feeds a net (--ports)
+- EMIR-E262: `emir probe` and the per-pin probes of `emir simulate` were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, branch currents every simulator prints directly
+- EMIR-E317: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
 - EMIR-E324: `emir mesh` was removed: the width loss on its raster's section density (a DSPF segment no wider than its width loss is EMIR-E323)
 - EMIR-E330: `emir layout` was removed: a process entry with no GDS numbers (the magic route reads magic's layer names, `magic: layers:`)
 - EMIR-E370: `emir layout` was removed: a --layers or --taps layer not in the process file
-- EMIR-E413: --mode auto was removed: the person chooses the mode (EMIR-E520); a result that cannot serve it is EMIR-E415 (rcc) or EMIR-E416 (cc-grid)
+- EMIR-E413: --mode auto was removed: 1.1 has one method of a simulated run, rcc: there is no mode to choose; a result that cannot serve rcc is EMIR-E415
+- EMIR-E416: removed with cc-grid, which read each instance pin's current: 1.1 checks with rcc, which reads every branch current of an RC simulation, or with DC --currents
+- EMIR-E417: removed with cc-grid, which read each instance pin's current: 1.1 checks with rcc, which reads every branch current of an RC simulation, or with DC --currents
+- EMIR-E419: a period longer than the record is EMIR-E431: rcc's window is the record's last whole periods of --period, or the run is refused with no number (EMIR-E428 no period, E429 the last two periods differ, E431 a record too short)
+- EMIR-E421: the dense and streamed waveform superposition (--superposition, --max-memory, --scalars) were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E422: cc-grid --dynamic was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, dynamic IR included
+- EMIR-E423: cc-grid --dynamic was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, dynamic IR included
+- EMIR-E425: `emir probe` and the per-pin probes of `emir simulate` were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, branch currents every simulator prints directly
+- EMIR-E430: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-E432: a record not settled (a drift projected from how it shrinks): rcc no longer judges whether the testbench has settled (decided 2026-10-11): rcc is exact for the simulated record over the whole periods you give (--period); whether the testbench has settled is yours to establish, as for any .meas
 - EMIR-E440: `emir layout` was removed: probe currents missing from its testbench's output (`emir simulate`'s missing currents are EMIR-W461)
 - EMIR-E441: `emir layout` was removed: no tap or device current placed
+- EMIR-E460: `emir probe` and the per-pin probes of `emir simulate` were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, branch currents every simulator prints directly
+- EMIR-E461: `emir probe` and the per-pin probes of `emir simulate` were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, branch currents every simulator prints directly
 - EMIR-E470: `emir mesh` was removed: a tap file of several nets
+- EMIR-E502: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E503: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E504: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E505: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E510: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E520: 1.1 has one method of a simulated run, rcc: there is no mode to choose
+- EMIR-E521: 1.1 has one method of a simulated run, rcc: there is no mode to choose
+- EMIR-E522: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E523: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E524: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E525: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E526: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E530: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E531: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E532: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E533: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E534: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E535: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E540: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E541: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-E550: cc-grid --dynamic was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, dynamic IR included
 - EMIR-E570: `emir mesh` was removed: its choice of --currents or --taps
 - EMIR-E571: `emir mesh` was removed: its --ports input
 - EMIR-E572: `emir mesh` was removed: its --h, --port-radius and --probe options
 - EMIR-E770: `emir mesh` was removed: the marker and IR-bin layers of its annotated layout
-- EMIR-I205: --mode auto was removed: the person chooses rcc or cc-grid (EMIR-E520); --self-consistent takes --mode cc-grid
+- EMIR-E801: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E802: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E803: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E804: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E805: removed with the chip-level hierarchy (emir abstract), which was built on cc-grid
+- EMIR-E806: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E807: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E808: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E809: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E810: the hierarchy's alignment (--align, --phase, --phase-sweep, --points) was removed with the chip-level hierarchy
+- EMIR-E811: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E812: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E813: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-E814: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-I201: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-I202: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-I205: --mode auto was removed: 1.1 has one method of a simulated run, rcc: there is no mode to choose
 - EMIR-I206: --mode auto was removed: a run with DC --currents needs no mode at all
 - EMIR-I270: `emir mesh` was removed: a port placed at its layout label
 - EMIR-I370: `emir mesh` was removed: a --ports or tap layer name mapped by rule
-- EMIR-I403: --mode auto was removed: the person chooses rcc or cc-grid (EMIR-E520)
-- EMIR-I406: --mode auto was removed: with --netlist the mode is given (EMIR-E520)
+- EMIR-I403: --mode auto was removed: 1.1 has one method of a simulated run, rcc: there is no mode to choose
+- EMIR-I405: removed with cc-grid, which read each instance pin's current: 1.1 checks with rcc, which reads every branch current of an RC simulation, or with DC --currents
+- EMIR-I406: --mode auto was removed: 1.1 has one method of a simulated run, rcc: there is no mode to choose
+- EMIR-I430: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-I431: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-I432: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-I450: the dense and streamed waveform superposition (--superposition, --max-memory, --scalars) were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-I465: the HSPICE terminal-current sign from KCL was removed with cc-grid's pin currents: rcc reads branch currents
 - EMIR-I470: `emir mesh` was removed: per-tap scalars read as in-phase upper bounds
+- EMIR-I520: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-I521: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-I530: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-I531: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-I801: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-I802: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-I803: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-I804: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-I805: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
 - EMIR-W209: `emir mesh` was removed: its raster grid coarsened
 - EMIR-W240: `emir layout` was removed: angled shapes modelled as their bounding box
 - EMIR-W241: `emir layout` was removed: labels naming one net differently
 - EMIR-W242: `emir layout` was removed: a net in pieces on the modelled layers
 - EMIR-W243: `emir layout` was removed: via cuts on no metal
+- EMIR-W260: `emir probe` and the per-pin probes of `emir simulate` were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, branch currents every simulator prints directly
+- EMIR-W261: `emir probe` and the per-pin probes of `emir simulate` were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, branch currents every simulator prints directly
+- EMIR-W262: `emir probe` and the per-pin probes of `emir simulate` were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, branch currents every simulator prints directly
 - EMIR-W270: `emir mesh` was removed: a port label found several times
 - EMIR-W340: `emir layout` was removed: via arrays grouped by the measured cut
 - EMIR-W370: `emir mesh` was removed: a traced net on a layer or via without a limit
+- EMIR-W401: the input check's warning for a record under two periods: rcc's window is the record's last whole periods of --period, or the run is refused with no number (EMIR-E428 no period, E429 the last two periods differ, E431 a record too short); a record under two periods is the FAIL EMIR-E431
+- EMIR-W403: removed with cc-grid, which read each instance pin's current: 1.1 checks with rcc, which reads every branch current of an RC simulation, or with DC --currents
+- EMIR-W404: removed with cc-grid's reading of PSS pin currents: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W406: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W407: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W408: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W409: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W410: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W411: cc-grid --dynamic was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, dynamic IR included
+- EMIR-W412: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W413: an averaging window was taken with this warning: rcc's window is the record's last whole periods of --period, or the run is refused with no number (EMIR-E428 no period, E429 the last two periods differ, E431 a record too short)
+- EMIR-W428: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W429: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W430: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W431: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W432: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W433: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W434: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W435: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W436: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W437: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W438: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
+- EMIR-W439: decap-aware EM and --em-basis were removed, with cap_models: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, on the run's own currents
 - EMIR-W440: `emir layout` was removed: tap rows not placed
 - EMIR-W441: `emir layout` was removed: device currents not placed
 - EMIR-W442: `emir layout` was removed: taps on no shape
 - EMIR-W443: `emir layout` was removed: taps on an isolated shape
 - EMIR-W444: `emir layout` was removed: device currents placed far from the device
 - EMIR-W445: `emir layout` was removed: device terminals off the metal
+- EMIR-W450: cc-grid --dynamic was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, dynamic IR included
+- EMIR-W451: cc-grid --dynamic was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, dynamic IR included
+- EMIR-W452: the dense and streamed waveform superposition (--superposition, --max-memory, --scalars) were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W463: `emir probe` and the per-pin probes of `emir simulate` were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents, branch currents every simulator prints directly
+- EMIR-W465: the HSPICE terminal-current sign from KCL was removed with cc-grid's pin currents: rcc reads branch currents
 - EMIR-W470: `emir mesh` was removed: tap metrics no waveform can produce
+- EMIR-W520: cc-grid's droop warning was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W531: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W535: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W536: cc-grid's guard was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W540: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W541: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W542: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W543: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W544: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W545: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W546: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W547: the self-consistent cc-grid loop (--self-consistent) was removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W550: the dense and streamed waveform superposition (--superposition, --max-memory, --scalars) were removed with cc-grid: 1.1 checks with rcc (every branch current of an RC simulation) or DC --currents
+- EMIR-W801: the hierarchy's alignment (--align, --phase, --phase-sweep, --points) was removed with the chip-level hierarchy
+- EMIR-W802: the hierarchy's alignment (--align, --phase, --phase-sweep, --points) was removed with the chip-level hierarchy
+- EMIR-W803: the hierarchy's alignment (--align, --phase, --phase-sweep, --points) was removed with the chip-level hierarchy
+- EMIR-W804: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-W805: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-W806: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-W807: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid
+- EMIR-W808: the chip-level hierarchy (emir abstract, emir run --abstract) was removed: it was built on cc-grid

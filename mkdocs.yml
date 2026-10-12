@@ -56,24 +56,8 @@ validation:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
-  - Concepts: concepts.md
-  - Methods and modes: method-modes.md
-  - Flows:
-      - Big blocks (CC + R-only): big-blocks.md
-      - Chip level, hierarchically: chip-level.md
-      - Simulators: simulators.md
-      - Open-source flow: open-source-flow.md
-      - Cadence flow: cadence.md
-      - Driving EMIR from an agent: agents.md
-  - PDKs and inputs:
-      - Onboarding a PDK: pdk-onboarding.md
-      - Process file reference: process-file-reference.md
-      - DSPF requirements: dspf-requirements.md
-  - Trust:
-      - Validation: validation.md
-      - Limits: limits.md
-  - Reference:
-      - Command line: cli-reference.md
-      - Error codes: errors.md
-      - FAQ: faq.md
-      - Changelog: changelog.md
+  - Method and accuracy: method.md
+  - Simulators: simulators.md
+  - Process files and extraction: process-files.md
+  - Cadence: cadence.md
+  - Reference: cli-reference.md

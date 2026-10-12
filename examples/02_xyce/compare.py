@@ -2,7 +2,7 @@
 
     python compare.py OUT_DIR expected/summary.json
 
-OUT_DIR holds the run summaries rcc.json and cc.json that run.sh wrote. What is
+OUT_DIR holds the run summary rcc.json that run.sh wrote. What is
 compared is what the golden pins (verdict, counts, mode, governing metric,
 ratios, IR, the worst items; no paths, no times), each number within the
 golden's tolerance. Exit 0 when they match, 1 with each difference otherwise.
@@ -20,8 +20,7 @@ def subset(summary: dict) -> dict:
             "max_ratio": n["max_ratio"], "ir_drop_mV": n["ir_drop_mV"],
             "dynamic_mV": n["dynamic_mV"], "n_violations": n["n_violations"],
             "worst_items": {f"{i['name']}:{i['metric']}": i["ratio"]
-                            for i in n["worst_items"]},
-            "unsaved_pins": n["unsaved_pins"]}
+                            for i in n["worst_items"]}}
 
 
 def diff(got, want, tol, where, out):
@@ -44,7 +43,7 @@ def main(argv) -> int:
     out_dir, gold = argv[1], argv[2]
     want = json.load(open(gold, encoding="utf-8"))
     problems = []
-    for k in ("rcc", "cc"):
+    for k in ("rcc",):
         got = subset(json.load(open(f"{out_dir}/{k}.json", encoding="utf-8")))
         diff(got, want["runs"][k], want["tolerance"], k, problems)
     for p in problems:

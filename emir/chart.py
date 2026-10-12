@@ -318,8 +318,7 @@ def _shapes(ax, scene, mode, win, w, h, top):
     W, H = max(1, int(round(w))), max(1, int(round(h)))
     sx, sy = W / (win[1] - win[0]), H / (win[3] - win[2])
     warn = scene.get("warn", S.WARN_DEFAULT)
-    shapes = [s for s in scene.get("shapes") or [] if not s.get("model")]
-    _models(ax, scene)
+    shapes = list(scene.get("shapes") or [])
     if mode == "ir":
         order = sorted(shapes, key=lambda s: math.inf if not S.finite(s.get("ir"))
                        else s["ir"])
@@ -349,16 +348,6 @@ def _shapes(ax, scene, mode, win, w, h, top):
         img[r0:r1, c0:c1] = rgba.get(c) or rgba.setdefault(c, (*S.hex_rgb(c), 255))
     ax.imshow(img, extent=(win[0], win[1], win[2], win[3]), origin="upper",
               interpolation="nearest", zorder=2, aspect="auto")
-
-
-def _models(ax, scene):
-    """A block model's elements (a chip-level run's abstracts): dotted
-    outlines, off the scale -- their EM is checked in the block's abstract."""
-    for s in scene.get("shapes") or []:
-        if s.get("model"):
-            x0, y0, x1, y1 = s["box"]
-            ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False,
-                                   edgecolor=S.MODEL, lw=1.3, ls=(0, (1, 2)), zorder=3))
 
 
 def _badge(ax, placer, it, xy, px_size, ink, face, edge, z=9):
@@ -564,7 +553,7 @@ def draw_legend(page: Page, x, y, w, mode: str, scene: dict, px: float = 14,
     lg = S.legend(mode, scene.get("warn", S.WARN_DEFAULT),
                   ir_max=top if top is not None else ir_max(scene),
                   unchecked=bool(scene.get("any_unchecked")), lost=lost,
-                  markers=bool(scene.get("markers")), model=bool(scene.get("any_model")),
+                  markers=bool(scene.get("markers")),
                   rings=any(n.get("ir_xy") for n in scene.get("nets") or []))
     page.text(x, y, lg["title"], px + 1, t["ink"], bold=True)
     tw = page.width(lg["title"], px + 1, bold=True)
@@ -594,10 +583,6 @@ def draw_legend(page: Page, x, y, w, mode: str, scene: dict, px: float = 14,
             page.rect(cx, cy + 2, 18, px * 0.85, colour, "none", z=4)
         elif kind == "outline":
             page.rect(cx + 1, cy + 2, 16, px * 0.85, "none", colour, lw=1.8, z=4)
-        elif kind == "dotted":
-            page.rect(cx + 1, cy + 2, 16, px * 0.85, "none",
-                      colour if page.theme == "dark" else t["ink"], lw=1.6, z=4,
-                      ls=(0, (1, 2)))
         else:
             page.ax.add_patch(Circle((cx + 9, cy + 2 + px * 0.42), px * 0.42, fill=False,
                                      ec=colour if page.theme == "dark" else t["ink"], lw=1.8,
@@ -623,12 +608,8 @@ def _ratio_ink(page, ratio, warn):
 
 def warn_prefixes() -> tuple:
     """How an alert drawn in the warn colour starts: hand-entered limits
-    without a source, suspect units, an open loop above its droop, and every
-    way a self-consistent loop reports pass 0 (`selfconsist.STOP_ALERTS`'s
-    labels: a new one can never be drawn in the plain colour)."""
-    from .selfconsist import STOP_ALERTS
-    loop = sorted({label.upper() for label, _code, _what in STOP_ALERTS.values()})
-    return ("NO SOURCE", "SUSPECT", "OPEN LOOP", *loop)
+    without a source, and suspect units."""
+    return ("NO SOURCE", "SUSPECT")
 
 
 def side_panel(page: Page, x, y, w, bottom, scene: dict, modes, px: float = 15) -> float:
@@ -965,7 +946,7 @@ CHART_FILE = "emir_chart.png"
 
 def write_run_charts(solved: dict, d, proc, out_dir: str, *, gds: str | None = None,
                      cell: str | None = None, command: str = "",
-                     what: str = "emir run", not_checked_extra: dict | None = None) -> tuple:
+                     what: str = "emir run") -> tuple:
     """The chart of a run's nets, EM and IR, dark and light, into `out_dir`
     (the --html directory): every element drawn from the DSPF's coordinates
     on black, over the GDS when there is one (`emir run --gds`). Returns (the
@@ -975,21 +956,21 @@ def write_run_charts(solved: dict, d, proc, out_dir: str, *, gds: str | None = N
     design = d.design or "design"
     src = os.path.basename(gds) if gds else os.path.basename(getattr(d, "path", "") or "")
     temp = getattr(proc, "temp", None)
-    from .scene import loop_status
-    mode_words, loop_alerts = loop_status(solved)
+    from .scene import mode_status
+    mode_words, mode_alerts = mode_status(solved)
     sub = (f"{what} · {design}" + (f" ({src})" if src else "")
            + f" · {len(solved)} net{'s' if len(solved) != 1 else ''} · mode "
            + mode_words + (f" · EM at {temp:g} °C" if temp is not None else ""))
     scene = run_scene(solved, d, proc, title=f"EM/IR · {design}", subtitle=sub,
                       source=f"Reproduce: {command}" if command else "",
-                      gds=gds, cell=cell, pdk=pdk, not_checked_extra=not_checked_extra)
+                      gds=gds, cell=cell, pdk=pdk)
     if not gds:
         scene["notes"].append("No layout under the elements: a DSPF run draws each "
                               "element from the DSPF's own coordinates, on black.")
     # limits a person typed (emir process new): the chart says so, as the reports do
     from .scene import limits_notes
     from .summary import _limits_provenance
-    scene["alerts"] = loop_alerts + limits_notes(
+    scene["alerts"] = mode_alerts + limits_notes(
         _limits_provenance(solved, proc) if proc else None)
     out, how = [], ""
     for theme in ("dark", "light"):

@@ -21,8 +21,8 @@ HAS_KLAYOUT_PY = importlib.util.find_spec("klayout") is not None
 KLAYOUT_APP = shutil.which("klayout")
 
 
-def flow(script, tmp_path, *opts, tb="tb_cc.cir"):
-    for f in ("loadrail.dspf", "models.sp", "cc.sp", "tb_cc.cir", "tb_rcc.cir"):
+def flow(script, tmp_path, *opts, tb="tb_rcc.cir"):
+    for f in ("loadrail.dspf", "models.sp", "tb_rcc.cir"):
         shutil.copy(os.path.join(EX, f), tmp_path / f)
     return subprocess.run(["sh", os.path.join(HERE, script), *opts, "--out", "out", tb,
                            "loadrail.dspf", PROC], cwd=tmp_path, capture_output=True,
@@ -33,12 +33,14 @@ def flow(script, tmp_path, *opts, tb="tb_cc.cir"):
 def test_the_flow_scripts_run_the_whole_flow(tmp_path, script, sim):
     if site.tool(sim)[0] is None:
         pytest.skip(f"{sim} not installed")
-    p = flow(script, tmp_path, "--mode", "cc-grid", "--probe", "--period", "1e-8")
+    p = flow(script, tmp_path, "--period", "1e-8")
     assert p.returncode == 0, p.stdout[-2000:] + p.stderr[-2000:]
     out = tmp_path / "out"
     s = json.load(open(out / "summary.json"))
     jsonschema.Draft202012Validator(schemas.get("run")).validate(s)
-    assert s["verdict"] == "FAIL" and s["nets"][0]["mode"] == "cc-grid"
+    # rcc reads every branch current: the example's peak FAIL (Rc3) is found
+    assert s["verdict"] == "FAIL" and s["nets"][0]["mode"] == "rcc"
+    assert s["nets"][0]["worst_items"][0]["name"] == "Rc3"
     assert "Screening, not sign-off." in (out / "report.md").read_text()
     assert (out / "html" / "index.html").is_file()
     assert (out / "sim" / "result.raw.names").is_file()
@@ -54,6 +56,9 @@ def test_the_flow_script_refuses_bad_usage(tmp_path):
     p = subprocess.run(["sh", os.path.join(HERE, "emir_open_flow.sh"), "spectre", "a", "b", "c"],
                        capture_output=True, text=True)
     assert p.returncode == 2
+    p = subprocess.run(["sh", os.path.join(HERE, "run_xyce.sh"), "--mode", "cc-grid", "a", "b",
+                        "c"], capture_output=True, text=True)
+    assert p.returncode == 2 and "one method of a simulated run, rcc" in p.stderr
 
 
 @pytest.fixture

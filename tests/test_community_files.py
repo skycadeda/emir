@@ -136,6 +136,12 @@ def test_ci_runs_the_gates():
                 "twine check", "scripts/check_sdist.py", "pre-commit run --all-files",
                 "leak_guard.py --commit \"$c\"", "mkdocs build --strict"):
         assert cmd in runs, cmd
+    # a step that counts the validation cases counts them right
+    from emir.validate import CASES
+    for s in _steps(wf):
+        m = re.search(r"all (\d+) analytic cases", s.get("name", ""))
+        if m:
+            assert int(m.group(1)) == len(CASES), s["name"]
     # selftest runs from / so the source tree cannot shadow the installed package
     selftests = [s for s in _steps(wf) if "emir selftest" in s.get("run", "")]
     assert selftests and all(s.get("working-directory") == "/" for s in selftests)
@@ -249,17 +255,19 @@ def test_the_release_notes_fit_a_github_release(tmp_path):
 
 
 def test_the_release_notes_keep_every_change_of_behaviour():
-    """The Unreleased section as a release's notes: what the cut leaves out
-    is fixes only. Security, Added, Changed and Removed come before Fixed
-    (Keep a Changelog's order), and each of them fits whole."""
+    """The Unreleased section as a release's notes: its headings are Keep a
+    Changelog's kinds, Added first, and the whole section fits a release (the
+    first public release lists its features, not the history before it)."""
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
     import release_notes
     text = _text(os.path.join(ROOT, "CHANGELOG.md")).replace("## [Unreleased]",
                                                              "## [9.9.9] - x", 1)
     body = release_notes.section(text, "9.9.9")
     heads = re.findall(r"^### (.+)$", body, flags=re.M)
-    assert heads == ["Security", "Added", "Changed", "Removed", "Fixed"], heads
+    kinds = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
+    assert heads and heads[0] == "Added" and set(heads) <= set(kinds), heads
+    assert heads == sorted(heads, key=kinds.index), heads
     out = release_notes.notes(text, "9.9.9", "https://example.org/CHANGELOG.md")
     assert len(out) <= 125_000
-    before_fixed = body.split("\n### Fixed\n", 1)[0]
-    assert out.startswith(before_fixed), "a change of behaviour was cut from the notes"
+    assert out.startswith(body), "a change was cut from the notes"
+    assert len(_text(os.path.join(ROOT, "CHANGELOG.md")).splitlines()) <= 80

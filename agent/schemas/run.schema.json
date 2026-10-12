@@ -163,7 +163,6 @@
             "dc",
             "simulation",
             "netlist",
-            "abstracts",
             "none"
           ]
         },
@@ -229,7 +228,7 @@
                 "version unknown",
                 "other host",
                 "format not covered",
-                "pin kinds not covered",
+                "current kinds not covered",
                 "records unreadable"
               ]
             },
@@ -386,18 +385,7 @@
                     {
                       "type": "array",
                       "items": {
-                        "enum": [
-                          "branch",
-                          "mos",
-                          "two-terminal",
-                          "source",
-                          "subcircuit",
-                          "probe",
-                          "diode",
-                          "bjt",
-                          "jfet",
-                          "other"
-                        ]
+                        "type": "string"
                       }
                     },
                     {
@@ -432,7 +420,7 @@
             }
           ]
         },
-        "pin_kinds": {
+        "current_kinds": {
           "anyOf": [
             {
               "type": "array",
@@ -441,16 +429,7 @@
                 "properties": {
                   "kind": {
                     "enum": [
-                      "branch",
-                      "mos",
-                      "two-terminal",
-                      "source",
-                      "subcircuit",
-                      "probe",
-                      "diode",
-                      "bjt",
-                      "jfet",
-                      "other"
+                      "branch"
                     ]
                   },
                   "what": {
@@ -513,7 +492,7 @@
         "record",
         "command"
       ],
-      "description": "Whether the latest valid `emir verify-sim` record of this machine for the simulator, version, output format and simulator arguments that wrote the run's currents passed with this emir minor version (`verified`, EMIR-I463). `not verified` gives its `reason`: `no record` or `other host` or `stale` (a pass of another emir minor version) with EMIR-W464 and `command`, the verification to run; `failed` (the latest record failed: a later failure cancels an earlier pass) with EMIR-W414; `version unknown` (neither the result's header nor the names sidecar of `emir simulate` says the version: never matched to a record, `command` null) with EMIR-W416; `format not covered` (an output format emir verify-sim never writes, such as CSDF: no record can match, `command` null) with EMIR-W464; `records unreadable` (this user may not read the records file: no record counts and none could be kept, `command` null; EMIR-W415 and EMIR-W464). A verification covers kinds of current (`pin_kinds`, one entry per kind the run read: `covered` by the record, `verify_sim_covers` whether any verification of this emir could): a run whose kinds are not all covered is `partly verified` (or `not verified` when none is), `reason` `pin kinds not covered`, with EMIR-W464 naming them; diode, BJT and JFET terminals are never covered. `sim_args` is what the result's names sidecar says the simulator was given (`sim_args_known` false: the result does not say, and it is matched as given none). `ignored_records` counts invalid records, `records_problem` says why a records file cannot be read at all (EMIR-W415)."
+      "description": "Whether the latest valid `emir verify-sim` record of this machine for the simulator, version, output format and simulator arguments that wrote the run's currents passed with this emir minor version (`verified`, EMIR-I463). `not verified` gives its `reason`: `no record` or `other host` or `stale` (a pass of another emir minor version) with EMIR-W464 and `command`, the verification to run; `failed` (the latest record failed: a later failure cancels an earlier pass) with EMIR-W414; `version unknown` (neither the result's header nor the names sidecar of `emir simulate` says the version: never matched to a record, `command` null) with EMIR-W416; `format not covered` (an output format emir verify-sim never writes, such as CSDF: no record can match, `command` null) with EMIR-W464; `records unreadable` (this user may not read the records file: no record counts and none could be kept, `command` null; EMIR-W415 and EMIR-W464). A verification covers kinds of current (`current_kinds`, one entry per kind the run read: the branch currents, `covered` by the record, `verify_sim_covers` whether a verification of this emir could): a run whose kinds are not all covered (a record made before records said what they cover) is `not verified`, `reason` `current kinds not covered`, with EMIR-W464. `sim_args` is what the result's names sidecar says the simulator was given (`sim_args_known` false: the result does not say, and it is matched as given none). `ignored_records` counts invalid records, `records_problem` says why a records file cannot be read at all (EMIR-W415)."
     },
     "html": {
       "anyOf": [
@@ -559,9 +538,9 @@
           "mode": {
             "enum": [
               "dc",
-              "rcc",
-              "cc-grid"
-            ]
+              "rcc"
+            ],
+            "description": "rcc: every branch current of a simulation of the RC netlist; dc: the DC currents of --currents"
           },
           "mode_reason": {
             "anyOf": [
@@ -624,6 +603,17 @@
               }
             ]
           },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "avg",
+                "rms",
+                "peak"
+              ]
+            },
+            "description": "the metrics checked on this net: avg, rms and peak"
+          },
           "ir_drop_mV": {
             "anyOf": [
               {
@@ -644,6 +634,37 @@
             "anyOf": [
               {
                 "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ir_resistance": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "simulated",
+                      "scaled",
+                      "as extracted"
+                    ]
+                  },
+                  "temp_C": {
+                    "type": "number"
+                  },
+                  "stated": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "temp_C",
+                  "stated"
+                ],
+                "description": "the resistances the IR (static and dynamic) is computed with. `simulated` (rcc): those the simulation ran, the DSPF's, at `temp_C`: the temperature the DSPF states (`stated`), else the process file's temp_reference; the IR is the simulated circuit's, and EMIR-I407 says when the EM limits are at another temperature. `scaled` (DC): each wire's scaled by its layer's TCR to the analysis temperature `temp_C` (vias not scaled); `as extracted` (DC): the DSPF states that temperature"
               },
               {
                 "type": "null"
@@ -674,6 +695,45 @@
             "anyOf": [
               {
                 "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "t0_s": {
+                    "type": "number"
+                  },
+                  "t1_s": {
+                    "type": "number"
+                  },
+                  "period_s": {
+                    "type": "number"
+                  },
+                  "n_periods": {
+                    "type": "integer"
+                  },
+                  "change": {
+                    "type": "number"
+                  },
+                  "branches": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "t0_s",
+                  "t1_s",
+                  "period_s",
+                  "n_periods",
+                  "change",
+                  "branches"
+                ],
+                "description": "rcc: the window every average is taken over, the record's last `n_periods` (up to 3) whole periods of --period (`period_s`). rcc is exact for the simulated record over the whole periods you give (--period); whether the testbench has settled is yours to establish, as for any .meas. `branches`: how many matter (those carrying 1 % of the net's largest average, rms or peak); `change`: the largest change of their average, rms or peak between the record's last two periods (at most 0.02: over it the run is refused, EMIR-E429). null on DC runs and at an operating point (one time point: avg = rms = peak)."
               },
               {
                 "type": "null"
@@ -784,84 +844,6 @@
                       "type": "null"
                     }
                   ]
-                },
-                "ratio_decap_free": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "ratio_decap_aware": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "ratio_worst": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "metric_decap_free": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "avg",
-                        "rms",
-                        "peak"
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "metric_decap_aware": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "avg",
-                        "rms",
-                        "peak"
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "metric_worst": {
-                  "anyOf": [
-                    {
-                      "enum": [
-                        "avg",
-                        "rms",
-                        "peak"
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "decided_by": {
-                  "enum": [
-                    "decap-free",
-                    "decap-aware"
-                  ]
                 }
               },
               "required": [
@@ -887,707 +869,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "unsaved_pins": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "self_consistent": {
-            "type": "boolean"
-          },
-          "self_consistency": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "method": {
-                    "enum": [
-                      "waveform"
-                    ]
-                  },
-                  "simulator": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "vdd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "tol_mV": {
-                    "type": "number"
-                  },
-                  "tol_rel": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "max_passes": {
-                    "type": "integer"
-                  },
-                  "converged": {
-                    "type": "boolean"
-                  },
-                  "diverged": {
-                    "type": "boolean"
-                  },
-                  "stopped": {
-                    "anyOf": [
-                      {
-                        "enum": [
-                          "converged",
-                          "settled",
-                          "residual grew twice",
-                          "droop above half the supply",
-                          "pass limit",
-                          "time limit",
-                          "simulation failed"
-                        ]
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "reported_pass": {
-                    "type": "integer"
-                  },
-                  "n_passes": {
-                    "type": "integer"
-                  },
-                  "steps": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "at_pass_limit": {
-                    "type": "boolean"
-                  },
-                  "pwl_cap": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "feedback": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "grid": {
-                            "enum": [
-                              "R-only",
-                              "RC"
-                            ]
-                          },
-                          "caps": {
-                            "type": "integer"
-                          },
-                          "caps_F": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "unsized_caps": {
-                            "type": "integer"
-                          },
-                          "decaps": {
-                            "type": "integer"
-                          },
-                          "decaps_F": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "unsized_decaps": {
-                            "type": "integer"
-                          },
-                          "simulated_decaps": {
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "grid"
-                        ],
-                        "description": "the grid whose droop is fed back: `RC` when it has capacitance (`caps` capacitors of the DSPF, capacitor devices sized by cap_models included, `caps_F` in all, each to ground; `decaps` MOS decaps, `decaps_F` in all, each behind its access resistance, as --dynamic models them), else `R-only` (EMIR-W544 when the DSPF has no capacitance on the net). `unsized_caps` capacitor devices and `unsized_decaps` MOS decaps the process file cannot size are left out (EMIR-W547: the devices then read low, those decaps' straps are not checked); `simulated_decaps` decaps the testbench simulates (their current loads the grid through their pins)"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "scoring": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "grid": {
-                            "enum": [
-                              "R-only",
-                              "RC",
-                              "max(R-only, RC)"
-                            ]
-                          },
-                          "basis": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "ac": {
-                            "anyOf": [
-                              {
-                                "type": "boolean"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "grid"
-                        ],
-                        "description": "how the net's branch currents were scored: `RC` through the RC grid (--dynamic's decap-aware EM, `basis` decap-aware); `max(R-only, RC)` per segment the larger of the two (--dynamic, the worst basis: conservative, it keeps the R-only grid's high readings); else `R-only`, the superposition of the pin currents on the R-only grid (EMIR-W545 when `feedback` is RC and the pins' currents vary). `ac`: whether the pins' currents vary over the window (constant ones charge no capacitor: every scoring agrees)"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "nets": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "passes": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "pass": {
-                          "type": "integer"
-                        },
-                        "residual_mV": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "droop_change_mV": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "tolerance_mV": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "current_change": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "max_droop_mV": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "simulated_droop_mV": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "worst_ratio": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "ir_drop_mV": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "total_avg_A": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "seconds": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "post_seconds": {
-                          "anyOf": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "points": {
-                          "anyOf": [
-                            {
-                              "type": "integer"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "pwl_points": {
-                          "anyOf": [
-                            {
-                              "type": "integer"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "pwl_tol_mV": {
-                          "anyOf": [
-                            {
-                              "type": "number",
-                              "description": "the PWL compression tolerance of the droop this pass simulated (0.3 x the loop's tolerance, coarser when the point cap forced it: EMIR-W542)"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "fed_by": {
-                          "anyOf": [
-                            {
-                              "enum": [
-                                "open loop",
-                                "plain",
-                                "plain (scaled)",
-                                "companion",
-                                "companion (frozen)"
-                              ]
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "fed_scale": {
-                          "anyOf": [
-                            {
-                              "type": "number",
-                              "description": "the first update's scale: 1, or below it when the plain droop was above 15 % of the supply (`plain (scaled)`)"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "metric_change": {
-                          "anyOf": [
-                            {
-                              "type": "object",
-                              "properties": {
-                                "avg": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "rms": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "peak": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "items": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "devices": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "branches": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                }
-                              },
-                              "description": "how far the answer moved from the pass before (relative; null on pass 0): the governing branch's avg, rms and peak; `items`, any item the run reports (its ratio at or above the warning fraction); `devices`, any device's own avg, rms or peak current; `branches`, any branch carrying at least 1 % of the largest (reported, not a stopping condition)"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "companion": {
-                          "anyOf": [
-                            {
-                              "type": "object",
-                              "properties": {
-                                "g_mS": {
-                                  "type": "array",
-                                  "items": {
-                                    "anyOf": [
-                                      {
-                                        "type": "number"
-                                      },
-                                      {
-                                        "type": "null"
-                                      }
-                                    ]
-                                  }
-                                },
-                                "C_fF": {
-                                  "type": "array",
-                                  "items": {
-                                    "anyOf": [
-                                      {
-                                        "type": "number"
-                                      },
-                                      {
-                                        "type": "null"
-                                      }
-                                    ]
-                                  }
-                                },
-                                "r2_median": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "frozen": {
-                                  "type": "boolean"
-                                }
-                              },
-                              "required": [
-                                "g_mS",
-                                "C_fF",
-                                "frozen"
-                              ],
-                              "description": "the per-pin device admittance g + C d/dt that computed the droop this pass simulated (the companion update; null for pass 0 and pass 1): [median, max] over the pins, fitted from the two passes before (the secant of current against droop, clipped at >= 0); `frozen`: the fit was kept from an earlier pass (the residual was small)"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "kcl": {
-                          "anyOf": [
-                            {
-                              "type": "object",
-                              "properties": {
-                                "source": {
-                                  "anyOf": [
-                                    {
-                                      "type": "string"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "pins_avg_A": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "source_avg_A": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "avg_rel": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "instant_rel": {
-                                  "anyOf": [
-                                    {
-                                      "type": "number"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                }
-                              },
-                              "required": [
-                                "pins_avg_A",
-                                "source_avg_A",
-                                "avg_rel"
-                              ],
-                              "description": "the split's KCL on this pass: the split pins' currents against the testbench's rail source over the window (`avg_rel`), and at every instant relative to its peak (`instant_rel`); EMIR-W541 above 1e-5 / 1e-4; null where the rail source's current is not saved (Spectre, a ground net)"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "converged": {
-                          "type": "boolean"
-                        },
-                        "stop_rule": {
-                          "anyOf": [
-                            {
-                              "enum": [
-                                "residual",
-                                "metrics"
-                              ]
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        }
-                      },
-                      "required": [
-                        "pass",
-                        "droop_change_mV",
-                        "current_change",
-                        "max_droop_mV",
-                        "converged"
-                      ]
-                    }
-                  },
-                  "rail": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "volts": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "source": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "node": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "sign": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "why": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "volts",
-                          "why"
-                        ],
-                        "description": "the DC voltage the testbench drives the net with, read from it (Xyce, ngspice, HSPICE; null volts when it cannot be read): --vdd is checked against it (EMIR-E523)"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "vdd",
-                  "tol_mV",
-                  "converged",
-                  "diverged",
-                  "reported_pass",
-                  "passes"
-                ],
-                "description": "--self-consistent: every pass of the waveform loop (emir/tdloop.py). Pass 0 is the open-loop cc-grid result. Each pass feeds every pin of the net its own droop waveform (`fed_by`: plain after pass 0, scaled down when it is above 15 % of the supply, the companion update after that). `residual_mV` (also `droop_change_mV`): the largest difference, over the pins and the whole transient, between the droop the pass's currents produce through the grid (`feedback`) and the droop the pass simulated, the PWL as written (pass 0: the open-loop droop); `tolerance_mV`: max(`tol_rel` x the largest droop, `tol_mV`). `converged` (the pass stops the loop; `stop_rule` says by which rule): `residual`, the residual is below the tolerance and the governing branch's avg, rms and peak moved less than 0.5 % (`metric_change`); or `metrics` (`stopped: settled`), on this pass and the one before the governing branch, every reported item and every device moved less than 0.5 %, with the residual under 5 % of the droop, not grown by more than 10 % on either pass, and the PWL not coarsened past the tolerance: the residual then stays above its tolerance. `at_pass_limit`: it converged on the last pass --max-passes allows. `current_change`: the largest change of a branch's average current from the pass before, relative to the largest branch (null on pass 0). `seconds`: the pass's simulation; `post_seconds`: the grid side; `points`: the simulator's time points; `pwl_points`: the PWL points per pin it was fed, one time base for every pin of every net (at most `pwl_cap`: max(1 500, 0.3 x pass 0's time points)). `reported_pass` is the pass the net's results come from: the converged one, or pass 0 (the open loop) when the loop stopped at --max-passes (EMIR-W407), was stopped by its guard (EMIR-W406) or a later pass's simulation ran past its time limit or failed (EMIR-W543); `stopped` says which. `nets`: every net the loop closed together. Each pin's supply is the testbench's rail plus its droop; `vdd` is that rail's voltage (--vdd, or read from the testbench)."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "droop_fraction": {
-            "anyOf": [
-              {
-                "type": "number",
-                "description": "an open-loop cc-grid run with --vdd: the IR drop over the supply (EMIR-W520 above about 0.02)"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "via_cuts": {
             "type": "object",
@@ -1630,108 +911,6 @@
                   "n_nodes",
                   "nodes"
                 ]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "superposition": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "method": {
-                    "enum": [
-                      "dense",
-                      "stream",
-                      "scalar",
-                      "combined"
-                    ]
-                  },
-                  "reason": {
-                    "type": "string"
-                  },
-                  "taps": {
-                    "type": "integer"
-                  },
-                  "points": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "branches": {
-                    "type": "integer"
-                  },
-                  "nodes": {
-                    "type": "integer"
-                  },
-                  "dense_bytes": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "budget_bytes": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "chunk": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "chunks": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "working_bytes": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "method",
-                  "reason",
-                  "taps",
-                  "points",
-                  "branches",
-                  "dense_bytes",
-                  "budget_bytes"
-                ],
-                "description": "How the tap currents were superposed through the grid, and why (`reason`). Exact, from waveforms: `dense` (the transfer matrix, branches x taps) or `stream` (time chunks, multi-column back-substitution; when the matrix would exceed --max-memory, or the result has fewer than twice as many time samples as taps): the same answer either way. `scalar`: per-tap scalars (--scalars, a tap file with rms and peak, a chip-level run with --align inphase): avg exact, rms and peak in-phase upper bounds. `combined`: a chip-level run with --align async or a phase sweep, per-block rows combined as `reason` says. null for the DC and rcc routes."
               },
               {
                 "type": "null"
@@ -1812,96 +991,6 @@
                         "type": "null"
                       }
                     ]
-                  },
-                  "step_s": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "peak_retention": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "c_total_F": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "decap_lumps": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "periodic": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "passes": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "settled": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "cap_note": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "decap_note": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
                   }
                 },
                 "required": [
@@ -1909,622 +998,7 @@
                   "node",
                   "t_s"
                 ],
-                "description": "The worst dynamic droop on the net and where: rcc from the measured branch currents; cc-grid (--dynamic) from the CC tap waveforms through the RC grid, open loop, or with --self-consistent from the loop's reported pass (each pin fed its droop waveform; `source` says which). null when not computed (a notice says why)."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "em_basis": {
-            "type": "object",
-            "properties": {
-              "requested": {
-                "enum": [
-                  "decap-free",
-                  "decap-aware",
-                  "worst"
-                ]
-              },
-              "used": {
-                "enum": [
-                  "decap-free",
-                  "decap-aware",
-                  "worst",
-                  "measured"
-                ]
-              },
-              "source": {
-                "enum": [
-                  "default",
-                  "option",
-                  "no-dynamic"
-                ]
-              },
-              "fallback": {
-                "anyOf": [
-                  {
-                    "enum": [
-                      "no-dynamic",
-                      "dc",
-                      "no-capacitance",
-                      "harmonic",
-                      "pieces",
-                      "no-feed",
-                      "reference-not-feed",
-                      "not-settled",
-                      "window-not-periodic",
-                      "step-too-coarse"
-                    ]
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "fallback_reason": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "dyn_steps": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "decaps_not_sized": {
-                "type": "object",
-                "properties": {
-                  "n": {
-                    "type": "integer"
-                  },
-                  "models": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": [
-                  "n",
-                  "models"
-                ]
-              }
-            },
-            "required": [
-              "requested",
-              "used",
-              "source",
-              "fallback"
-            ],
-            "description": "The EM verdict's basis on this net: `requested` (--em-basis, or the default worst), `used` (the basis the net's verdict, max_ratio, worst, worst_items and governing_metric are on; `measured` in rcc, where the decaps' currents are simulated), `source` (default or option: a basis other than the default is the person's choice, EMIR-W437; no-dynamic: decap-free because the run has neither --dynamic nor --em-basis, EMIR-W428) and, when decap-aware EM was not computed, `fallback` (why, machine-readable; the verdict is then on decap-free) and `fallback_reason` (in words). `decaps_not_sized`: decap devices cap_models cannot size (EMIR-W409, W410), left out of the decap-aware solve: their straps are not checked, and a basis that needs decap-aware EM is not honoured on the net."
-          },
-          "dynamic_em": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "bases": {
-                    "type": "object",
-                    "properties": {
-                      "decap-free": {
-                        "type": "object",
-                        "properties": {
-                          "verdict": {
-                            "enum": [
-                              "FAIL",
-                              "WARN",
-                              "CLEAN"
-                            ]
-                          },
-                          "max_ratio": {
-                            "type": "object",
-                            "additionalProperties": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "governing_metric": {
-                            "anyOf": [
-                              {
-                                "enum": [
-                                  "avg",
-                                  "rms",
-                                  "peak"
-                                ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "worst": {
-                            "anyOf": [
-                              {
-                                "type": "object"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "n_violations": {
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "verdict",
-                          "max_ratio",
-                          "governing_metric",
-                          "n_violations"
-                        ]
-                      },
-                      "decap-aware": {
-                        "type": "object",
-                        "properties": {
-                          "verdict": {
-                            "enum": [
-                              "FAIL",
-                              "WARN",
-                              "CLEAN"
-                            ]
-                          },
-                          "max_ratio": {
-                            "type": "object",
-                            "additionalProperties": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "governing_metric": {
-                            "anyOf": [
-                              {
-                                "enum": [
-                                  "avg",
-                                  "rms",
-                                  "peak"
-                                ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "worst": {
-                            "anyOf": [
-                              {
-                                "type": "object"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "n_violations": {
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "verdict",
-                          "max_ratio",
-                          "governing_metric",
-                          "n_violations"
-                        ]
-                      },
-                      "worst": {
-                        "type": "object",
-                        "properties": {
-                          "verdict": {
-                            "enum": [
-                              "FAIL",
-                              "WARN",
-                              "CLEAN"
-                            ]
-                          },
-                          "max_ratio": {
-                            "type": "object",
-                            "additionalProperties": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "governing_metric": {
-                            "anyOf": [
-                              {
-                                "enum": [
-                                  "avg",
-                                  "rms",
-                                  "peak"
-                                ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "worst": {
-                            "anyOf": [
-                              {
-                                "type": "object"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "n_violations": {
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "verdict",
-                          "max_ratio",
-                          "governing_metric",
-                          "n_violations"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "decap-free",
-                      "decap-aware",
-                      "worst"
-                    ]
-                  },
-                  "higher_aware": {
-                    "type": "object",
-                    "properties": {
-                      "n": {
-                        "type": "integer"
-                      },
-                      "worst": {
-                        "anyOf": [
-                          {
-                            "type": "object"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      }
-                    },
-                    "required": [
-                      "n",
-                      "worst"
-                    ]
-                  },
-                  "feed": {
-                    "type": "object",
-                    "properties": {
-                      "node": {
-                        "type": "string"
-                      },
-                      "i_avg_A": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "i_rms_A": {
-                        "type": "object",
-                        "properties": {
-                          "decap-free": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "decap-aware": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "worst": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          }
-                        }
-                      },
-                      "i_peak_A": {
-                        "type": "object",
-                        "properties": {
-                          "decap-free": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "decap-aware": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "worst": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          }
-                        }
-                      }
-                    },
-                    "required": [
-                      "node",
-                      "i_rms_A",
-                      "i_peak_A"
-                    ]
-                  },
-                  "decaps": {
-                    "type": "object",
-                    "properties": {
-                      "n": {
-                        "type": "integer"
-                      },
-                      "c_total_F": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "folded_F": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "top": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "kind": {
-                              "enum": [
-                                "mos",
-                                "device"
-                              ]
-                            },
-                            "node": {
-                              "type": "string"
-                            },
-                            "c_F": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "r_ohm": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "r_model": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "folded": {
-                              "type": "boolean"
-                            },
-                            "half": {
-                              "enum": [
-                                "d",
-                                "s"
-                              ]
-                            },
-                            "i_avg_A": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "i_rms_A": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "i_peak_A": {
-                              "anyOf": [
-                                {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "name",
-                            "kind",
-                            "node",
-                            "c_F",
-                            "folded",
-                            "i_rms_A",
-                            "i_peak_A"
-                          ]
-                        }
-                      }
-                    },
-                    "required": [
-                      "n",
-                      "c_total_F",
-                      "top"
-                    ]
-                  },
-                  "capacitance": {
-                    "type": "object"
-                  },
-                  "items": {
-                    "type": "array",
-                    "items": {
-                      "type": "object"
-                    }
-                  },
-                  "numerics": {
-                    "type": "object",
-                    "properties": {
-                      "n_steps": {
-                        "type": "integer"
-                      },
-                      "step_s": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "passes": {
-                        "type": "integer"
-                      },
-                      "settled": {
-                        "type": "boolean"
-                      },
-                      "avg_check": {
-                        "type": "object",
-                        "properties": {
-                          "max_rel": {
-                            "anyOf": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "tolerance": {
-                            "type": "number"
-                          },
-                          "passed": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": [
-                          "max_rel",
-                          "tolerance",
-                          "passed"
-                        ]
-                      },
-                      "correction_max": {
-                        "type": "object"
-                      },
-                      "sub_steps": {
-                        "type": "object"
-                      }
-                    },
-                    "required": [
-                      "n_steps",
-                      "step_s",
-                      "passes",
-                      "settled",
-                      "avg_check"
-                    ]
-                  }
-                },
-                "required": [
-                  "bases",
-                  "feed",
-                  "decaps",
-                  "capacitance",
-                  "numerics"
-                ],
-                "description": "--dynamic in cc-grid: the net's EM from the dynamic solve. `bases`: per basis (decap-free, the static superposition; decap-aware, rms and peak from the dynamic solve with the decaps, avg the static one; worst, per segment the larger) its verdict, worst ratios, governing metric, worst segment and violation count. `higher_aware`: segments at or above the warn fraction that read higher with their decaps than without (what decap-free does not cover). `feed`: the current the feed delivers in both bases. `decaps`: the decaps' own currents (devices, not checked against a metal limit; at most 20). `capacitance`: what the solve counted, and the coupling to signal nets it left out. `items`: the segments of every basis with each basis's own ratio. `numerics`: the step, the passes, the periodic-average check, the step correction of rms, the sub-steps of the waveforms' fast edges. null when not computed (`em_basis.fallback` says why)."
+                "description": "rcc: the worst dynamic droop on the net and where, from the simulated branch currents. null on DC runs."
               },
               {
                 "type": "null"
@@ -2535,6 +1009,7 @@
         "required": [
           "net",
           "mode",
+          "metrics",
           "verdict",
           "power",
           "governing_metric",
@@ -2544,22 +1019,7 @@
           "worst_items",
           "n_violations",
           "no_width",
-          "unsaved_pins",
           "via_cuts"
-        ],
-        "anyOf": [
-          {
-            "not": {
-              "required": [
-                "dynamic_em"
-              ]
-            }
-          },
-          {
-            "required": [
-              "em_basis"
-            ]
-          }
         ]
       }
     },
@@ -2608,15 +1068,6 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
-        },
-        "unsaved_pins": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           }
         },
         "vias_assumed_one_cut": {
@@ -2777,61 +1228,12 @@
             }
           },
           "description": "Per net, via arrays within 10 % of the limit: the per-cut check uses the array's mean current, and the cuts facing the current carry more; confirm them cut by cut (the extractor's per-cut vias)."
-        },
-        "decap_straps_not_covered": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "reason": {
-                  "enum": [
-                    "no-dynamic",
-                    "not-sized",
-                    "basis",
-                    "not-computed"
-                  ]
-                },
-                "code": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "pattern": "^EMIR-[EWI][1-9][0-9]{2}$"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "n": {
-                  "type": "integer"
-                },
-                "what": {
-                  "type": "string"
-                },
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "required": [
-                "reason",
-                "n",
-                "what"
-              ]
-            }
-          },
-          "description": "Per net, the decaps whose straps the EM verdict does not cover: no --dynamic (EMIR-W428), decaps cap_models cannot size (EMIR-W409, W410), the decap-free basis (the segments that read higher with their decaps, EMIR-W436), or decap-aware EM not computed."
         }
       },
       "required": [
         "unmapped_layers",
         "limits_missing",
         "estimated_limits",
-        "unsaved_pins",
         "vias_assumed_one_cut",
         "wires_without_width"
       ]
@@ -2996,557 +1398,6 @@
         "description": "Exact commands to run next, in order; each runs as printed. An emir command keeps the caller's --format, except a run's `emir report` step (its Markdown is what to relay)."
       }
     },
-    "hierarchy": {
-      "type": "object",
-      "properties": {
-        "align": {
-          "enum": [
-            "inphase",
-            "sync",
-            "async"
-          ]
-        },
-        "phases": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "number"
-          }
-        },
-        "phase_sweep": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "integer"
-          }
-        },
-        "place": {
-          "type": "object"
-        },
-        "blocks": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "instance": {
-                "type": "string"
-              },
-              "block": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "block_net": {
-                "type": "string"
-              },
-              "abstract": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "n_pins": {
-                "type": "integer"
-              },
-              "verdict": {
-                "enum": [
-                  "FAIL",
-                  "WARN",
-                  "CLEAN"
-                ]
-              },
-              "internal_verdict": {
-                "enum": [
-                  "FAIL",
-                  "WARN",
-                  "CLEAN"
-                ]
-              },
-              "boundary": {
-                "type": "string"
-              },
-              "back_annotated": {
-                "type": "boolean"
-              },
-              "needs_back_annotation": {
-                "type": "boolean"
-              },
-              "internal_ir_mV": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "instance",
-              "block_net",
-              "n_pins",
-              "verdict",
-              "back_annotated",
-              "needs_back_annotation"
-            ]
-          }
-        },
-        "nets": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "net": {
-                "type": "string"
-              },
-              "feed": {
-                "type": "string"
-              },
-              "pads": {
-                "type": "integer"
-              },
-              "align": {
-                "type": "string"
-              },
-              "pins": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "instance": {
-                      "type": "string"
-                    },
-                    "block_net": {
-                      "type": "string"
-                    },
-                    "port": {
-                      "type": "string"
-                    },
-                    "node": {
-                      "type": "string"
-                    },
-                    "x_um": {
-                      "type": "number"
-                    },
-                    "y_um": {
-                      "type": "number"
-                    },
-                    "V_avg_mV": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "V_rms_mV": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "V_peak_mV": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "i_avg_A": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "i_rms_A": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "i_peak_A": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "instance",
-                    "block_net",
-                    "port",
-                    "node",
-                    "V_avg_mV",
-                    "V_peak_mV",
-                    "i_avg_A"
-                  ]
-                }
-              },
-              "pass_through": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "instance": {
-                      "type": "string"
-                    },
-                    "block_net": {
-                      "type": "string"
-                    },
-                    "between": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "nodes": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "R_ohm": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "I_avg_A": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "I_rms_A": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "I_peak_A": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "instance",
-                    "block_net",
-                    "between",
-                    "R_ohm",
-                    "I_avg_A"
-                  ]
-                }
-              },
-              "sweep": {
-                "anyOf": [
-                  {
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "t_common": {
-                "anyOf": [
-                  {
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "net",
-              "feed",
-              "pins",
-              "pass_through"
-            ]
-          }
-        },
-        "budget": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "budget_mV": {
-                  "type": "number"
-                },
-                "verdict": {
-                  "enum": [
-                    "PASS",
-                    "FAIL"
-                  ]
-                },
-                "rows": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "instance": {
-                        "type": "string"
-                      },
-                      "block_net": {
-                        "type": "string"
-                      },
-                      "top_net": {
-                        "type": "string"
-                      },
-                      "n_pins": {
-                        "type": "integer"
-                      },
-                      "top_mV": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "internal_mV": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "total_mV": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "budget_mV": {
-                        "type": "number"
-                      },
-                      "verdict": {
-                        "enum": [
-                          "PASS",
-                          "FAIL"
-                        ]
-                      },
-                      "exact": {
-                        "type": "boolean"
-                      },
-                      "top_peak_mV": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "internal_dynamic_mV": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      }
-                    },
-                    "required": [
-                      "instance",
-                      "block_net",
-                      "top_mV",
-                      "internal_mV",
-                      "total_mV",
-                      "budget_mV",
-                      "verdict",
-                      "exact"
-                    ]
-                  }
-                }
-              },
-              "required": [
-                "budget_mV",
-                "verdict",
-                "rows"
-              ]
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "port_voltages": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "notes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "required": [
-        "align",
-        "blocks",
-        "nets",
-        "budget",
-        "port_voltages",
-        "notes"
-      ],
-      "description": "A run with --abstract: the blocks, the voltage at every block pin, the pass-through inside blocks fed at several pins, the IR budget per block (exact for one pin, an upper bound for several) and the port-voltages file for back-annotation."
-    },
-    "em_basis": {
-      "type": "object",
-      "properties": {
-        "requested": {
-          "enum": [
-            "decap-free",
-            "decap-aware",
-            "worst"
-          ]
-        },
-        "source": {
-          "enum": [
-            "default",
-            "option",
-            "no-dynamic"
-          ]
-        },
-        "default": {
-          "enum": [
-            "decap-free",
-            "decap-aware",
-            "worst"
-          ]
-        },
-        "used": {
-          "type": "array",
-          "items": {
-            "enum": [
-              "decap-free",
-              "decap-aware",
-              "worst",
-              "measured"
-            ]
-          }
-        },
-        "honoured": {
-          "type": "boolean"
-        },
-        "not_computed": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "net": {
-                "type": "string"
-              },
-              "fallback": {
-                "type": "string"
-              },
-              "fallback_reason": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "dyn_steps": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "models": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": [
-              "net",
-              "fallback"
-            ]
-          }
-        }
-      },
-      "required": [
-        "requested",
-        "source"
-      ],
-      "description": "--dynamic or --em-basis (or a net with decap devices on a run without --dynamic: requested decap-free, EMIR-W428): the basis asked for (with --dynamic the default is worst); `used`, the bases the nets' verdicts are on (each net's `em_basis.used`); `honoured` false when a net could not have the basis asked for (`not_computed`: which and why; its verdict is then decap-free, or, for decaps-not-sized, the basis without the decaps cap_models cannot size (`models`); --fail-on-violation exits 1)"
-    },
     "argv": {
       "type": "array",
       "items": {
@@ -3555,7 +1406,7 @@
     },
     "cwd": {
       "type": "string",
-      "description": "the directory the run ran in: the relative paths of `argv` are relative to it (`emir next --run-summary` resolves them, so its re-run commands work from any directory)"
+      "description": "the directory the run ran in: the relative paths of `argv` are relative to it (`emir next --run-summary` resolves them, so its commands work from any directory)"
     },
     "limits_provenance": {
       "anyOf": [
@@ -3588,8 +1439,7 @@
                   "kind": {
                     "enum": [
                       "wire",
-                      "via",
-                      "cap"
+                      "via"
                     ]
                   },
                   "provenance": {
@@ -3779,7 +1629,7 @@
             "entries",
             "temperature"
           ],
-          "description": "Where the limits the run applied came from: the process file's `provenance` (null: not stated), and per layer and via in use its own provenance, the source (document, table or page) of each value, the values a hand-entered file gives with no source (EMIR-W320), its EM limit keys and its width loss (and, on a --dynamic run, the cap models: kind `cap`); the temperature the limits hold at, their derating and the temperatures with no source (`temperature.unsourced`); and `suspects`: the values outside the range their quantity normally takes, most often a unit slip (EMIR-W321; `blocking`: the input check refuses them, EMIR-E331; `confirmed`: listed under the file's `unit_confirmed`)."
+          "description": "Where the limits the run applied came from: the process file's `provenance` (null: not stated), and per layer and via in use its own provenance, the source (document, table or page) of each value, the values a hand-entered file gives with no source (EMIR-W320), its EM limit keys and its width loss; the temperature the limits hold at, their derating and the temperatures with no source (`temperature.unsourced`); and `suspects`: the values outside the range their quantity normally takes, most often a unit slip (EMIR-W321; `blocking`: the input check refuses them, EMIR-E331; `confirmed`: listed under the file's `unit_confirmed`)."
         },
         {
           "type": "null"

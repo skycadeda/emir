@@ -12,55 +12,48 @@ It reads what run.sh left in OUT_DIR and checks:
 2. **rcc is exact**: every checked branch's avg, rms and peak in the rcc run
    (its viewer data, `--viewer-all`) against the same reduction of the
    simulator's own output (sim/rcc.raw, read here without emir: the trapezoidal
-   rule over the window run.sh's --period gives, the last three 4 ns periods),
-   within `exact_rel`;
-3. **the run numbers** (each net's IR drop and worst ratio, the violations, the
+   rule over the window run.sh's --period gives, the record's last three 4 ns
+   periods, `emir.waveform.window`), within `exact_rel`;
+3. **rcc's IR is the simulator's**: the deck `emir simulate` wrote
+   (sim/rcc.<sim>.cir) is run once more with every node voltage printed instead
+   of the branch currents (sim/v.<sim>.cir, a few seconds), and each net's
+   static IR (the spread of the nodes' average potential against the port) and
+   dynamic IR (the largest excursion from it) over the same window are checked
+   against the rcc run's within `ir_exact_rel`;
+4. **the run numbers** (each net's IR drop and worst ratio, the violations, the
    worst item's fix) of every run against the golden file within `rel`
    (simulator and model versions);
-4. **branch by branch**, cc-grid against rcc (relative error, plus is
-   conservative, cc-grid above rcc), every checked branch carrying at least 1 %
-   of its net's largest: on the rails out and vss, the open loop conservative
-   on the governing branch (rms and peak above rcc), and the self-consistent
-   loop within `loop`: what this example measured, stated beside the method's
-   measured accuracy in docs/method-modes.md. The gate net vb (in the open
-   loop and the loop that feeds it back) and the loop on the rails alone
-   (`sc_rails`) are scored and reported, not bounded.
+5. **no number from a refused run**: the rcc runs without --period
+   (rcc_no_period.json) and with a period 10 % off (3.6 ns,
+   rcc_near_period.json) were refused with the golden file's codes (each an
+   `emir.error/1`).
 
-It writes OUT_DIR/comparison.json and OUT_DIR/comparison.md, and compares the
-operating point on magic's network with what the removed `emir layout` reported
-on the same GDS (expected/emir_layout_record.json): a record, not a check.
-Screening, not sign-off.
+It writes OUT_DIR/comparison.json and OUT_DIR/comparison.md. Screening, not
+sign-off.
 """
 from __future__ import annotations
 
+import glob
 import json
 import math
 import os
 import re
+import shutil
+import subprocess
 import sys
 
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RUNS = ("rcc", "open", "sc", "sc_rails", "op_rcc", "op_cc")
+ROOT = os.path.dirname(os.path.dirname(HERE))
+RUNS = ("rcc", "op_rcc")
 NETS = ("out", "vss")
-#: the nets scored branch by branch against rcc: the two rails, bounded, and
-#: the gate net vb, scored and reported, not bounded (its own wire
-#: capacitance carries part of its current, which the cc-grid branches,
-#: scored on the R-only grid, do not carry). A gate's average current is
-#: about zero (its charge comes back), so vb is scored on rms and peak only:
-#: an error relative to an average of about zero, and its IR drop, mean
-#: nothing
-SCORED = NETS + ("vb",)
-#: the window run.sh's --period 4e-9 gives on a 12.5 ns transient: three
-#: whole periods back from the end
-WINDOW = (0.5e-9, 12.5e-9)
-CLASSES = (("major", 0.5, None), ("secondary", 0.1, 0.5), ("minor", 0.01, 0.1))
-TOLERANCE = {"rel": 0.05, "count_rel": 0.05, "exact_rel": 1e-6,
-             # the self-consistent loop against rcc, governing branch and IR
-             # (|relative error| at most), and every branch carrying >= 1 %
-             "loop": {"avg": 0.005, "rms": 0.005, "peak": 0.03, "ir": 0.015,
-                      "all": 0.15}}
+#: the window run.sh's --period 4e-9 gives on a 16.5 ns transient: the
+#: record's last three whole periods (`emir.waveform.window`)
+WINDOW = (4.5e-9, 16.5e-9)
+#: the refused runs: what each one gave
+REFUSED = {"rcc_no_period": "no --period", "rcc_near_period": "--period 3.6e-9, 10 % off"}
+TOLERANCE = {"rel": 0.05, "count_rel": 0.05, "exact_rel": 1e-6, "ir_exact_rel": 1e-5}
 
 
 # ------------------------------------------------------------------ reading
@@ -136,6 +129,12 @@ def digest(out) -> dict:
                 "mode": n["mode"], "ir_drop_mV": n["ir_drop_mV"],
                 "max_ratio": n["max_ratio"]["all"], "n_violations": n["n_violations"],
                 "worst": {k: w[k] for k in ("layer", "metric", "fix")} if w else None}
+    # the refused runs: each one's error document at --summary-out
+    d["refused"] = {}
+    for run in REFUSED:
+        no = load(os.path.join(out, f"{run}.json"))
+        d["refused"][run] = (no["code"] if no.get("schema") == "emir.error/1"
+                             else f"not refused ({no.get('schema')})")
     return d
 
 
@@ -154,36 +153,114 @@ def exactness(out) -> dict:
     return {"branches": n, "max_rel_error": worst}
 
 
-def score(out, run) -> dict:
-    """`run` against rcc, branch by branch, per net and metric: the governing
-    branch (rcc's largest), every branch carrying >= 1 % of it, and the
-    major / secondary / minor classes; the IR drop."""
-    ref, got = branches(out, "rcc"), branches(out, run)
-    rs = {n["net"]: n for n in load(os.path.join(out, "rcc.json"))["nets"]}
-    gs = {n["net"]: n for n in load(os.path.join(out, f"{run}.json"))["nets"]}
-    res = {}
-    for net in SCORED:
-        keys = sorted(k for k in ref if k[0] == net and k in got)
-        if net not in gs or net not in rs or not keys:
-            continue                          # vb is not in the rails-only loop
-        rails = net in NETS
-        r = {"branches": len(keys),
-             "ir": ((gs[net]["ir_drop_mV"] - rs[net]["ir_drop_mV"]) / rs[net]["ir_drop_mV"]
-                    if rails else None)}
-        for m in ("avg", "rms", "peak") if rails else ("rms", "peak"):
-            b = np.array([abs(ref[k]["currents"][m]) for k in keys])
-            a = np.array([abs(got[k]["currents"][m]) for k in keys])
-            e = (a - b) / np.where(b > 0, b, 1.0)
-            g = int(np.argmax(b))
-            every = b >= 0.01 * b.max()
-            r[m] = {"governing": keys[g][1], "gov": float(e[g]),
-                    "all": [float(e[every].min()), float(e[every].max())],
-                    "n_all": int(every.sum())}
-            for name, lo, hi in CLASSES:
-                sel = (b >= lo * b.max()) & ((b < hi * b.max()) if hi else True)
-                r[m][name] = [float(e[sel].min()), float(e[sel].max())] if sel.any() else None
-        res[net] = r
-    return res
+def dspf_nets(path) -> tuple:
+    """`({net: {node}}, [port])` of the DSPF: the nodes of each `*|NET`
+    section's resistors, and the subcircuit's ports."""
+    nets, ports, net = {}, [], None
+    with open(path, encoding="utf-8") as f:
+        for ln in f:
+            w = ln.split()
+            if not w:
+                continue
+            if w[0].upper() == ".SUBCKT":
+                ports = w[2:]
+            elif w[0] == "*|NET":
+                net = w[1]
+                nets.setdefault(net, set())
+            elif net and w[0][0] in "Rr" and len(w) >= 4:
+                nets[net] |= {w[1], w[2]}
+    return nets, ports
+
+
+def voltage_run(out):
+    """Run the deck emir simulate wrote once more, with every node voltage
+    printed (Xyce `V(*)`; ngspice saves them all when the deck saves nothing
+    else): (time, {name: volts}) of sim/v.raw, or None with the reason."""
+    decks = glob.glob(os.path.join(out, "sim", "rcc.*.cir"))
+    if len(decks) != 1:
+        return None, "no deck of emir simulate in sim/"
+    sim = os.path.basename(decks[0]).split(".")[1]
+    exe = shutil.which("Xyce" if sim == "xyce" else sim)
+    if exe is None or sim not in ("xyce", "ngspice"):
+        return None, f"{sim} is not on PATH"
+    with open(decks[0], encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    keep, skip = [], False
+    for ln in lines:
+        # emir's saves: its comment lines, then .print / .save and their `+` lines
+        if ln.startswith("* emir: ") or ln.startswith("* (interactive ngspice"):
+            skip = True
+            continue
+        if skip and (ln.startswith((".print", ".save", ".options filetype", "+"))):
+            continue
+        skip = False
+        keep.append(ln)
+    end = max(i for i, ln in enumerate(keep) if ln.strip().lower() == ".end")
+    if sim == "xyce":
+        keep.insert(end, ".print tran format=raw file=v.raw V(*)")
+        cmd = [exe, "-a", "v.xyce.cir"]
+    else:
+        keep.insert(end, ".options filetype=ascii")
+        cmd = [exe, "-b", "-r", "v.raw", "v.ngspice.cir"]
+    deck = os.path.join(out, "sim", f"v.{sim}.cir")
+    with open(deck, "w", encoding="utf-8") as f:
+        f.write("\n".join(keep) + "\n")
+    with open(os.path.join(out, "sim", "v.log"), "w", encoding="utf-8") as log:
+        p = subprocess.run(cmd, cwd=os.path.dirname(deck), stdout=log,
+                           stderr=subprocess.STDOUT, timeout=120)
+    if p.returncode != 0:
+        raise SystemExit(f"{sim} failed on {deck} (see sim/v.log)")
+    return raw(os.path.join(out, "sim", "v.raw")), None
+
+
+def _voltage(sig, node, ports, inst="XDUT"):
+    """The raw signal of a DSPF node: a port is the testbench's own node (the
+    instance connects each port to the node of its name), any other node the
+    instance's (`V(XDUT:n)` in Xyce, `xdut.n` in ngspice)."""
+    names = ([f"V({node})", node] if node in ports
+             else [f"V({inst}:{node})", f"{inst}.{node}", f"V({inst}.{node})"])
+    up = {k.upper(): k for k in sig}
+    for n in names:
+        if n.upper() in up:
+            return sig[up[n.upper()]]
+    return None
+
+
+def ir_exactness(out) -> dict:
+    """The rcc run's static and dynamic IR per net against the same numbers
+    from the simulator's own node voltages, over the same window."""
+    got, why = voltage_run(out)
+    if got is None:
+        return {"ran": False, "why": why}
+    t, sig = got
+    nets, ports = dspf_nets(os.path.join(out, "extract", "sink.dspf"))
+    run = {n["net"]: n for n in load(os.path.join(out, "rcc.json"))["nets"]}
+    inner = (t > WINDOW[0]) & (t < WINDOW[1])
+    tt = np.concatenate([[WINDOW[0]], t[inner], [WINDOW[1]]])
+    res, worst = {}, 0.0
+    for net in NETS:
+        ref = _voltage(sig, net, ports)
+        avg, peak, missing = [0.0], [0.0], 0
+        for node in sorted(nets[net] - {net}):
+            v = _voltage(sig, node, ports)
+            if v is None:
+                missing += 1
+                continue
+            d = v - ref
+            dd = np.concatenate([[np.interp(WINDOW[0], t, d)], d[inner],
+                                 [np.interp(WINDOW[1], t, d)]])
+            w = np.zeros_like(tt)
+            w[:-1] += np.diff(tt) / 2
+            w[1:] += np.diff(tt) / 2
+            avg.append(float(dd @ w) / (tt[-1] - tt[0]))
+            peak.append(float(np.abs(dd).max()))
+        sim = {"static_mV": (max(avg) - min(avg)) * 1e3, "dynamic_mV": max(peak) * 1e3}
+        mine = {"static_mV": run[net]["ir_drop_mV"], "dynamic_mV": run[net]["dynamic_mV"]}
+        rel = max(abs(mine[k] - sim[k]) / sim[k] for k in sim)
+        worst = max(worst, rel)
+        res[net] = {"simulator": sim, "rcc": mine, "nodes": len(avg) - 1,
+                    "missing": missing, "rel": rel}
+    return {"ran": True, "nets": res, "max_rel_error": worst}
 
 
 # ------------------------------------------------------------------ checking
@@ -217,45 +294,34 @@ def check(d, golden, tol) -> list:
             for k in ("mode", "n_violations", "worst"):
                 if n[k] != gn[k]:
                     bad.append(f"{run}.{net}.{k}: {n[k]!r} != {gn[k]!r}")
+    for run, code in golden.get("refused", {}).items():
+        if d["refused"].get(run) != code:
+            bad.append(f"{run}: {d['refused'].get(run)} != refused with {code}")
     return bad
 
 
-def check_scores(ex, sc, op, tol) -> list:
-    bad = []
-    if not ex["max_rel_error"] <= tol["exact_rel"]:
-        bad.append(f"rcc is not the simulator's own: max relative error "
-                   f"{ex['max_rel_error']:.3g} over {ex['branches']} branches")
-    lp = tol["loop"]
-    for net, r in ((n, x) for n, x in sc.items() if n in NETS):
-        for m in ("avg", "rms", "peak"):
-            if abs(r[m]["gov"]) > lp[m]:
-                bad.append(f"sc.{net}.{m}: governing {r[m]['gov']:+.3%} beyond {lp[m]:.1%}")
-            lo, hi = r[m]["all"]
-            if max(-lo, hi) > lp["all"]:
-                bad.append(f"sc.{net}.{m}: a branch at {lo:+.2%} .. {hi:+.2%}, beyond "
-                           f"{lp['all']:.0%}")
-        if abs(r["ir"]) > lp["ir"]:
-            bad.append(f"sc.{net}.ir: {r['ir']:+.3%} beyond {lp['ir']:.1%}")
-    for net, r in ((n, x) for n, x in op.items() if n in NETS):
-        for m in ("rms", "peak"):
-            if r[m]["gov"] < 0:
-                bad.append(f"open.{net}.{m}: the open loop read the governing branch low "
-                           f"({r[m]['gov']:+.3%})")
+def check_exact(ex, tol) -> list:
+    if ex["max_rel_error"] <= tol["exact_rel"]:
+        return []
+    return [f"rcc is not the simulator's own: max relative error "
+            f"{ex['max_rel_error']:.3g} over {ex['branches']} branches"]
+
+
+def check_ir(ir, tol) -> list:
+    if not ir["ran"]:
+        return [f"rcc's IR not checked against the simulator's node voltages: {ir['why']}"]
+    bad = [f"{net}: {n['missing']} node voltage(s) missing" for net, n in ir["nets"].items()
+           if n["missing"]]
+    if ir["max_rel_error"] > tol["ir_exact_rel"]:
+        bad.append(f"rcc's IR is not the simulator's: max relative error "
+                   f"{ir['max_rel_error']:.3g}")
     return bad
 
 
 # ------------------------------------------------------------------ the record
 
 
-def pct(v):
-    return f"{100 * v:+.2f} %"
-
-
-def span(v):
-    return "--" if v is None else f"{100 * v[0]:+.2f} % .. {100 * v[1]:+.2f} %"
-
-
-def markdown(d, ex, scores, record) -> str:
+def markdown(d, ex, ir) -> str:
     L = ["# Example 08: measured", "",
          "Every number is from this run of run.sh (synthetic layout, public SKY130 data). "
          "Screening, not sign-off.", "",
@@ -265,7 +331,21 @@ def markdown(d, ex, scores, record) -> str:
          f"process file (their current is in the IR drop): "
          f"{', '.join(d['unchecked_layers'])}.",
          f"- rcc against the simulator's own output, {ex['branches']} checked branches: "
-         f"largest relative difference {ex['max_rel_error']:.2g}.", "",
+         f"largest relative difference {ex['max_rel_error']:.2g}."]
+    if ir["ran"]:
+        L.append("- rcc's IR against the simulator's own node voltages (static, then "
+                 "dynamic): " + "; ".join(
+                     f"{net} {n['rcc']['static_mV']:.4f} / {n['rcc']['dynamic_mV']:.4f} mV "
+                     f"against {n['simulator']['static_mV']:.4f} / "
+                     f"{n['simulator']['dynamic_mV']:.4f} mV over {n['nodes']} nodes"
+                     for net, n in ir["nets"].items())
+                 + f"; largest relative difference {ir['max_rel_error']:.2g}.")
+    else:
+        L.append(f"- rcc's IR was not checked against the simulator's node voltages: "
+                 f"{ir['why']}.")
+    L += [f"- {run} (the same result, {REFUSED.get(run, run)}): refused, {code}, no "
+          f"number." for run, code in d.get("refused", {}).items()]
+    L += ["",
          "| run | net | IR drop | worst ratio | violations | worst item's fix |",
          "|---|---|---|---|---|---|"]
     for run in RUNS:
@@ -273,31 +353,6 @@ def markdown(d, ex, scores, record) -> str:
             fix = (n["worst"] or {}).get("fix") or ""
             L.append(f"| {run} | {net} | {n['ir_drop_mV']:.4f} mV | {n['max_ratio']:.4f}x | "
                      f"{n['n_violations']} | {fix} |")
-    L += ["", "cc-grid against rcc, branch by branch (relative error, plus reads high), every "
-              "checked branch carrying at least 1 % of its net's largest; the gate net vb on "
-              "rms and peak only (its average current is about zero), reported, not "
-              "bounded:", "",
-          "| run | net | metric | governing branch | every branch | major | secondary | minor "
-          "| IR |", "|---|---|---|---|---|---|---|---|---|"]
-    for run, sc in scores.items():
-        for net, r in sc.items():
-            ms = [m for m in ("avg", "rms", "peak") if m in r]
-            for m in ms:
-                x = r[m]
-                ir = pct(r["ir"]) if m == ms[0] and r["ir"] is not None else ""
-                L.append(f"| {run} | {net} | {m} | {pct(x['gov'])} ({x['governing']}) | "
-                         f"{span(x['all'])} | {span(x['major'])} | {span(x['secondary'])} | "
-                         f"{span(x['minor'])} | {ir} |")
-    if record:
-        L += ["", "The operating point on magic's network (op_cc: the CC netlist's currents, "
-                  "as the removed layout command simulated them) against what it reported "
-                  "on this GDS (expected/emir_layout_record.json):", "",
-              "| net | IR drop, magic's network | IR drop, the layout command | worst ratio, "
-              "magic's | worst ratio, the layout command |", "|---|---|---|---|---|"]
-        for net, rec in record["nets"].items():
-            n = d["runs"]["op_cc"]["nets"][net]
-            L.append(f"| {net} | {n['ir_drop_mV']:.4f} mV | {rec['ir_drop_mV']:.4f} mV | "
-                     f"{n['max_ratio']:.4f}x | {rec['max_ratio']:.4f}x |")
     return "\n".join(L) + "\n"
 
 
@@ -305,15 +360,12 @@ def main(argv):
     out = argv[0]
     d = digest(out)
     ex = exactness(out)
-    scores = {"open": score(out, "open"), "sc": score(out, "sc"),
-              "sc_rails": score(out, "sc_rails")}
-    rec_path = os.path.join(HERE, "expected", "emir_layout_record.json")
-    record = load(rec_path) if os.path.isfile(rec_path) else None
+    ir = ir_exactness(out)
     with open(os.path.join(out, "comparison.json"), "w", encoding="utf-8") as f:
-        json.dump({**d, "rcc_exactness": ex, "branch_scores": scores}, f, indent=1)
+        json.dump({**d, "rcc_exactness": ex, "rcc_ir_exactness": ir}, f, indent=1)
         f.write("\n")
     with open(os.path.join(out, "comparison.md"), "w", encoding="utf-8") as f:
-        f.write(markdown(d, ex, scores, record))
+        f.write(markdown(d, ex, ir))
     if len(argv) == 3 and argv[1] == "--write":
         with open(argv[2], "w", encoding="utf-8") as f:
             json.dump({"tolerance": TOLERANCE, **d,
@@ -325,8 +377,8 @@ def main(argv):
         print(f"wrote {argv[2]}")
         return 0
     golden = load(argv[1])
-    tol = golden["tolerance"]
-    bad = check(d, golden, tol) + check_scores(ex, scores["sc"], scores["open"], tol)
+    tol = {**TOLERANCE, **golden["tolerance"]}
+    bad = check(d, golden, tol) + check_exact(ex, tol) + check_ir(ir, tol)
     for b in bad:
         print(f"MISMATCH {b}")
     print(f"{argv[1]}: {'matches' if not bad else f'{len(bad)} mismatch(es)'}")

@@ -1,0 +1,22 @@
+{
+ "label": "06_supply_mesh, run.sh: the N = 10 mesh (32 inverters) screened with the invented limits of process_screen.yaml by rcc (Xyce on rcc.cir, every branch current printed, then emir run: every metric; Xyce, synthetic, serial). Measured with Xyce 7.10 (development build): FAIL, four Metal1 straps over their average limit, the two that leave the feed at 1.828x and 1.755x (fixes: Metal1: widen 2.000 -> 3.660 um; Metal1: widen 2.000 -> 3.510 um), the next two up and right at 1.065x and 1.035x; every contact passes (worst 0.727x); IR 3.820 mV, dynamic IR 37.31 mV. The ratios are held to 0.1 % (another Xyce version takes other time steps; the averages are charge, and move far less); the README banner and the blog's cover and carousel pages 1 and 2 draw this run.",
+ "checks": [
+  {"path": "verdict", "equals": "FAIL"},
+  {"path": "nets.0.net", "equals": "VDD"},
+  {"path": "nets.0.mode", "equals": "rcc"},
+  {"path": "nets.0.metrics", "equals": ["avg", "rms", "peak"]},
+  {"path": "nets.0.n_violations", "equals": 4},
+  {"path": "nets.0.governing_metric", "equals": "avg"},
+  {"path": "nets.0.worst_items.0.name", "equals": "Rv0_0"},
+  {"path": "nets.0.worst_items.0.ratio", "value": 1.827832, "rel": 0.001},
+  {"path": "nets.0.worst_items.1.name", "equals": "Rh0_0"},
+  {"path": "nets.0.worst_items.1.ratio", "value": 1.754865, "rel": 0.001},
+  {"path": "nets.0.worst_items.2.name", "equals": "Rv0_1"},
+  {"path": "nets.0.worst_items.2.ratio", "value": 1.065305, "rel": 0.001},
+  {"path": "nets.0.worst_items.3.name", "equals": "Rh1_0"},
+  {"path": "nets.0.worst_items.3.ratio", "value": 1.034946, "rel": 0.001},
+  {"path": "nets.0.max_ratio.via", "value": 0.726544, "rel": 0.005},
+  {"path": "nets.0.ir_drop_mV", "value": 3.82028, "rel": 0.002},
+  {"path": "nets.0.dynamic_mV", "value": 37.3058, "rel": 0.01}
+ ]
+}

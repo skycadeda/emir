@@ -1,6 +1,6 @@
 """The Cadence-facing behaviour that runs here: the viewer data (bounded on a
-big run, the numbers the live test expects), `emir save-lines --mode
-rcc|cc-grid` and `--out`, the per-net recommendation `emir next` shows, `emir gui-install`'s site stub and launcher, `bin/emir` dropping
+big run, the numbers the live test expects), `emir save-lines` with a prefix
+and `--out`, `emir gui-install`'s site stub and launcher, `bin/emir` dropping
 a parent's Python environment, and the `emir next` rules of the Cadence flow."""
 import json
 import os
@@ -110,45 +110,19 @@ def test_a_50k_resistor_net_gives_bounded_viewer_data(tmp_path, n):
 # ------------------------------------------------------------ save-lines / --out
 
 
-def test_save_lines_in_the_persons_mode_with_a_prefix(tmp_path):
+def test_save_lines_with_a_prefix(tmp_path):
     out = tmp_path / "tb" / "emir_save.scs"
-    d, p = jrun("save-lines", DSPF, "--mode", "rcc", "--prefix", "XDUT.", "--out", out)
+    d, p = jrun("save-lines", DSPF, "--prefix", "XDUT.", "--out", out)
     assert d["mode"] == "rcc" and "modes" not in d
     assert d["lines"][0].startswith("save XDUT.Rm1:1 ") and d["count"] == 16
     assert out.read_text() == "\n".join(d["lines"]) + "\n" and d["out"] == str(out)
     d, p = jrun("save-lines", DSPF, "--mode", "auto", rc=2)
-    assert d["code"] == "EMIR-E520" and "auto is gone" in d["message"]
+    assert d["code"] == "EMIR-E507" and "one method of a simulated run, rcc" in d["message"]
 
 
-def test_the_size_recommends_and_split_pins_allow_rcc_only(tmp_path):
-    """What `emir next` shows the person: the size's recommendation, and the
-    nets only one mode can serve (never a choice made for them)."""
-    from emir.dspf import parse
-    from emir.modes import per_net
-    big = chain_dspf(tmp_path, 600)                              # 601 nodes > 500
-    m = per_net(parse(big))["VDD"]
-    assert m["recommended"] == "cc-grid" and m["only"] is None and "601 nodes" in m["why"]
-    from _helpers import SPLIT_DSPF
-    split = write(tmp_path / "split.dspf", SPLIT_DSPF)
-    m = per_net(parse(split))["VDD"]
-    assert m["only"] == "rcc" and "several DSPF connections" in m["only_why"]
-    assert per_net(parse(DSPF))["VDD"]["recommended"] == "rcc"
-
-
-def test_a_big_block_recommends_cc_grid(monkeypatch):
-    from emir.dspf import parse
-    from emir.modes import per_net
-    monkeypatch.setitem(P.THRESHOLDS, "big_block_nodes", 10)    # the sample has 17 nodes
-    m = per_net(parse(DSPF))["VDD"]
-    assert m["recommended"] == "cc-grid" and "converge poorly" in m["why"]
-
-
-def test_save_lines_out_for_the_other_modes(tmp_path):
-    d, _ = jrun("save-lines", DSPF, "--mode", "cc-grid", "--out", tmp_path / "s.scs")
-    assert (tmp_path / "s.scs").read_text() == "save MP0:s MP1:s MP2:s MP3:s\n"
-    assert d["mode"] == "cc-grid"
+def test_save_lines_out_where_no_directory_can_be_made(tmp_path):
     blocker = write(tmp_path / "f", "x")
-    d, _ = jrun("save-lines", DSPF, "--mode", "rcc", "--out", f"{blocker}/s.scs", rc=2)
+    d, _ = jrun("save-lines", DSPF, "--out", f"{blocker}/s.scs", rc=2)
     assert d["code"] == "EMIR-E105"
 
 
@@ -207,15 +181,14 @@ def _plan(**kw):
 def test_next_plans_the_extraction_from_a_layout(tmp_path):
     plan = _plan(gds="blk.gds", cdl="blk.cdl", cell="blk", have_cadence=True)
     ids = [s["id"] for s in plan.steps]
-    assert ids == ["selftest", "extract-plan:r_only", "extract:r_only"]
+    # the RC extraction: the netlist rcc simulates and the DSPF it screens
+    assert ids == ["selftest", "extract-plan:rc_coupled", "extract:rc_coupled"]
     run = plan.steps[2]
     assert run["command"] == ("emir extract --gds blk.gds --cdl blk.cdl --cell blk "
-                              "--kind r_only --run")
+                              "--kind rc_coupled --run")
     assert run["needs_human"] and run["licensed_tool"] == "quantus"
     assert not plan.steps[1]["needs_human"] and "cadence-extract" in plan.rules
-    assert run["after"] == ["extract-plan:r_only"]
-    plan = _plan(gds="b.gds", cdl="b.cdl", cell="b", mode="cc-grid")
-    assert "extract:c_only_coupled" in [s["id"] for s in plan.steps]
+    assert run["after"] == ["extract-plan:rc_coupled"]
 
 
 def test_next_advises_extract_at_a_cadence_site():
@@ -226,7 +199,7 @@ def test_next_advises_extract_at_a_cadence_site():
 
 
 def test_next_points_a_spectre_simulation_at_the_templates():
-    plan = _plan(dspf=DSPF, process=PROC, have_cadence=True, mode="rcc")
+    plan = _plan(dspf=DSPF, process=PROC, have_cadence=True)
     sim = next(s for s in plan.steps if s["id"] == "simulate")
     assert sim["command"].startswith("spectre ")
     assert any("tb_rcc.scs.tmpl" in a and "--out" in a for a in plan.advice)
@@ -235,7 +208,10 @@ def test_next_points_a_spectre_simulation_at_the_templates():
 def test_next_on_a_big_block_at_a_cadence_site(monkeypatch):
     monkeypatch.setitem(P.THRESHOLDS, "big_block_nodes", 10)
     plan = _plan(dspf=DSPF, process=PROC, have_cadence=True)
-    assert any("c_only_coupled" in a and "--mode cc-grid" in a for a in plan.advice)
+    assert any(a.startswith("ADC-top / PLL-top size") for a in plan.advice)
+    assert not any("c_only" in a or "cc-grid" in a for a in plan.advice)
+    sim = next(s for s in plan.steps if s["id"] == "simulate")
+    assert sim["long_run"] and sim["needs_human"]
 
 
 def test_next_viewer_at_a_cadence_site():
@@ -245,6 +221,6 @@ def test_next_viewer_at_a_cadence_site():
 
 
 def test_next_cli_still_validates_with_the_cadence_rules():
-    d, _ = jrun("next", "--dspf", DSPF, "--process", PROC, "--have-cadence", "--mode", "rcc")
+    d, _ = jrun("next", "--dspf", DSPF, "--process", PROC, "--have-cadence")
     assert "cadence-testbench" in d["rules"]
     assert sample_text()                                         # (fixture sanity)

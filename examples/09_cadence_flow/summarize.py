@@ -38,7 +38,7 @@ def main(out):
     digest = {
         "extract_unconfigured": plan_digest(load(out, "plan_unconfigured.json")),
         "extract_r_only": plan_digest(load(out, "plan_r_only.json")),
-        "extract_c_only_coupled": plan_digest(load(out, "plan_c_only_coupled.json")),
+        "extract_rc_coupled": plan_digest(load(out, "plan_rc_coupled.json")),
         "save_lines": {"schema": s["schema"], "mode": s["mode"], "count": s["count"], "first_words": s["lines"][0].split()[:3],
                        "file_lines": len(open(s["out"], encoding="utf-8").read().splitlines())},
         "testbench": {"unfilled_fields": len(re.findall(r"\$\{[A-Z_]+\}", tb)),

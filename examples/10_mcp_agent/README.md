@@ -10,7 +10,7 @@ as a short Python script so it runs the same way every time, offline:
 3. make each planned tool call in order (`emir_selftest`, `emir_nets`,
    `emir_check`, `emir_run`, `emir_report`), stopping at the first failure;
 4. show the go-ahead rule: an `emir_run` that would start Spectre (`run: true`,
-   in the mode the person chose) is refused with `EMIR-E590`, because the call
+   rcc) is refused with `EMIR-E590`, because the call
    carries no `confirm: true` (an agent passes it only after the person agreed).
 
 No network, no simulator, no licence is used.

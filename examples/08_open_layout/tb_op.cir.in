@@ -1,7 +1,7 @@
-* Example 08: the NMOS sink array at the operating point the removed `emir
-* layout` simulated (out at 1.8 V, vb at 1.0 V), every source held at DC over a
-* short transient (EM's currents come from a .tran). run.sh writes
-* tb_op_rcc.cir and tb_op_cc.cir from this file, as tb_tran.cir.in.
+* Example 08: the NMOS sink array at its DC operating point (out at 1.8 V, vb
+* at 1.0 V), every source held at DC over a short transient (EM's currents come
+* from a .tran). run.sh writes
+* tb_op_rcc.cir from this file, as tb_tran.cir.in.
 .param mc_mm_switch=0 mc_pr_switch=0
 .include "@PDK_ROOT@/sky130A/libs.tech/ngspice/corners/tt.spice"
 .include "@PDK_ROOT@/sky130A/libs.tech/ngspice/r+c/res_typical__cap_typical.spice"
@@ -12,6 +12,7 @@ Vvss vss 0 0
 Vvb vb 0 1.0
 Xdut vb out vss sink
 .options timeint reltol=1e-4
-* (four 1 ns windows, a step no longer than 20 ps: the run's window is whole)
+* (every source at DC: run.sh's --period 1e-9 averages the last three 1 ns
+* spans of the 4 ns record; a step no longer than 20 ps)
 .tran 0.01n 4n 0 0.02n
 .end

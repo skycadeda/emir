@@ -15,7 +15,7 @@ import shutil
 import jsonschema
 import pytest
 import yaml
-from _helpers import CUR, DSPF, PROC, ROOT, cc_result, emir, rcc_result, write
+from _helpers import CUR, DSPF, PROC, ROOT, emir, rcc_result, write
 
 from emir import cli, schemas
 
@@ -97,8 +97,8 @@ def test_nets_pins_save_lines():
     assert [p["name"] for p in d["pins"]] == ["MP0:s", "MP1:s", "MP2:s", "MP3:s"]
     d, _ = jrun("save-lines", DSPF, "--net", "VDD", "--mode", "rcc")
     assert d["mode"] == "rcc" and d["count"] == 16 and d["lines"][0].startswith("save ")
-    d, _ = jrun("save-lines", DSPF, "--mode", "cc-grid", "--prefix", "XI0.")
-    assert d["lines"] == ["save XI0.MP0:s XI0.MP1:s XI0.MP2:s XI0.MP3:s"] and d["count"] == 4
+    d, _ = jrun("save-lines", DSPF, "--prefix", "XI0.")
+    assert d["lines"][0].startswith("save XI0.Rm1:1 XI0.Rm2:1") and d["count"] == 16
     assert d["sidecars"] == []
 
 
@@ -106,7 +106,7 @@ def test_nets_pins_save_lines():
     (["nets", "/nonexistent.dspf"], "EMIR-E101"),
     (["pins", DSPF, "--net", "vdd"], "EMIR-E204"),
     (["save-lines", DSPF, "--net", "vdd", "--mode", "rcc"], "EMIR-E204"),
-    (["save-lines", DSPF, "--net", "VDD"], "EMIR-E520"),        # the mode: the person's
+    (["save-lines", DSPF, "--net", "VDD", "--mode", "cc-grid"], "EMIR-E507"),  # rcc only
     (["pins", DSPF], "EMIR-E507"),                     # --net is required
     (["nets", DSPF, "--he"], "EMIR-E507"),             # no abbreviations
     (["info", "--verbose"], "EMIR-E507"),
@@ -152,24 +152,10 @@ def test_run_dc_and_fail_on_violation(tmp_path):
     assert d["verdict"] == "FAIL" and "exit 1" in p.stderr
 
 
-def test_run_cc_grid(tmp_path):
-    d, _ = jrun("run", DSPF, "--net", "VDD", "--process", PROC, "--cc-sim",
-                cc_result(tmp_path), "--mode", "cc-grid", "--period", "1e-9")
-    n = d["nets"][0]
-    assert n["mode"] == "cc-grid" and n["mode_reason"] == "--mode cc-grid"
-    assert d["current_source"]["kind"] == "simulation"
-
-
 def test_run_rcc(tmp_path):
     d, _ = jrun("run", DSPF, "--net", "VDD", "--process", PROC, "--cc-sim",
                 rcc_result(tmp_path), "--mode", "rcc", "--period", "1e-9")
     assert d["nets"][0]["mode"] == "rcc"
-
-
-def test_run_save_list_is_a_save_lines_document():
-    d, _ = jrun("run", DSPF, "--save-list", "--save-prefix", "XI0.")
-    assert d["schema"] == "emir.save_lines/1" and d["mode"] == "cc-grid"
-    assert d["lines"] == ["save XI0.MP0:s XI0.MP1:s XI0.MP2:s XI0.MP3:s"]
 
 
 def test_run_refused_and_nothing_analysed(tmp_path):
@@ -182,14 +168,19 @@ def test_run_refused_and_nothing_analysed(tmp_path):
 def test_run_with_a_missing_simulator_exits_3(tmp_path):
     net = write(tmp_path / "tb.scs", "// a netlist\n")
     d, _ = jrun("run", DSPF, "--net", "VDD", "--process", PROC, "--netlist", net,
-                "--mode", "cc-grid", "--run", rc=3, env=no_spectre_env())
+                "--run", rc=3, env=no_spectre_env())
     assert d["code"] == "EMIR-E601" and d["exit_code"] == 3
     assert d["next_steps"][0]["command"] == "emir info --format json"
-    # without --run a licensed simulator is planned, not run: no tool needed
+    # without --run: planned (the Spectre command), nothing run
     d, _ = jrun("run", DSPF, "--net", "VDD", "--process", PROC, "--netlist", net,
-                "--mode", "cc-grid", env=no_spectre_env())
-    assert d["schema"] == "emir.simulate/1" and d["ran"] is False
+                "--period", "1e-8", env=no_spectre_env())
+    assert d["schema"] == "emir.simulate/1" and d["ran"] is False and d["mode"] == "rcc"
     assert d["next_steps"][0]["command"].endswith("--run --format json")
+    # without --period the transient would be refused after it ran: refused
+    # first (EMIR-E428), nothing planned to run
+    d, _ = jrun("run", DSPF, "--net", "VDD", "--process", PROC, "--netlist", net, rc=2,
+                env=no_spectre_env())
+    assert d["code"] == "EMIR-E428"
 
 
 def test_a_missing_package_exits_3(monkeypatch, capsys):

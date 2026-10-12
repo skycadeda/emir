@@ -1,17 +1,13 @@
 # 02 · The open-simulator flow with Xyce
 
-Screening an extracted rail with **Xyce** supplying the currents, in both of
-EMIR's simulation modes, on a block small enough to work out by hand:
-
-* **rcc**: simulate the RC netlist (the DSPF itself, with its devices) and
-  read every resistor's current;
-* **cc-grid**: simulate the CC netlist (the same devices on an ideal rail),
-  read each device pin's current, and push those currents through the R grid.
+Screening an extracted rail with **Xyce** supplying the currents, on a block
+small enough to work out by hand: **rcc** simulates the RC netlist (the DSPF
+itself, with its devices) and reads every resistor's current.
 
 The devices are subcircuits, the way open PDKs ship their transistors (sky130's
 ngspice models define `sky130_fd_pr__nfet_01v8` as a `.subckt` with ports
-`d g s b`). No simulator prints the current into a subcircuit's pin, so the
-CC run puts a 0 V probe in series with each one (`--probe`).
+`d g s b`). rcc reads the rail's resistor currents, so it needs no device
+current.
 
 ```sh
 sh examples/02_xyce/run.sh        # about 3 s; outputs in examples/02_xyce/emir_out/
@@ -35,9 +31,8 @@ If Xyce is not found, the script stops with exit status 3 (`EMIR-E660`).
 | file | what it is |
 |---|---|
 | `loadrail.dspf` | the extraction: a 60 um Metal1 rail (12 segments of 1 ohm, 0.75 um wide), four contacts (12 ohm with 2 cuts, 24 ohm with 1 cut), 1 fF per rail node, and the four devices on their instance-pin nodes. An RC DSPF with its devices: the RC netlist. |
-| `cc.sp` | the CC netlist: the same four devices on an ideal VDD |
 | `models.sp` | a level-1 NMOS with `lambda = 0` and no capacitance, wrapped in a subcircuit `nsink` |
-| `tb_rcc.cir`, `tb_cc.cir` | the testbenches: 1.8 V supply, a gate pulse per device, a `.tran` over four periods |
+| `tb_rcc.cir` | the testbench: 1.8 V supply, a gate pulse per device, a `.tran` over four periods |
 | `expected/summary.json` | the golden results, with their tolerance (`tests/test_examples_opensim.py` compares them) |
 
 The process file is the bundled **illustrative** one (`emir/data/sample/process.yaml`):
@@ -47,13 +42,10 @@ any silicon.
 ## What run.sh does
 
 ```sh
-emir simulate tb_rcc.cir --sim xyce --dspf loadrail.dspf --mode rcc --out emir_out/sim/rcc.raw
-emir simulate tb_cc.cir  --sim xyce --dspf loadrail.dspf --mode cc-grid --probe --out emir_out/sim/cc.raw
-emir run loadrail.dspf --process <sample process> --cc-sim emir_out/sim/rcc.raw --mode rcc \
+emir simulate tb_rcc.cir --sim xyce --dspf loadrail.dspf --out emir_out/sim/rcc.raw
+emir run loadrail.dspf --process <sample process> --cc-sim emir_out/sim/rcc.raw \
     --period 1e-8 --em-temp 100 --summary-out emir_out/rcc.json
-emir run loadrail.dspf --process <sample process> --cc-sim emir_out/sim/cc.raw --mode cc-grid \
-    --period 1e-8 --em-temp 100 --summary-out emir_out/cc.json
-emir report --from emir_out/cc.json
+emir report --from emir_out/rcc.json
 ```
 
 `emir simulate` writes the deck it runs beside the result (`rcc.xyce.cir`): the
@@ -68,8 +60,8 @@ resistances are the DSPF's and the IR below needs no temperature correction.
 
 **Currents.** In saturation a level-1 NMOS with `lambda = 0` draws
 `I = (kp/2)(W/L)(Vgs - vto)^2 = 100 uA/V^2 x W/L x (0.5 V)^2 = 25 uA x W/L` at
-`Vgs = 1 V`, whatever its drain voltage. That makes the result independent of the rail's droop, so
-cc-grid and rcc must agree. W/L = 80, 100, 120, 100 gives
+`Vgs = 1 V`, whatever its drain voltage. That makes the result independent of the rail's droop.
+W/L = 80, 100, 120, 100 gives
 **I_on = 2.0, 2.5, 3.0, 2.5 mA**.
 
 **Waveforms.** Each gate pulses 0 to 1 V with 0.1 ns ramps, 2 ns flat, every
@@ -89,13 +81,13 @@ of their rms^2, and its peak the largest `I_on` it carries.
 rms with `sqrt(28.8 x 5)` / peak), so 2.4 / 9 / 12 mA at 0.75 um; Cont
 0.75 / 1.5 / 2.4 mA per cut.
 
-| item | current | limit | ratio by hand | measured (rcc) | measured (cc-grid) |
-|---|---|---|---|---|---|
-| Rm1 avg (the feed segment: all four sinks) | 0.20333 x 10 = 2.0333 mA | 2.4 mA | 0.84722x (WARN) | 0.84746x | 0.84746x |
-| Rm1 rms | 0.44944 x sqrt(25.5) = 2.2696 mA | 9 mA | 0.25218x | 0.25223x | 0.25223x |
-| Rc3 peak (the 1-cut contact of the 2.5 mA sink) | 2.5 mA | 2.4 mA | **1.04167x (FAIL)** | 1.04167x | 1.04167x |
-| IR at XMN3's drain (average currents) | 0.20333 x (3 x (10 + 8 + 5.5 + 2.5) + 24 x 2.5) | | 28.060 mV | 28.068 mV | 28.068 mV |
-| dynamic IR (rcc): XMN3 alone, 2.5 mA x (12 x 1 + 24) ohm | | | 90.000 mV | 90.000 mV | (cc-grid: not computed) |
+| item | current | limit | ratio by hand | measured (rcc) |
+|---|---|---|---|---|
+| Rm1 avg (the feed segment: all four sinks) | 0.20333 x 10 = 2.0333 mA | 2.4 mA | 0.84722x (WARN) | 0.84746x |
+| Rm1 rms | 0.44944 x sqrt(25.5) = 2.2696 mA | 9 mA | 0.25218x | 0.25223x |
+| Rc3 peak (the 1-cut contact of the 2.5 mA sink) | 2.5 mA | 2.4 mA | **1.04167x (FAIL)** | 1.04167x |
+| IR at XMN3's drain (average currents) | 0.20333 x (3 x (10 + 8 + 5.5 + 2.5) + 24 x 2.5) | | 28.060 mV | 28.068 mV |
+| dynamic IR: XMN3 alone, 2.5 mA x (12 x 1 + 24) ohm | | | 90.000 mV | 90.000 mV |
 
 The measured values are from `expected/summary.json` and
 `scripts/opensim_proof.py` (Xyce 7.10, development build). The averages read
@@ -104,23 +96,17 @@ ramps: sampled every 10 ps, it overestimates a quadratic by `K h^2 / (12 tr)`
 per ramp, about 3e-4 of the average here. The peak, which has no ramp in it,
 is exact.
 
-The verdict is **FAIL on Rc3's peak**: the far device's contact has one cut
+rcc's verdict is **FAIL on Rc3's peak**: the far device's contact has one cut
 where the peak current needs two. The report says so (`Cont: 1 -> 2 cuts`).
 The feed segment's average is inside the warn margin (0.80 to 1.00).
 
 ## Changing it for your block
 
-* Put your testbench in place of `tb_*.cir`: supplies, stimulus, models, a
+* Put your testbench in place of `tb_rcc.cir`: supplies, stimulus, models, a
   `.tran` over whole periods of the block's activity, and the extracted
-  netlist: the DSPF for rcc (`.include block.dspf`, instantiated once), or
-  your CC netlist for cc-grid.
-* `emir next --dspf block.dspf --process pdk.yaml --netlist tb.cir` lists the
-  modes for the person to choose (rcc, cc-grid, cc-grid self-consistent, with
-  what each costs); with their choice (`--mode rcc` or `--mode cc-grid`) it
-  plans the same commands, each one runnable as printed.
-* To close the loop on the CC testbench (the devices see the dropped rail), see
-  [`12_self_consistent`](../12_self_consistent/).
-* Devices that are primitives (`M...` lines with a model) need no probe:
-  Xyce prints `ID(XI0:MN0)` directly. `emir simulate` decides which.
+  netlist (`.include block.dspf`, instantiated once).
+* `emir next --dspf block.dspf --process pdk.yaml --netlist tb.cir --period <T>`
+  plans the same commands, each one runnable as printed (without the block's
+  period it asks for it: the run would be refused, EMIR-E428).
 
 Screening, not sign-off.

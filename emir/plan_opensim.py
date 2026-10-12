@@ -13,9 +13,8 @@ then with --run, which needs the person's go-ahead):
   the run, the ASCII result and its `<result>.names` sidecar -- writing
   `emir_out/sim/result.raw`, which the check and the run then read;
 * `--netlist TB` (which the base plan reserves for Spectre) is the
-  testbench `emir simulate` runs; it is read to choose the mode (the RC
-  netlist -> rcc, a CC netlist -> cc) and whether the devices need probes
-  (a subcircuit pin's current is printable by no simulator -> `--probe`);
+  testbench `emir simulate` runs; it is read to check that it simulates the
+  RC netlist (every resistor of the nets) with a transient;
 * without a testbench the simulate step waits for one (`<testbench.cir>`);
 * a finished result with Xyce / ngspice names and no sidecar gets the
   `emir save-lines ... --names-out <result>.names` that maps it, when the
@@ -66,13 +65,25 @@ def _testbench(f: Facts, plan: Plan):
     `emir simulate` runs. The base rule would stop the plan ("Spectre, for
     --netlist"), so it is set aside here and put back by `_opensim`."""
     if f.get("netlist") and not (f.get("cc_sim") or f.get("currents")) and open_sim(f):
+        from .opensim import is_spectre
+        if is_spectre(f.get("netlist")):
+            # a Spectre deck is Spectre's to run: read as SPICE it showed no
+            # .tran and the plan reported a false EMIR-E462
+            if f.get("sim") in ("hspice", "xyce", "ngspice"):
+                plan.need(f"a testbench in {f.get('sim')}'s language",
+                          f"--netlist {f.get('netlist')} is in Spectre's language (.scs, or "
+                          f"`simulator lang=spectre`), which {f.get('sim')} does not read",
+                          f"give the {f.get('sim')} testbench, or drop --sim {f.get('sim')} "
+                          f"to plan the Spectre route")
+                plan.blocked = True
+            return
         f._cache["opensim_tb"] = f.inputs["netlist"]
         f.inputs["netlist"] = None
 
 
 def _tb_facts(f: Facts, tb: str, d) -> dict:
-    """What the testbench says: `{"ok", "error", "rc", "kinds", "tran",
-    "scope", "path"}` (rc: it holds every resistor of the target nets)."""
+    """What the testbench says: `{"ok", "error", "rc", "tran", "scope",
+    "path"}` (rc: it holds every resistor of the target nets)."""
     from .opensim import scope_of, scope_path
     from .opensim_netlist import Tree
     try:
@@ -85,22 +96,7 @@ def _tb_facts(f: Facts, tb: str, d) -> dict:
     res = [r["name"].upper() for n in f.target_nets() for r in d.net_resistors(n)]
     return {"ok": True, "error": None, "tran": bool(tree.analyses),
             "rc": bool(res) and all(r in names for r in res),
-            "kinds": {e.name.upper(): e.kind for e in tree.elements(scope)},
             "scope": scope, "path": path}
-
-
-def _needs_probe(f: Facts, d, kinds: dict | None, sim: str = "xyce") -> bool:
-    """cc: some instance pin's current is not printable directly (from the
-    testbench's element letters, else the DSPF instance names' letters)."""
-    from .opensim import save_set
-    nets = [n for n in f.target_nets() if d.net_taps(n)]
-    if not nets:
-        return False
-    try:
-        ss = save_set(d, nets, "cc", sim, inst_kinds=kinds)
-    except EmirError:
-        return False
-    return bool(ss.unprintable)
 
 
 @rule(55, "opensim")
@@ -111,16 +107,17 @@ def _opensim(f: Facts, plan: Plan):
     sim = open_sim(f)
     if not sim or not f.dspf_info.get("ok"):
         return
-    if f.get("cc_sim") and plan.has("names-sidecar"):
+    longer = f._cache.get("longer_sim")
+    if f.get("cc_sim") and plan.has("names-sidecar") and not longer:
         _map_result(f, plan, sim)
         return
     if not plan.has("simulate"):
         return
+    if longer and tb is None and f.get("netlist") and not f.get("currents"):
+        from .opensim import is_spectre
+        if not is_spectre(f.get("netlist")):
+            tb = f.get("netlist")
     d = f.dspf_info["_dspf"]
-    modes = {_mode_of(s["command"]) for s in plan.steps if s["id"].startswith("save-lines")}
-    kind = "rcc" if "rcc" in modes else "cc"
-    req = f.get("mode")
-    tbf = None
     if tb:
         tbf = _tb_facts(f, tb, d)
         if not tbf["ok"]:
@@ -136,51 +133,36 @@ def _opensim(f: Facts, plan: Plan):
             plan.blocked = True
             _drop(plan, ("save-lines", "simulate", "names-sidecar"))
             return
-        # the person's mode decides what is saved; the testbench must be able
-        # to give it (rcc: it simulates every resistor of the nets)
-        if req == "rcc" and not tbf["rc"]:
+        # rcc simulates every resistor of the nets: the testbench must hold
+        # the RC netlist
+        if not tbf["rc"]:
             nets = f.target_nets()
             plan.need("the RC netlist in the testbench",
                       f"{tb} does not hold every resistor of {', '.join(nets[:6])}, so it "
-                      f"cannot give the branch currents rcc needs",
-                      "include the RC netlist (the DSPF) in the testbench in place of the "
-                      "CC netlist, or ask the person about --mode cc-grid")
+                      f"cannot give the branch currents rcc reads",
+                      "include the RC netlist (the DSPF) in the testbench")
             plan.blocked = True
             _drop(plan, ("save-lines", "simulate", "names-sidecar"))
             return
-        kind = "rcc" if req == "rcc" else "cc"
-        plan.mode = {"chosen": req,
-                     "why": f"--mode {req} given (the person's choice): "
-                            + ("the testbench simulates the RC netlist, every branch current "
-                               "is printed and read directly" if kind == "rcc" else
-                               "the testbench's instance-pin currents are superposed "
-                               "through the R grid")}
-    probe = kind == "cc" and _needs_probe(f, d, tbf["kinds"] if tbf else None, sim)
     net = f.get("net")
     res = result_path(sim)
     licensed = sim == "hspice"
     ph = "<testbench.sp>" if licensed else "<testbench.cir>"
-    rmode = "rcc" if kind == "rcc" else "cc-grid"
     args = [tb or ph, "--sim", sim, "--dspf", f.get("dspf"),
-            *(["--net", net] if net and net != "all" and "," not in net else []), "--mode", rmode,
-            *(["--probe"] if probe else []),
+            *(["--net", net] if net and net != "all" and "," not in net else []),
             *(["--process", f.get("process")] if f.get("process") else []),
             "--out", res, f.fmt()]
     big = f.size()["class"] != "small"
-    what = ("the RC netlist (every branch current printed)" if kind == "rcc"
-            else "the CC netlist (each instance pin's current"
-            + (", through a 0 V probe in series with it" if probe else "") + ")")
+    what = "the RC netlist (every branch current printed)"
     manual = command_line("save-lines", f.get("dspf"),
                           *(["--net", net] if net and net != "all" and "," not in net else []),
-                          "--mode", rmode,
                           "--sim", sim, "--names-out", res + ".names")
     lines = {"xyce": ".print", "ngspice": ".save", "hspice": ".probe"}[sim]
     _drop(plan, ("save-lines", "names-sidecar"))
     i = next(k for k, s in enumerate(plan.steps) if s["id"] == "simulate")
     del plan.steps[i]
     replace = ("; replace " + ph + " with the block's testbench (stimulus, models, "
-               ".tran, and the " + ("DSPF" if kind == "rcc" else "CC netlist") + ")"
-               if not tb else "")
+               ".tran, and the DSPF)" if not tb else "")
     if licensed:
         plan.add("simulate-plan", command_line("simulate", *args),
                  f"write the {sim} deck with the {lines} lines (and the ASCII output "
@@ -190,6 +172,13 @@ def _opensim(f: Facts, plan: Plan):
                  f"simulate {what} with {sim} (licensed: ask the person first), read the "
                  f"result back and check the currents" + replace,
                  licensed_tool=sim, long_run=True, after=["simulate-plan"])
+    elif longer:
+        plan.add("simulate", command_line("simulate", *args),
+                 f"once the person has set the testbench's .tran {longer['length']} "
+                 f"(EMIR never edits the testbench): simulate {what} with {sim}; emir "
+                 f"writes the deck with the {lines} lines, runs it to an ASCII result and "
+                 f"writes {res}.names, which maps {sim}'s names to the DSPF's" + replace,
+                 needs_human=True, long_run=True)
     else:
         plan.add("simulate", command_line("simulate", *args),
                  f"simulate {what} with {sim}: emir writes the deck with the {lines} "
@@ -215,16 +204,15 @@ def _opensim(f: Facts, plan: Plan):
         plan.need(f"a {sim} testbench of the block",
                   "the stimulus that makes the block draw its real currents (supplies, "
                   "inputs, clocks), the device models and a .tran over whole periods",
-                  f"write it as SPICE that includes the {'DSPF (the RC netlist)' if kind == 'rcc' else 'CC netlist (devices; a C-only extraction or the schematic)'}"
-                  f", then pass it with --netlist to plan with it")
+                  "write it as SPICE that includes the DSPF (the RC netlist), then pass it "
+                  "with --netlist to plan with it")
     if not f.tools[sim]["found"]:
         plan.note(f"{sim} is not found on this machine (`emir info`): the simulate step "
                   f"needs it (${sim.upper()}_BIN, the site file or $PATH)")
     run_by_hand = {"xyce": "Xyce -a <deck>", "ngspice": f"ngspice -b -r {res} <deck>",
                    "hspice": f"hspice -i <deck> -o {res[:-len('.tr0')]}"}[sim]
     plan.note(f"by hand instead of `emir simulate`: `{manual}` prints the lines for your "
-              f"deck and writes the sidecar; run `{run_by_hand}`"
-              + (" (probe subcircuit pins first: `emir probe`)" if probe else ""))
+              f"deck and writes the sidecar; run `{run_by_hand}`")
 
 
 @rule(65, "opensim-result")
@@ -237,13 +225,6 @@ def _result(f: Facts, plan: Plan):
         if s["id"] == "check":
             s["why"] = s["why"].replace("; replace <result.raw> with the simulation's "
                                         "result file", f"; it reads {plan.result}")
-
-
-def _mode_of(command: str) -> str:
-    """The save kind (rcc, cc) of a planned save-lines command's --mode."""
-    parts = command.split()
-    m = parts[parts.index("--mode") + 1] if "--mode" in parts else "cc"
-    return "rcc" if m == "rcc" else "cc"
 
 
 def _drop(plan: Plan, prefixes: tuple):
@@ -272,30 +253,23 @@ def _map_result(f: Facts, plan: Plan, sim: str):
     d = f.dspf_info["_dspf"]
     best = infer_names(d, f.target_nets(), w)
     if best is None:
-        from .opensim_netlist import PROBE_SOURCE
-        if any(PROBE_SOURCE in k.upper() for k in w.data):
-            plan.note(f"the result holds the currents of emir probes ({PROBE_SOURCE}...): "
-                      f"the --names-out file of that `emir probe` maps them; copy it to "
-                      f"{f.get('cc_sim')}.names (`emir simulate --probes` writes it for you)")
         return
-    s_sim, mode, prefix, hits, total = best
+    s_sim, prefix, hits, total = best
     net = f.get("net")
     i = next(k for k, s in enumerate(plan.steps) if s["id"] == "names-sidecar")
     side = f.get("cc_sim") + ".names"
     plan.steps[i]["command"] = command_line(
         "save-lines", f.get("dspf"),
         *(["--net", net] if net and net != "all" and "," not in net else []),
-        "--mode", "rcc" if mode == "rcc" else "cc-grid", "--sim", s_sim,
-        *(["--prefix", prefix] if prefix else []), "--names-out", side, f.fmt())
-    plan.steps[i]["why"] = (f"{hits} of the {total} {mode} currents in the result carry the "
+        "--sim", s_sim, *(["--prefix", prefix] if prefix else []), "--names-out", side,
+        f.fmt())
+    plan.steps[i]["why"] = (f"{hits} of the {total} branch currents in the result carry the "
                             f"names emir's {s_sim} lines give them: this writes {side}, "
                             f"which maps them onto the DSPF's")
     again = ["--dspf", f.get("dspf")]
     for opt, key in (("--process", "process"), ("--cc-sim", "cc_sim"), ("--net", "net")):
         if f.get(key):
             again += [opt, f.get(key)]
-    if f.get("mode"):
-        again += ["--mode", f.get("mode")]
     plan.add("next", command_line("next", again, f.fmt()),
              "plan again with the sidecar in place (it reads the result's names through it)",
              after=["names-sidecar"])

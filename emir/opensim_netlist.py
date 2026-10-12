@@ -1,13 +1,9 @@
-"""SPICE netlist trees for the open simulators (Xyce, ngspice).
+"""SPICE netlist trees for the SPICE simulators (HSPICE, Xyce, ngspice).
 
-`emir probe` and `emir simulate` read a testbench and every file it
-`.include`s, find the subcircuits, their instances and the device terminals,
-and write a rewritten copy of the tree:
+`emir simulate` reads a testbench and every file it `.include`s, finds the
+subcircuits, their instances and the elements, and writes a rewritten copy of
+the tree:
 
-* with a 0 V voltage source in series with chosen device terminals (a
-  *probe*: its current is the terminal's current, which a simulator cannot
-  print directly for a device wrapped in a subcircuit, the usual form of an
-  open PDK's transistors);
 * with the print / save lines a run needs, before the top file's `.end`
   (before its first `.alter`, when it has `.alter` cases: the main case and
   every altered one then save them);
@@ -15,10 +11,6 @@ and write a rewritten copy of the tree:
   quoted as they were (HSPICE documents `.INCLUDE 'file'`);
 * without the DSPF `$KEY=value` annotations, which Spectre, HSPICE and
   ngspice read as comments and Xyce rejects as unknown parameters.
-
-The probe approach -- a 0 V source in series with every terminal of every
-extracted device, its current the device's terminal current -- works on any
-SPICE netlist and names the pins as the DSPF's instance pins.
 
 What is understood (enough to rewrite, not to simulate): element lines and
 their terminal nodes, `+` continuations, `*` comments, inline comments (`;`,
@@ -41,22 +33,6 @@ from .errors import EmirError
 #: model name, Q takes 3 or 4 (see `_nodes`)
 NODES = {"R": 2, "C": 2, "L": 2, "D": 2, "V": 2, "I": 2, "M": 4, "J": 3, "Z": 3,
          "E": 4, "G": 4, "F": 2, "H": 2, "B": 2, "S": 4, "W": 2, "T": 4, "Q": 3}
-
-#: positional terminal names of the multi-terminal primitives (Spectre's)
-TERMINALS = {"M": ("d", "g", "s", "b"), "J": ("d", "g", "s"), "Z": ("d", "g", "s"),
-             "Q": ("c", "b", "e", "s")}
-
-#: element letters probed by default: devices (primitive or subcircuit), not
-#: parasitic R / C / L, sources or controlled sources
-DEFAULT_TYPES = "MXQJDN"
-
-#: the prefix of a probe source and of the node it adds
-PROBE_SOURCE = "VEMIR"
-PROBE_NODE = "__emir"
-
-
-# ------------------------------------------------------------------ tokens
-
 
 def tokens(text: str) -> list:
     """The words of a statement: inline comments cut (`;`, `//`, a word that
@@ -352,10 +328,6 @@ class Tree:
         walk(self.top_elements, [], frozenset())
         return out
 
-    def ports_of(self, ref: str | None) -> list | None:
-        sc = self.subckts.get((ref or "").upper())
-        return list(sc.ports) if sc else None
-
 
 def _is_abs(path: str) -> bool:
     return os.path.isabs(os.path.expanduser(path))
@@ -391,27 +363,6 @@ def _nodes(kind: str, words: list) -> tuple:
     return plain[:k], (plain[k] if len(plain) > k and kind in "MJZDQ" else None)
 
 
-def terminal_names(tree: Tree, el: Element, pins: dict | None = None) -> tuple:
-    """`(names, guessed)`: the name of each terminal of `el` (Spectre's for
-    the primitives: d g s b, c b e s; a subcircuit's own port names when the
-    tree defines it, or `pins[SUBCKT]`), and whether they had to be guessed
-    by position ("1", "2", ...)."""
-    n = len(el.nodes)
-    if el.kind in TERMINALS:
-        return list(TERMINALS[el.kind][:n]), False
-    if el.kind in ("X", "N"):
-        ports = tree.ports_of(el.ref)
-        if ports is None and pins:
-            ports = pins.get((el.ref or "").upper())
-        if ports is not None and len(ports) == n:
-            return list(ports), False
-        return [str(i + 1) for i in range(n)], True
-    return [str(i + 1) for i in range(n)], False
-
-
-# ------------------------------------------------------------------ writing
-
-
 class Writer:
     """Write a rewritten copy of a tree into one directory.
 
@@ -423,7 +374,7 @@ class Writer:
     """
 
     def __init__(self, tree: Tree, out_top: str, tag: str, edits=None, inject=(),
-                 strip=False, command="probe"):
+                 strip=False, command="simulate"):
         self.tree = tree
         self.command = command
         self.out_top = os.path.abspath(out_top)

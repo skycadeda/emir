@@ -84,18 +84,7 @@
           "covers": {
             "type": "array",
             "items": {
-              "enum": [
-                "branch",
-                "mos",
-                "two-terminal",
-                "source",
-                "subcircuit",
-                "probe",
-                "diode",
-                "bjt",
-                "jfet",
-                "other"
-              ]
+              "type": "string"
             }
           },
           "checks": {
@@ -133,16 +122,7 @@
                 },
                 "kind": {
                   "enum": [
-                    "branch",
-                    "mos",
-                    "two-terminal",
-                    "source",
-                    "subcircuit",
-                    "probe",
-                    "diode",
-                    "bjt",
-                    "jfet",
-                    "other"
+                    "branch"
                   ]
                 }
               },
@@ -163,7 +143,7 @@
           "passed",
           "checks"
         ],
-        "description": "One verification: what `emir verify-sim` appends to verified.json. A run counts only valid records (`passed` a JSON boolean that agrees with the checks, a passing record with its simulator's version); the latest one for a key (simulator, version, format, sim_args) decides; a record with a `host` counts only on that host. `covers` lists the kinds of current its checks prove (each backed by passing checks of that `kind`); a record without it covers no kind of pin."
+        "description": "One verification: what `emir verify-sim` appends to verified.json. A run counts only valid records (`passed` a JSON boolean that agrees with the checks, a passing record with its simulator's version); the latest one for a key (simulator, version, format, sim_args) decides; a record with a `host` counts only on that host. `covers` lists the kinds of current its checks prove (each backed by passing checks of that `kind`: `branch`, the branch currents rcc reads); a record without it covers no kind."
       }
     }
   },

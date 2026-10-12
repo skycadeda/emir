@@ -206,6 +206,11 @@ def violations(res, dspf, net, proc, include_clean=True) -> list:
         # W - dW, as the verdict used it (`dspf.em_clusters`)
         weff = proc.wire_width(pdkname, r["w"]) if kind != "via" and r.get("w") else None
         for m in METRICS:
+            if m not in res["Ie"]:
+                # a metric the run did not compute: no number at all (null in
+                # emir_viz.json, nil in emir_data.il), never a 0 that reads as
+                # clean
+                continue
             if kind == "via":
                 lim = proc.vias[pdkname]["imax"].get(m)
                 if not lim:
@@ -230,13 +235,17 @@ def violations(res, dspf, net, proc, include_clean=True) -> list:
         v = {"net": net, "name": r["name"], "layer": pdkname,
              "kind": "via" if kind == "via" else "wire",
              "metric": gov, "ratio": float(ratios[gov]),
-             "ratios": {m: float(ratios.get(m, 0.0)) for m in METRICS},
+             # a metric with no limit: 0 (not checked, drawn grey); a metric
+             # the run did not compute: null
+             "ratios": {m: (float(ratios.get(m, 0.0)) if m in res["Ie"] else None)
+                        for m in METRICS},
              "value": float(vals[gov]),
              "current": float(res["Ie"][gov][i]),
              # per-metric density and current: the viewer lets the engineer
              # switch metric, and every number on screen has to switch with it
-             "values": {m: float(vals.get(m, 0.0)) for m in METRICS},
-             "currents": {m: float(res["Ie"][m][i]) if m in res["Ie"] else 0.0
+             "values": {m: (float(vals.get(m, 0.0)) if m in res["Ie"] else None)
+                        for m in METRICS},
+             "currents": {m: float(res["Ie"][m][i]) if m in res["Ie"] else None
                           for m in METRICS},
              "w": r.get("w"), "cuts": n if kind == "via" else r.get("cuts"),
              "dw": (proc.layers[pdkname]["width_loss"] or None) if kind != "via" else None,
@@ -548,6 +557,14 @@ def skill_data(nets_data, lib, cell, path) -> str:
     for i, (lo, lab, step) in enumerate(bands):
         L.append(f"  list({_sk(i)} {_sk(lo)} {_sk(lab)} {_sk(int(step))})")
     L.append(")")
+    # the metrics some net checked: the Explorer offers only these (a metric
+    # with no number is nil in the rows below)
+    checked = [m for m in ("avg", "rms", "peak")
+               if any(v["ratios"].get(m) is not None for v in nets_data["em"])] or ["avg"]
+    L.append("emirMetrics = list(" + " ".join(_sk(m) for m in checked) + ")")
+
+    def ma(x):                      # mA, or nil for a metric not checked
+        return None if x is None else x * 1e3
     L.append("emirViol = list(")
     for v in nets_data["em"]:
         r = v["rect"]
@@ -561,12 +578,12 @@ def skill_data(nets_data, lib, cell, path) -> str:
                  # geometry + per-metric numbers, so the viewer can re-derive
                  # the fix for whichever metric is selected
                  f'{_sk(float(v["w"] or 0.0))} {_sk(int(v["cuts"] or 0))} '
-                 f'{_sk(v["values"]["avg"] * 1e3)} '
-                 f'{_sk(v["values"]["rms"] * 1e3)} '
-                 f'{_sk(v["values"]["peak"] * 1e3)} '
-                 f'{_sk(v["currents"]["avg"] * 1e3)} '
-                 f'{_sk(v["currents"]["rms"] * 1e3)} '
-                 f'{_sk(v["currents"]["peak"] * 1e3)})')
+                 f'{_sk(ma(v["values"]["avg"]))} '
+                 f'{_sk(ma(v["values"]["rms"]))} '
+                 f'{_sk(ma(v["values"]["peak"]))} '
+                 f'{_sk(ma(v["currents"]["avg"]))} '
+                 f'{_sk(ma(v["currents"]["rms"]))} '
+                 f'{_sk(ma(v["currents"]["peak"]))})')
     L.append(")")
     L.append("emirIR = list(")
     for v in nets_data["ir"]:
@@ -606,14 +623,9 @@ def skill_data(nets_data, lib, cell, path) -> str:
     L.append('emirEmTicks = ' + _sk("EM   segment current / limit"))
     L.append('emirIrTicks = ' + _sk(
         "IR   |V - V(pin)| in mV   -- droop on a supply, bounce on a ground"))
-    # --- feature decap --- the EM basis the ratios are on, said on loading
-    eb = nets_data.get("em_basis") or {}
     L.append('printf("EMIR: loaded %d violations, %d IR segments on %d nets. '
              + SCREENING_NOTE + '\\n" '
              'length(emirViol) length(emirIR) length(emirNets))')
-    if eb:
-        L.append("emirEmBasis = " + _sk("; ".join(f"{n} {b}" for n, b in sorted(eb.items()))))
-        L.append('printf("EMIR: EM ratios on %s\\n" emirEmBasis)')
     from .output import write_text
     return write_text(path, "\n".join(L) + "\n", code="EMIR-E701")
 
@@ -669,12 +681,6 @@ def export(results, dspf, proc, out_dir, lib=None, cell=None,
         em += violations(res, dspf, net, proc, include_clean=include_clean)
         items, _ = ir_segments(res, dspf, net)
         ir += items
-    # --- feature decap --- the EM basis each net's ratios are on
-    from .decap import basis_label
-    basis = {n: basis_label(r) for n, r in results.items() if basis_label(r)}
-    for v in em:
-        if v["net"] in basis:
-            v["basis"] = basis[v["net"]]
     # IR is a PDN quantity by convention, so the rails set the scale and are
     # what the viewer opens on; other nets stay available because on analog
     # bias and reference lines the drop is a real error term
@@ -694,8 +700,6 @@ def export(results, dspf, proc, out_dir, lib=None, cell=None,
             "rails": rails, "lib": lib, "cell": cell,
             "em_bands": [list(b) for b in em_bands(getattr(proc, "warn_fraction", 0.8))],
             "palette": [f"#{r:02x}{g:02x}{b:02x}" for r, g, b in BAND_RGB]}
-    if basis:
-        data["em_basis"] = basis
 
     j = write_text(os.path.join(out_dir, "emir_viz.json"), json.dumps(data, indent=1),
                    code="EMIR-E701")

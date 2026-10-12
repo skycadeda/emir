@@ -64,16 +64,13 @@ Notes:
 
 A tool call that would
 
-- start a licensed tool (`emir_run` with `netlist` or `self_consistent`
+- start a licensed tool (`emir_run` with `netlist`
   runs Spectre; `emir_simulate` and `emir_verify_sim` with `run` true and
   `sim` spectre or hspice; `emir_extract` with `run` true runs PVS and
   Quantus),
 - run long (`emir_run` on a DSPF of ADC-top or PLL-top size, the threshold
-  `emir next` uses, or with `dynamic` and `dyn_steps` above 200000),
-- rewrite a file in place (`emir_import_ict` without `out`),
-- loosen the EM verdict (`emir_run` with an `em_basis` other than the
-  default, or `dynamic` with `ground`, with `dyn_steps` below 2000 or
-  without `period`: each can leave decap-aware EM not computed), or
+  `emir next` uses),
+- rewrite a file in place (`emir_import_ict` without `out`), or
 - run a command this server has not classified (a command a later release
   adds),
 

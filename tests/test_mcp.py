@@ -68,21 +68,21 @@ def test_tool_parameters_are_the_cli_options():
     names = {p.name: p for p in run.params}
     assert names["dspf"].required and names["dspf"].flag is None
     assert names["cc_sim"].flag == "--cc-sim" and names["cc_sim"].kind == "string"
-    assert names["period"].kind == "number" and names["max_passes"].kind == "integer"
-    assert names["mode"].choices == ("rcc", "cc-grid") and not names["mode"].required
-    # required with a simulation result or a netlist (the person's choice), as
-    # draft-07 and 2020-12 validators both read it
-    schema = run.input_schema()
-    assert schema["anyOf"] == [{"required": ["mode"]},
-                               {"not": {"anyOf": [{"required": ["cc_sim"]},
-                                                  {"required": ["netlist"]}]}}]
-    for name in ("emir_simulate", "emir_save_lines", "emir_abstract"):
+    assert names["period"].kind == "number" and names["sim_timeout"].kind == "number"
+    assert not {"self_consistent", "dynamic", "em_basis", "max_memory", "superposition",
+                "scalars", "align"} & set(names)
+    # one method of a simulated run: `mode` takes rcc only, and is never required
+    assert names["mode"].choices == ("rcc",) and not names["mode"].required
+    assert "anyOf" not in run.input_schema()
+    for name in ("emir_run", "emir_simulate", "emir_save_lines"):
         spec = mcp_tools.specs()[name]
-        assert "mode" in spec.input_schema()["required"], name
-        assert {p.name: p for p in spec.params}["mode"].choices == ("rcc", "cc-grid")
+        assert "mode" not in spec.input_schema().get("required", []), name
+        assert {p.name: p for p in spec.params}["mode"].choices == ("rcc",)
+    for gone in ("emir_abstract", "emir_probe", "emir_split_stub"):
+        assert gone not in mcp_tools.specs()
     assert names["fail_on_violation"].kind == "flag"
     # hidden: --format (always json), --help, --open (a browser on the server),
-    # --rcc-nodes (kept for old argument files), --json (suppressed alias)
+    # --json (suppressed alias); --rcc-nodes is gone (EMIR-E507, tests/test_cli_strict.py)
     assert not {"format", "help", "open", "rcc_nodes", "json"} & set(names)
     nxt = {p.name: p for p in mcp_tools.specs()["emir_next"].params}
     assert nxt["have_xyce"].kind == "tristate" and nxt["have_xyce"].neg_flag == "--no-have-xyce"
@@ -157,10 +157,10 @@ def test_annotations_and_gates():
     # every tool that writes where the caller says can overwrite a file the
     # person owns: it takes confirm, and is neither read-only nor idempotent
     assert [k for k, v in s.items() if v.confirm != "never"] == \
-        ["emir_abstract", "emir_check", "emir_extract", "emir_gui_install",
-         "emir_import_ict", "emir_probe", "emir_process_new",
-         "emir_run", "emir_save_lines", "emir_selftest", "emir_simulate", "emir_validate",
-         "emir_verify_sim", "emir_cli"]
+        ["emir_check", "emir_extract", "emir_gui_install",
+         "emir_import_ict", "emir_process_new",
+         "emir_run", "emir_save_lines", "emir_selftest", "emir_simulate",
+         "emir_validate", "emir_verify_sim", "emir_cli"]
     assert sorted(k for k, v in s.items() if v.annotations["readOnlyHint"]) == \
         ["emir_explain", "emir_info", "emir_nets", "emir_next", "emir_pins",
          "emir_process_check", "emir_report", "emir_schema"]
@@ -193,18 +193,13 @@ def test_overwriting_a_file_outside_the_working_tree_needs_the_go_ahead(monkeypa
     spec = mcp_tools.by_command("save-lines")
     assert spec.annotations["readOnlyHint"] is False
     rc, doc, _ = mcp_tools.call(spec, {"dspf": DSPF, "out": str(victim)})
-    assert (rc, doc["code"]) == (2, "EMIR-E592"), doc            # mode is required
-    assert doc["details"]["missing"] == ["mode"]
-    rc, doc, _ = mcp_tools.call(spec, {"dspf": DSPF, "mode": "rcc", "out": str(victim)})
     assert (rc, doc["code"]) == (2, "EMIR-E590"), doc
     assert doc["details"]["reasons"][0]["rewrites"] == str(victim)
     assert victim.read_text() == "the person's file\n"
-    rc, doc, _ = mcp_tools.call(spec, {"dspf": DSPF, "mode": "rcc", "out": str(victim),
-                                       "confirm": True})
+    rc, doc, _ = mcp_tools.call(spec, {"dspf": DSPF, "out": str(victim), "confirm": True})
     assert rc == 0 and victim.read_text() != "the person's file\n"
     # inside the working directory: the call's own output, no go-ahead
-    rc, doc, _ = mcp_tools.call(spec, {"dspf": DSPF, "mode": "rcc",
-                                       "out": "emir_out/save.txt"})
+    rc, doc, _ = mcp_tools.call(spec, {"dspf": DSPF, "out": "emir_out/save.txt"})
     assert rc == 0 and (work / "emir_out" / "save.txt").is_file()
     rc, doc, _ = mcp_tools.call(spec, {"dspf": DSPF, "mode": "rcc",
                                        "out": "emir_out/save.txt"})
@@ -216,10 +211,16 @@ def test_run_needs_the_go_ahead_for_spectre_and_runs_with_it(monkeypatch, tmp_pa
     monkeypatch.setenv("EMIR_SITE", os.devnull)
     monkeypatch.chdir(tmp_path)
     net = tmp_path / "tb.scs"
-    net.write_text("// a netlist\n")
+    net.write_text('// a netlist\ninclude "rail.dspf"\n')
     run = mcp_tools.specs()["emir_run"]
-    args = {"dspf": DSPF, "process": PROC, "net": "VDD", "netlist": str(net),
-            "mode": "cc-grid"}
+    # without the block's period the transient is refused before anything
+    # runs (EMIR-E428), with the go-ahead too; the missing simulator keeps its
+    # own code (exit 3), the period is among the causes
+    rc, doc, _ = mcp_tools.call(run, {"dspf": DSPF, "process": PROC, "net": "VDD",
+                                      "netlist": str(net), "run": True, "confirm": True})
+    assert rc == 3 and doc["code"] == "EMIR-E601"
+    assert "EMIR-E428" in doc["details"]["causes"]
+    args = {"dspf": DSPF, "process": PROC, "net": "VDD", "netlist": str(net), "period": "1e-8"}
     # without run: Spectre is licensed, so the run only plans (no go-ahead)
     rc, doc, line = mcp_tools.call(run, args)
     validate_doc(doc)
@@ -235,10 +236,6 @@ def test_run_needs_the_go_ahead_for_spectre_and_runs_with_it(monkeypatch, tmp_pa
     rc, doc, _ = mcp_tools.call(run, {**args, "confirm": True})
     validate_doc(doc)
     assert rc == 3 and doc["code"] == "EMIR-E601"
-    # the open simulators re-simulate in the self-consistent loop: ask first too
-    rc, doc, _ = mcp_tools.call(run, {**args, "run": False, "sim": "xyce",
-                                      "self_consistent": True, "vdd": 1.0})
-    assert doc["code"] == "EMIR-E590" and doc["details"]["licensed_tool"] is None
 
 
 def test_big_blocks_need_the_go_ahead(monkeypatch):
@@ -305,12 +302,10 @@ def test_emir_cli_runs_emir_command_lines_only(tmp_path):
         rc, doc, _ = mcp_tools.call_line(cmdline)
         assert validate_doc(doc)["code"] == code, cmdline
         assert rc == doc["exit_code"] == 2
-    rc, doc, _ = mcp_tools.call_line(f"emir run {shlex.quote(DSPF)} --netlist tb.scs "
-                                     f"--mode cc-grid --run")
+    rc, doc, _ = mcp_tools.call_line(f"emir run {shlex.quote(DSPF)} --netlist tb.scs --run")
     assert doc["code"] == "EMIR-E590"
     # an @argument file is read before the gate decides
-    (tmp_path / "args.txt").write_text(f"{DSPF}\n--netlist\ntb.scs\n--mode\ncc-grid\n"
-                                       f"--run\n")
+    (tmp_path / "args.txt").write_text(f"{DSPF}\n--netlist\ntb.scs\n--run\n")
     rc, doc, _ = mcp_tools.call_line(f"emir run @{tmp_path / 'args.txt'}")
     assert doc["code"] == "EMIR-E590"
 
@@ -400,7 +395,7 @@ def test_next_gives_each_step_its_tool_call_over_mcp_only(monkeypatch, tmp_path)
         "emir_selftest", "emir_check", "emir_run", "emir_report"]
     # a simulation step is not an emir command: no tool
     rc, doc, _ = mcp_tools.call(nxt, {"dspf": DSPF, "process": PROC, "net": "VDD",
-                                      "have_cadence": True, "mode": "rcc"})
+                                      "have_cadence": True})
     sim = next(s for s in doc["steps"] if s["id"] == "simulate")
     assert sim["tool"] is None and sim["needs_human"]
     # on the command line the plan is unchanged
@@ -646,7 +641,7 @@ def test_in_process_client_lists_tools_and_runs_the_sample(tmp_path, monkeypatch
                     ("emir_run", {"dspf": DSPF, "process": PROC, "currents": CUR,
                                   "bogus_flag": 1, "summaryout": "x.json"}),
                     ("emir_run", {"dspf": DSPF, "process": PROC, "netlist": "tb.scs",
-                                  "mode": "cc-grid", "run": True}),
+                                  "run": True}),
                     ("emir_cli", {"command_line": "tail -n 40 x.log"})):
                 r = await c.call_tool(name, args)
                 meta = _get(r, "meta")
@@ -710,7 +705,7 @@ def test_concurrent_calls_get_their_own_documents(capsys):
              ("emir_explain", {"codes": ["E101"]}, "emir.explain/1"),
              ("emir_check", {"dspf": DSPF, "process": PROC, "currents": CUR}, "emir.check/1"),
              ("emir_save_lines", {"dspf": DSPF, "mode": "rcc"}, "emir.save_lines/1"),
-             ("emir_run", {"dspf": DSPF, "netlist": "tb.scs", "mode": "cc-grid", "run": True},
+             ("emir_run", {"dspf": DSPF, "netlist": "tb.scs", "run": True},
               "emir.error/1")] * 2
     got = [None] * len(calls)
 
@@ -791,3 +786,34 @@ def test_server_ends_with_the_contracts_status(how, rc, code):
     assert "EMIR-I690" in err
     if code:
         assert f"emir: {code}:" in err
+
+
+def test_a_value_outside_a_parameter_s_enum_is_a_coded_refusal():
+    """`mode: cc-grid` (or `sim: eldo`) once reached the SDK, which answered with
+    plain text and no code; it is EMIR-E592, with the values allowed."""
+    specs = mcp_tools.specs()
+    bad = mcp_tools.argument_error(specs["emir_next"], {"mode": "cc-grid"})
+    assert bad is not None and bad.code == "EMIR-E592"
+    assert bad.details["invalid"] == {"mode": {"given": ["cc-grid"], "allowed": ["rcc"]}}
+    assert "one method of a simulated run, rcc" in bad.message
+    sim = mcp_tools.argument_error(specs["emir_save_lines"], {"dspf": DSPF, "sim": "eldo"})
+    assert sim.code == "EMIR-E592" and "sim" in sim.details["invalid"]
+    assert mcp_tools.argument_error(specs["emir_next"], {"mode": "rcc"}) is None
+
+
+@needs_sdk
+def test_an_out_of_enum_value_over_a_client_gets_emir_error(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    server = mcp_server.build_server(None, cwd=str(tmp_path))
+
+    async def session():
+        async with connect(server) as c:
+            tools = {t.name: t for t in (await c.list_tools()).tools}
+            out = []
+            for name, args in (("emir_next", {"mode": "cc-grid"}),
+                               ("emir_save_lines", {"dspf": DSPF, "mode": "auto"})):
+                out.append(_check_result(await c.call_tool(name, args), tools, name))
+            return out
+    for d in _run(session):
+        assert d["schema"] == "emir.error/1" and d["code"] == "EMIR-E592"
+        assert d["details"]["invalid"]["mode"]["allowed"] == ["rcc"]

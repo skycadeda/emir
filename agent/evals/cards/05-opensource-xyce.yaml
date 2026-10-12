@@ -1,5 +1,5 @@
 id: opensource-xyce
-playbook: 05-open-source-flow
+playbook: 03-open-source-flow
 title: Screen a block with Xyce and the person's testbench
 requires: [xyce]
 fixtures: [xyce_loadrail]
@@ -10,8 +10,8 @@ prompt: |
 expect:
   commands:
     - {cmd: selftest}
-    - {cmd: simulate, value: {--sim: xyce, --mode: rcc}}
-    - {cmd: run, has: [--cc-sim], value: {--mode: rcc}}
+    - {cmd: simulate, value: {--sim: xyce}}
+    - {cmd: run, has: [--cc-sim, --period]}
     - {cmd: report}
   forbid:
     - {cmd: run, has: [--force]}
@@ -33,10 +33,10 @@ expect:
 reference:
   commands:
     - emir selftest --format json
-    - emir next --dspf inputs/loadrail.dspf --process inputs/process.yaml --netlist inputs/tb_rcc.cir --mode rcc --format json
-    - emir simulate inputs/tb_rcc.cir --sim xyce --dspf inputs/loadrail.dspf --mode rcc --process inputs/process.yaml --out emir_out/sim/result.raw --format json
-    - emir check inputs/loadrail.dspf --process inputs/process.yaml --cc-sim emir_out/sim/result.raw --mode rcc --format json
-    - emir run inputs/loadrail.dspf --process inputs/process.yaml --cc-sim emir_out/sim/result.raw --mode rcc --period 1e-8 --summary-out emir_out/summary.json --format json
+    - emir next --dspf inputs/loadrail.dspf --process inputs/process.yaml --netlist inputs/tb_rcc.cir --period 1e-8 --format json
+    - emir simulate inputs/tb_rcc.cir --sim xyce --dspf inputs/loadrail.dspf --process inputs/process.yaml --out emir_out/sim/result.raw --format json
+    - emir check inputs/loadrail.dspf --process inputs/process.yaml --cc-sim emir_out/sim/result.raw --period 1e-8 --format json
+    - emir run inputs/loadrail.dspf --process inputs/process.yaml --cc-sim emir_out/sim/result.raw --period 1e-8 --summary-out emir_out/summary.json --format json
     - emir report --from emir_out/summary.json
   answer: |
     **Verdict: FAIL** on VDD (rcc mode: Xyce simulated your testbench and every branch current was read).

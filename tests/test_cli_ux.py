@@ -7,7 +7,7 @@ import sys
 import time
 
 import pytest
-from _helpers import CUR, DSPF, PROC, ROOT, cc_result, emir, many_nets_dspf
+from _helpers import CUR, DSPF, PROC, ROOT, emir, many_nets_dspf, rcc_result
 
 from emir import cli
 from emir.dspf import parse
@@ -59,7 +59,7 @@ def test_broken_pipe_is_quiet(tmp_path):
 
 
 @pytest.mark.parametrize("exc,code,needle,ecode", [
-    (MemoryError("transfer matrix would need 9 GiB"), 2, "--scalars", "EMIR-E418"),
+    (MemoryError("transfer matrix would need 9 GiB"), 2, "one --net at a time", "EMIR-E418"),
     (ModuleNotFoundError("No module named 'klayout'", name="klayout"), 3, "pip install",
      "EMIR-E603"),
     (FileNotFoundError(2, "No such file or directory", "x.dspf"), 2, "x.dspf", "EMIR-E101"),
@@ -106,8 +106,8 @@ def test_summary_goes_to_stderr_when_stdout_is_spice():
     p = emir("run", DSPF, "--net", "VDD", "--save-branches")
     assert p.returncode == 0, p.stderr
     assert p.stdout.startswith("save ") and "railblock:" in p.stderr
-    p = emir("run", DSPF, "--save-list", "--save-prefix", "XI0.")
-    assert p.stdout.startswith("save XI0.MP0:s"), p.stdout
+    p = emir("run", DSPF, "--save-branches", "--save-prefix", "XI0.")
+    assert p.stdout.startswith("save XI0.Rm1:1"), p.stdout
 
 
 def test_run_without_net_analyses_every_net(tmp_path):
@@ -172,13 +172,14 @@ def test_provenance_and_mode_labels(tmp_path):
     assert "<b>dc</b>" in page
 
 
-def test_cc_run_is_labelled_cc_grid(tmp_path):
-    p = emir("run", DSPF, "--net", "VDD", "--process", PROC, "--cc-sim",
-             cc_result(tmp_path), "--mode", "cc-grid", "--period", "1e-9", "--json",
-             tmp_path / "s.json")
+def test_a_simulated_run_is_labelled_rcc(tmp_path):
+    args = [DSPF, "--net", "VDD", "--process", PROC, "--cc-sim", rcc_result(tmp_path),
+            "--period", "1e-9"]
+    p = emir("run", *args, "--json", tmp_path / "s.json")
     assert p.returncode == 0, p.stdout + p.stderr
+    assert "guard" not in p.stdout and "cc-grid" not in p.stdout
     net = json.load(open(tmp_path / "s.json"))["nets"][0]
-    assert net["mode"] == "cc-grid" and net["mode_reason"] == "--mode cc-grid"
+    assert net["mode"] == "rcc" and "every branch current" in net["mode_reason"]
 
 
 def test_viewer_ir_agrees_with_the_console(tmp_path):

@@ -9,7 +9,6 @@ PDK cell or real design copied, on SkyWater SKY130's public GDS layer numbers
 `sink`: four two-finger NMOS (W = 5 um, L = 0.5 um per finger), sources to a
 vss bus over a substrate tap, drains to an out bus, gates to vb; out and vss
 each on a met3 pad reached by one via2 cut, vb labelled on its met2 bus.
-(The removed `emir layout` read this same layout; README.md compares.)
 """
 from __future__ import annotations
 

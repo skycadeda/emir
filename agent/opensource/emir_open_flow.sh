@@ -2,16 +2,15 @@
 # The whole open-source DSPF flow in one go, for a person at a shell (an agent
 # runs the same steps one by one: `emir next --netlist TESTBENCH ...`).
 #
-#   emir_open_flow.sh SIM --mode M [options] TESTBENCH DSPF PROCESS
+#   emir_open_flow.sh SIM [options] TESTBENCH DSPF PROCESS
 #   SIM      xyce | ngspice (run_xyce.sh / run_ngspice.sh pass it)
-#   --mode M rcc | cc-grid, required: the person's choice (`emir next` lists
-#            what each costs and how accurate it is). rcc: the testbench
-#            simulates the RC netlist (the DSPF); cc-grid: a CC netlist
+#            The testbench simulates the RC netlist (it includes the DSPF):
+#            every branch current is saved and read (rcc, every metric)
 #   options  --net N        one net (default: every net)
-#            --probe        cc-grid: a 0 V probe on each device pin (devices
-#                           inside subcircuits, as open PDKs ship them)
-#            --period S     the block's period, seconds (default: detected)
+#            --period S     the block's period, seconds (required: without it
+#                           nothing is simulated, EMIR-E428)
 #            --out DIR      outputs (default emir_out)
+#            --mode rcc     accepted (the one method), and may be left out
 #
 # 1. emir simulate  the testbench, with the save lines, to an ASCII result and
 #                   its names sidecar (DIR/sim/result.raw, .names)
@@ -31,37 +30,40 @@ done
 here=$(cd "$(dirname "$self")" && pwd -P)
 root=$(cd "$here/../.." && pwd -P)
 EMIR=${EMIR:-"$root/bin/emir"}
-usage() { sed -n '4,15p' "$self" >&2; exit 2; }
+usage() { sed -n '4,13p' "$self" >&2; exit 2; }
 [ $# -ge 1 ] || usage
 sim=$1; shift
 case $sim in xyce|ngspice) ;; *) usage ;; esac
-net=""; mode=""; probe=""; period=""; out=emir_out
+net=""; period=""; out=emir_out
 while [ $# -gt 3 ]; do
     case $1 in
         --net) net=$2; shift 2 ;;
-        --mode) mode=$2; shift 2 ;;
-        --probe) probe=--probe; shift ;;
+        --mode)
+            [ "$2" = rcc ] || { echo "--mode $2: 1.1 has one method of a simulated run, rcc (every branch current of the RC netlist): --mode rcc, or leave --mode out" >&2; exit 2; }
+            shift 2 ;;
         --period) period=$2; shift 2 ;;
         --out) out=$2; shift 2 ;;
         *) echo "unknown option $1" >&2; usage ;;
     esac
 done
 [ $# -eq 3 ] || usage
-case $mode in
-    rcc|cc-grid) ;;
-    *) echo "give --mode rcc or --mode cc-grid: the mode is the person's choice (emir next lists the trade-offs)" >&2; usage ;;
-esac
 tb=$1; dspf=$2; proc=$3
+if [ -z "$period" ]; then
+    # emir simulate runs the testbench's .tran: without --period its run is
+    # refused (EMIR-E428), so nothing is simulated
+    echo "EMIR-E428: no --period: the simulation is a transient, and rcc averages over whole periods of the block's activity; EMIR never guesses them. Give --period (the block's clock, or the period of the testbench's PULSE or SIN sources); nothing was simulated" >&2
+    exit 2
+fi
 raw="$out/sim/result.raw"
 set -- ; [ -n "$net" ] && set -- --net "$net"
-echo "== 1/4 emir simulate ($sim, mode $mode)"
-"$EMIR" simulate "$tb" --sim "$sim" --dspf "$dspf" --mode "$mode" $probe "$@" \
+echo "== 1/4 emir simulate ($sim, rcc: every branch current)"
+"$EMIR" simulate "$tb" --sim "$sim" --dspf "$dspf" "$@" \
     --process "$proc" --out "$raw"
-[ -n "$period" ] && set -- "$@" --period "$period"
+set -- "$@" --period "$period"
 echo "== 2/4 emir check"
-"$EMIR" check "$dspf" --process "$proc" --cc-sim "$raw" --mode "$mode" "$@"
+"$EMIR" check "$dspf" --process "$proc" --cc-sim "$raw" "$@"
 echo "== 3/4 emir run"
-"$EMIR" run "$dspf" --process "$proc" --cc-sim "$raw" --mode "$mode" "$@" \
+"$EMIR" run "$dspf" --process "$proc" --cc-sim "$raw" "$@" \
     --summary-out "$out/summary.json" --html "$out/html" --viewer "$out/viewer"
 echo "== 4/4 emir report -> $out/report.md"
 "$EMIR" report --from "$out/summary.json" > "$out/report.md"

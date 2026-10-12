@@ -7,9 +7,7 @@ when the facts name a layout to extract:
 * no DSPF yet -- with `gds`, `cdl` and `cell` among the facts: the
   `emir extract` steps (the dry run, then `--run`, which needs the person's
   go-ahead: PVS and Quantus are licensed); without them: how to get one;
-* a block of ADC-top / PLL-top size -- the two extractions from one LVS
-  (R-only for the grid, C-only coupled for the CC netlist) and cc-grid;
-* a Spectre simulation step -- the testbench templates and the save-lines
+* a Spectre simulation step -- the testbench template and the save-lines
   file (`--prefix`, `--out`);
 * `--viewer` -- how the person opens the Explorer from Virtuoso.
 
@@ -39,36 +37,21 @@ def _extract(f, plan):
         return
     gds, cdl, cell = f.get("gds"), f.get("cdl"), f.get("cell")
     if gds and cdl and cell:
-        kinds = ["r_only"] + (["c_only_coupled"] if f.get("mode") == "cc-grid" else [])
-        for k in kinds:
-            base = ["extract", "--gds", gds, "--cdl", cdl, "--cell", cell, "--kind", k]
-            plan.add(f"extract-plan:{k}", command_line(base, f.fmt()),
-                     f"the PVS LVS + Quantus plan for the {k} DSPF: where the tools and "
-                     f"decks were found and what is missing; runs nothing")
-            plan.add(f"extract:{k}", command_line(base, "--run", f.fmt()),
-                     f"run LVS (it must MATCH) and Quantus, kind {k}; a second kind "
-                     f"reuses the matched LVS",
-                     licensed_tool="quantus", long_run=True, after=[f"extract-plan:{k}"])
+        k = "rc_coupled"
+        base = ["extract", "--gds", gds, "--cdl", cdl, "--cell", cell, "--kind", k]
+        plan.add(f"extract-plan:{k}", command_line(base, f.fmt()),
+                 f"the PVS LVS + Quantus plan for the {k} DSPF (the RC netlist rcc "
+                 f"simulates): where the tools and decks were found and what is missing; "
+                 f"runs nothing")
+        plan.add(f"extract:{k}", command_line(base, "--run", f.fmt()),
+                 f"run LVS (it must MATCH) and Quantus, kind {k}",
+                 licensed_tool="quantus", long_run=True, after=[f"extract-plan:{k}"])
         return
     if _cadence(f):
         plan.note("Cadence site: the DSPF comes from `emir extract --gds <layout.gds> --cdl "
-                  "<netlist.cdl> --cell <cell> --kind r_only` -- it prints the PVS LVS + "
+                  "<netlist.cdl> --cell <cell> --kind rc_coupled` -- it prints the PVS LVS + "
                   "Quantus plan and runs them only with --run (licensed tools: ask the "
-                  "person first); --kind c_only_coupled from the same LVS gives the CC "
-                  "netlist of a big block")
-
-
-@rule(45, "cadence-bigblock")
-def _bigblock(f, plan):
-    """ADC top, PLL top: R-only grid plus a CC simulation, both from one LVS."""
-    if not (_cadence(f) and f.size()["class"] == "big"):
-        return
-    plan.note("Cadence, big block: extract twice from one LVS with `emir extract` -- "
-              "--kind r_only for the grid DSPF that `emir run` screens and --kind "
-              "c_only_coupled for the netlist to simulate (no resistance: the rails are "
-              "ideal and it converges); simulate the C-only netlist with the lines of "
-              "`emir save-lines <r_only.dspf> --mode cc-grid --prefix <instance>. --out "
-              f"emir_save.scs` ({_testbenches()}/tb_cc.scs.tmpl) and run --mode cc-grid")
+                  "person first); --kind r_only gives a DSPF for DC currents alone")
 
 
 @rule(55, "cadence-testbench")
@@ -78,15 +61,13 @@ def _testbench(f, plan):
     if sim is None or not sim["command"].startswith("spectre "):
         return
     tb = _testbenches()
-    plan.note(f"Spectre testbench templates: {tb}/tb_rcc.scs.tmpl (rcc: the RC "
-              f"DSPF itself is simulated) and {tb}/tb_cc.scs.tmpl (cc-grid: the "
-              f"C-only DSPF or the schematic); add --prefix <instance>. and --out "
-              f"emir_save.scs to the save-lines step and include that file; keep "
-              f"-format psfascii (binary PSF is not read). Or let `emir simulate "
-              f"<testbench.scs> --sim spectre --dspf <dspf> --mode {f.get('mode')} "
-              f"--prefix <instance>.` write "
-              f"the deck (it includes the testbench and the save statements) and print "
-              f"the command; with --run it runs Spectre (ask the person first)")
+    plan.note(f"Spectre testbench template: {tb}/tb_rcc.scs.tmpl (the RC DSPF itself is "
+              f"simulated); add --prefix <instance>. and --out emir_save.scs to the "
+              f"save-lines step and include that file; keep -format psfascii (binary PSF "
+              f"is not read). Or let `emir simulate <testbench.scs> --sim spectre --dspf "
+              f"<dspf> --prefix <instance>.` write the deck (it includes the testbench and "
+              f"the save statements) and print the command; with --run it runs Spectre "
+              f"(ask the person first)")
 
 
 @rule(75, "cadence-viewer")

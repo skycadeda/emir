@@ -5,8 +5,8 @@
 # on site by the local agent when `emir extract --run` passes its LVS MATCH gate
 # and `emir check` passes on the DSPF it writes.
 # Rendered by `emir extract` and by agent/cadence/quantus/render_ccl.py.
-# KIND: r_only (the EM/IR grid) | c_only_coupled, c_only_decoupled (the CC
-#       netlist for --mode cc-grid) | rc_coupled, rc_decoupled (RC netlists)
+# KIND: rc_coupled, rc_decoupled (the RC netlist rcc simulates and screens) |
+#       r_only (the resistor grid, for DC currents)
 # LOAD-BEARING (do not drop): -analysis "em", the three -include_*_model false
 # flags, -temperature, -sub_node_char ":", -disable_instances false,
 # -net_name_space "SCHEMATIC", -output_xy, an absolute LVS database path.

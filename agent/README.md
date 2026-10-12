@@ -49,13 +49,13 @@ Transport stdio, command `emir`, arguments `["mcp"]` ([`mcp/generic.json`](mcp/g
 prints every client's snippet with this machine's absolute path to `emir`. Tool calls that would start a licensed
 tool, run long or rewrite a file are refused (EMIR-E590) until the agent repeats them with `confirm: true`, which it
 may do only after the person agreed. Details: [`mcp/README.md`](mcp/README.md) and playbook
-[10](playbooks/10-mcp.md).
+[00](playbooks/00-preflight.md).
 
 ## What is in `agent/`
 
 | path | what |
 |---|---|
-| [`playbooks/`](playbooks/) | one playbook per task, 00 to 10, each with a worked example that runs as printed |
+| [`playbooks/`](playbooks/) | one playbook per task, 00 to 04, each with a worked example that runs as printed |
 | [`skills/emir/`](skills/emir/SKILL.md) | the Claude Code skill |
 | [`mcp/`](mcp/README.md) | MCP client snippets (the server is `emir mcp`) |
 | [`cadence/`](cadence/README.md) | the Cadence integration: Virtuoso SKILL (and its headless self-test), PVS/Quantus, Spectre templates |
@@ -76,7 +76,7 @@ disclaimer present, no invented limit, no input file changed. See [`evals/README
 
 | client | how | status |
 |---|---|---|
-| Claude Code (CLI, `claude -p`) reading `CLAUDE.md` -> `AGENTS.md` in a clone | `agent/evals/run.py`, all 13 cards of that date, one run each (`--model sonnet`; the 12th to 16th of today's cards, `first-spectre-run`, `ict-encrypted`, `ask-the-mode`, `decap-make-it-pass` and `gds-magic-plan`, came later and have not run with a real agent) | run 2026-10-02 (Claude Code 2.1.287): 10 of the 11 cards that remain pass with the current grader (gds-mesh-spine went with the removed raster-mesh command, gds-layout-taps with the removed layout command); the two misses were the agent's (an `--out` option given to `emir run`, which it does not take; no `emir report` after the GDS run of gds-mesh-spine), and the docs now steer against both. The runs, their cost and time are in [`evals/README.md`](evals/README.md) |
-| Claude Code with the MCP server (`--mcp-config`, no shell) | 2 cards (`screen-dc`, `chip-level-abstracts`), graded from the transcript's tool calls (`run.py --mcp`) | run 2026-10-02 (Claude Code 2.1.287): `screen-dc` passes; `chip-level-abstracts` fails one check (the back-annotated IR, measured from the pad, was added to the top-level drop again; the document and playbook 03 now say so) |
+| Claude Code (CLI, `claude -p`) reading `CLAUDE.md` -> `AGENTS.md` in a clone | `agent/evals/run.py`, one run per card, on 2026-10-02 and 2026-10-04 (`first-spectre-run`, `ict-encrypted` and `period-refused`, the 9th to 11th of the cards, have not run with a real agent) | 6 of the 8 cards run pass with the current grader; the two misses were the agent's, and the docs now steer against both. Not re-run since. The runs, their cost and time: [`evals/README.md`](evals/README.md) |
+| Claude Code with the MCP server (`--mcp-config`, no shell) | `screen-dc`, graded from the transcript's tool calls (`run.py --mcp`) | 2026-10-02 (Claude Code 2.1.287): PASS |
 | the skill through `.claude/skills/emir` | a test checks the relative link resolves | the link: tested; its triggering: not measured |
 | Codex, Cursor, Claude Desktop | not installed where this repository is built | UNVERIFIED: the snippets follow each client's published format |

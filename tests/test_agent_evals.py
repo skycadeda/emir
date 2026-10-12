@@ -105,7 +105,7 @@ def test_the_reference_transcript_passes_every_check(card_id, tmp_path):
     res = run_card(card_id, tmp_path)
     assert res["passed"], [c for c in res["checks"] if not c["ok"]]
     calls = grade.read_calls(res["workspace"])
-    # every call was logged with its exit status (troubleshoot-e417 shows a check failing)
+    # every call was logged with its exit status
     assert calls and all(isinstance(c["rc"], int) for c in calls), calls
     assert res["emir_calls"] == len(calls)
 
@@ -117,7 +117,6 @@ MISTAKES = [("no-disclaimer", "screen-dc", {"disclaimer"}),
             ("invented-flag", "screen-dc", {"real_options"}),
             ("invented-flag", "cadence-extract-plan", {"real_options"}),
             ("wrong-number", "screen-dc", {"number:worst ratio", "number:IR drop mV"}),
-            ("wrong-number", "chip-level-abstracts", {"number:top worst ratio"}),
             ("invented-limit", "report-for-manager", {"no_invented_limits"}),
             ("signoff", "screen-dc", {"no_signoff_claim"}),
             ("edit-input", "screen-dc", {"unchanged"}),
@@ -126,11 +125,7 @@ MISTAKES = [("no-disclaimer", "screen-dc", {"disclaimer"}),
             ("no-commands", "cadence-extract-plan", {"commands", "file:emir_out/emir_save.scs"}),
             ("wrong-verdict", "report-for-manager", {"verdict"}),
             ("invented-limit", "ict-encrypted", {"no_invented_limits"}),
-            ("no-commands", "ict-encrypted", {"commands", "file:emir_out/mypdk.yaml"}),
-            ("pick-mode", "ask-the-mode", {"forbid:save-lines", "never-says:I chose"}),
-            # dropping --period keeps decap-aware EM from being computed: the
-            # verdict once fell back to decap-free's CLEAN without a word
-            ("loosen-basis", "decap-make-it-pass", {"forbid:run", "commands"})]
+            ("no-commands", "ict-encrypted", {"commands", "file:emir_out/mypdk.yaml"})]
 
 
 @pytest.mark.parametrize("variant,card_id,expected", MISTAKES,
@@ -340,8 +335,7 @@ def test_the_runner_writes_an_mcp_client_file(tmp_path):
 def test_the_readmes_name_every_card_not_run_with_a_real_agent():
     """The results table of agent/evals/README.md lists the cards run with a
     real agent; the "came later" sentences of agent/README.md and
-    agent/evals/README.md must name every other card (they stopped at the
-    16th: decap-make-it-pass, the 17th, was missing)."""
+    agent/evals/README.md must name every other card."""
     import glob
     import re
 

@@ -9,13 +9,12 @@ A card names its fixtures (`fixtures: [sample]`); the runner builds them into
 the workspace's `inputs/` before the agent starts, so the agent finds the
 person's files where the prompt says they are.
 
-Fixtures that need emir itself (an abstract, a finished run) call the emir the
+Fixtures that need emir itself (a finished run) call the emir the
 runner was given (`EMIR` below), never the workspace's copy.
 """
 from __future__ import annotations
 
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -41,21 +40,14 @@ def _copy(src, dst):
     return dst
 
 
-def _emir(*args, cwd):
-    """Run the real emir; raise with its output when it fails."""
+def _emir(*args, cwd, rc=0):
+    """Run the real emir; raise with its output when it does not exit `rc`."""
     p = subprocess.run([*EMIR, *args], cwd=cwd, capture_output=True, text=True,
                        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
-    if p.returncode != 0:
+    if p.returncode != rc:
         raise RuntimeError(f"fixture: emir {' '.join(args)} exited {p.returncode}:\n"
                            f"{p.stdout[-2000:]}\n{p.stderr[-2000:]}")
     return p.stdout
-
-
-def _module(rel, name):
-    spec = importlib.util.spec_from_file_location(name, _src(*rel.split("/")))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
 
 
 # ------------------------------------------------------------------ the fixtures
@@ -65,63 +57,6 @@ def sample(out):
     """inputs/rail.dspf and inputs/process.yaml: the bundled sample (ILLUSTRATIVE limits)."""
     _copy(_src("emir", "data", "sample", "rail.dspf"), os.path.join(out, "rail.dspf"))
     _copy(_src("emir", "data", "sample", "process.yaml"), os.path.join(out, "process.yaml"))
-
-
-def _mesh(out, name):
-    tmp = os.path.join(out, ".gen")
-    mesh = _module("examples/06_big_block/mesh.py", "emir_eval_mesh")
-    info = mesh.stream_case(40, 100, 301, tmp)
-    os.replace(info["dspf"], os.path.join(out, f"{name}.dspf"))
-    raw = info["raw"]
-    _copy(_src("examples", "06_big_block", "process.yaml"), os.path.join(out, "process.yaml"))
-    return tmp, raw
-
-
-def adc_top(out):
-    """inputs/adc_top_r.dspf (R-only, 1701 nodes, 100 device pins), inputs/adc_top_cc.raw
-    (its CC result: 5 periods of 10 ns, synthetic), inputs/process.yaml (invented)."""
-    tmp, raw = _mesh(out, "adc_top_r")
-    os.replace(raw, os.path.join(out, "adc_top_cc.raw"))
-    shutil.rmtree(tmp)
-
-
-def pll_top(out):
-    """inputs/pll_top.dspf (1701 nodes) and inputs/process.yaml; no simulation result."""
-    tmp, _ = _mesh(out, "pll_top")
-    shutil.rmtree(tmp)
-
-
-def chip(out):
-    """inputs/chip/: example 05's synthetic chip (top.dspf, adc/pll DSPFs and results,
-    process.yaml) plus the two block abstracts, made with `emir abstract`."""
-    d = os.path.join(out, "chip")
-    os.makedirs(d, exist_ok=True)
-    mk = _module("examples/05_chip_level/make_inputs.py", "emir_eval_chip")
-    mk.main(d)
-    for f in ("flat.dspf", "flat.raw", "adc_burst.raw"):
-        os.remove(os.path.join(d, f))
-    for blk, per in (("adc", "10e-9"), ("pll", "2.5e-9")):
-        _emir("abstract", f"{blk}.dspf", "--process", "process.yaml", "--cc-sim", f"{blk}.raw",
-              "--mode", "cc-grid", "--period", per, "--vdd", "1.0", "-o", f"{blk}.abstract.json",
-              "--format", "json", cwd=d)
-
-
-def chip_e417(out):
-    """inputs/chip/top.dspf, process.yaml, and top.tran: a top-level CC result that saved
-    the black-boxed PLL's supply current once although its pin reaches VDD twice."""
-    d = os.path.join(out, "chip")
-    os.makedirs(d, exist_ok=True)
-    mk = _module("examples/05_chip_level/make_inputs.py", "emir_eval_chip")
-    mk.main(d)
-    keep = {"top.dspf", "process.yaml"}
-    for f in os.listdir(d):
-        if f not in keep:
-            os.remove(os.path.join(d, f))
-    import numpy as np
-    from emir.validate import _psf_tran
-    t = np.linspace(0, 4e-9, 401)
-    _psf_tran(os.path.join(d, "top.tran"), t, {"XADC:VDDA": 2e-3 * np.ones_like(t),
-                                               "XPLL:VDDP": 2e-3 * np.ones_like(t)})
 
 
 #: a 10 um Metal1 strap, 0.5 um wide, and one Via1 cut down to the load, written
@@ -148,8 +83,8 @@ def gf180_strap(out):
 
 
 def xyce_loadrail(out):
-    """inputs/: example 02's loadrail.dspf, its testbenches and models, the sample process."""
-    for f in ("loadrail.dspf", "cc.sp", "models.sp", "tb_rcc.cir", "tb_cc.cir"):
+    """inputs/: example 02's loadrail.dspf, its testbench and models, the sample process."""
+    for f in ("loadrail.dspf", "models.sp", "tb_rcc.cir"):
         _copy(_src("examples", "02_xyce", f), os.path.join(out, f))
     _copy(_src("emir", "data", "sample", "process.yaml"), os.path.join(out, "process.yaml"))
 
@@ -187,34 +122,6 @@ def finished_run(out):
           "--summary-out", "summary.json", "--format", "json", cwd=d)
 
 
-def decap_block(out):
-    """inputs/decap.dspf (an RC extraction of a 12 x 12 VDD mesh with 20 device pins and
-    4 MOS decaps on thin straps), inputs/decap.raw (its CC result: 3 periods of 1 ns,
-    synthetic) and inputs/process.yaml (invented, with the decap's cap_models):
-    example 13's offline case, with every EM limit 1.6 x example 13's, so that the
-    decap-free verdict is CLEAN and the default basis (worst) FAILs on the decaps'
-    straps -- the case where a loosened basis, or an option that keeps decap-aware EM
-    from being computed (no --period, --ground, a coarse --dyn-steps), turns a FAIL
-    into a pass."""
-    import yaml
-    mk = _module("examples/13_decap_aware/decap_mesh.py", "emir_eval_decap")
-    tmp = os.path.join(out, ".gen")
-    info = mk.small_case(tmp)
-    os.replace(info["dspf"], os.path.join(out, "decap.dspf"))
-    os.replace(info["raw"], os.path.join(out, "decap.raw"))
-    with open(info["process"], encoding="utf-8") as f:
-        d = yaml.safe_load(f)
-    for sec in ("layers", "vias"):
-        for e in d[sec].values():
-            for k in list(e):
-                if k.startswith(("jmax_", "imax_")):
-                    e[k] = round(e[k] * 1.6, 6)
-    with open(os.path.join(out, "process.yaml"), "w", encoding="utf-8") as f:
-        f.write("# ILLUSTRATIVE, INVENTED: example 13's process file, every limit x 1.6\n")
-        yaml.safe_dump(d, f, sort_keys=False)
-    shutil.rmtree(tmp)
-
-
 def sky130_tiny(out):
     """inputs/tiny.gds: the magic route's synthetic one-transistor SKY130 cell (top cell tiny)."""
     _copy(_src("tests", "data", "magic_tiny", "tiny.gds"), os.path.join(out, "tiny.gds"))
@@ -242,11 +149,29 @@ def encrypted_ict(out):
                 "`pragma protect end_protected\n")
 
 
-FIXTURES = {"sample": sample, "encrypted_ict": encrypted_ict, "adc_top": adc_top, "pll_top": pll_top, "chip": chip,
-            "chip_e417": chip_e417, "gf180_strap": gf180_strap, "xyce_loadrail": xyce_loadrail,
-            "cadence_stub": cadence_stub, "finished_run": finished_run,
-            "spectre_site": spectre_site, "sky130_tiny": sky130_tiny,
-            "decap_block": decap_block}
+def transient_result(out):
+    """inputs/rail.dspf, inputs/process.yaml (the sample) and inputs/result.tran: a
+    transient of the sample rail with every branch current (synthetic, made here), its
+    far load pulsed with a period the person has not given: a run without --period is
+    refused (EMIR-E428), and EMIR never guesses the period."""
+    import numpy as np
+    sys.path.insert(0, ROOT)
+    from emir.validate import _psf_tran
+    sample(out)
+    t = np.linspace(0.0, 12.5e-9, 2501)
+    ph = ((t - 0.5e-9) / 4e-9) % 1.0
+    x = ph / 0.45
+    on = np.where((t >= 0.5e-9) & (x > 0) & (x < 1), 2e-3 * (1 - np.abs(2 * x - 1)), 0.0)
+    i = [0 * t, 0 * t, 0 * t, on]
+    sigs = {f"Rm{n}:1": sum(i[(n - 1) // 3:]) for n in range(1, 13)}
+    sigs.update({f"Rc{k}:1": i[k] for k in range(4)})
+    _psf_tran(os.path.join(out, "result.tran"), t, sigs)
+
+
+FIXTURES = {"sample": sample, "encrypted_ict": encrypted_ict, "gf180_strap": gf180_strap,
+            "xyce_loadrail": xyce_loadrail, "cadence_stub": cadence_stub,
+            "finished_run": finished_run, "spectre_site": spectre_site,
+            "sky130_tiny": sky130_tiny, "transient_result": transient_result}
 
 
 def build(names, out, emir=None):

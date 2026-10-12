@@ -149,24 +149,3 @@ ict_conductor_pattern: "{layer}_conn"   # `emir import-ict`: the ICT conductor
                               # {Layer} as written); `ict_name` overrides it.
                               # import-ict also writes `ict_process` (the ICT's
                               # process name), for the record only.
-
-cap_models:                   # dynamic IR only (the `emir.dynir` module): sizes
-                              # capacitor and MOS-decap devices that extract as
-                              # geometry instead of a value
-  mimcap_a:                   # a capacitor model named in the DSPF:
-    cj: 2.0e-3                #   F/m^2, area capacitance
-    cjsw: 1.0e-10             #   F/m, perimeter capacitance
-  default:                    # a capacitor device with no model name
-    cj: 2.0e-3
-  nmos_decap_a:               # a MOS decap model named in the DSPF:
-    cox: 1.0e-2               #   F/m^2, C = cox * W * L
-    ron_sq: 1000.0            #   ohm/square; access R = ron_sq * L / W / 6
-    esr_a: 10.0               #   ohm      } a fitted access R, preferred over
-    esr_w: 0.5                #   ohm/um   } ron_sq: R = esr_a + esr_w * W_um
-    esr_l: 2.0                #   ohm*um   }        + esr_l / L_um
-    esr_w_range: [1.0, 10.0]  #   um, W the fit covers (outside: reported)
-    esr_l_range: [0.5, 5.0]   #   um, L the fit covers
-    esr_fit_freq: 1.0e+9      #   Hz, the frequency the fit was made at
-  mos_default:                # a MOS decap whose model has no entry
-    cox: 1.0e-2
-    ron_sq: 1000.0

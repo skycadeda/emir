@@ -5,13 +5,14 @@ import re
 
 import pytest
 import yaml
-from _helpers import CUR, DSPF, PROC, cc_result, emir, rewrite_vias, sample_text, write
+from _helpers import CUR, DSPF, PROC, emir, rcc_result, rewrite_vias, sample_text, write
 
 from emir.report import build, markdown
 
 
 def _summary(tmp_path, *args, name="s.json"):
     out = tmp_path / name
+    args = [str(a) for a in args]
     p = emir("run", *args, "--summary-out", out)
     assert p.returncode == 0, p.stdout + p.stderr
     return json.load(open(out)), out
@@ -67,28 +68,23 @@ def test_no_fix_below_one(tmp_path):
 
 
 def test_what_was_not_checked_is_said(tmp_path):
-    """Vias without a cut count, a layer without an rms or peak limit, a pin
-    the simulation did not save, a forced run: each gets its line."""
+    """Vias without a cut count, a layer without an rms or peak limit, a
+    forced run: each gets its line."""
     dspf = write(tmp_path / "nocut.dspf", rewrite_vias(sample_text(), "$cont"))
     d = yaml.safe_load(open(PROC))
     del d["layers"]["Metal1"]["jmax_peak"], d["layers"]["Metal1"]["jmax_rms_k"]
     proc = write(tmp_path / "p.yaml", yaml.safe_dump(d))
-    res = cc_result(tmp_path)
-    text = open(res).read().replace('"MP3:s"', '"MQ3:s"')         # MP3 not saved
-    open(res, "w").write(text)
-    s, out = _summary(tmp_path, dspf, "--net", "VDD", "--process", proc, "--cc-sim", res,
-                      "--mode", "cc-grid", "--period", "1e-9")
+    s, out = _summary(tmp_path, dspf, "--net", "VDD", "--process", proc, "--cc-sim",
+                      rcc_result(tmp_path), "--period", "1e-9")
     nc = s["not_checked"]
     assert nc["vias_assumed_one_cut"] == {"VDD": ["Rc0", "Rc1", "Rc2", "Rc3"]}
-    assert nc["unsaved_pins"] == {"VDD": ["MP3:s"]}
+    assert "unsaved_pins" not in nc
     assert {"name": "Metal1", "kind": "wire", "metrics": ["rms", "peak"]} in nc["limits_missing"]
     md = emir("report", "--from", out).stdout
     assert "VDD: 4 via(s) with no cut count, checked as ONE cut" in md
-    assert "VDD: 1 instance pin(s) not saved by the simulation, their current taken as " \
-           "zero: MP3:s" in md
+    assert "not saved by the simulation" not in md
     assert "layer Metal1: no rms, peak limit in the process file" in md
-    assert "[EMIR-W403]" in md                     # the checker's warning about the pin
-    assert "- Mode: cc-grid" in md and "a finished simulation result (--cc-sim)" in md
+    assert "- Mode: rcc" in md and "a finished simulation result (--cc-sim)" in md
 
 
 def test_a_forced_run_reports_what_it_was_forced_past(tmp_path):
@@ -113,7 +109,9 @@ def test_report_reads_stdin_and_refuses_other_files(tmp_path):
     d = json.loads(r.stdout)
     assert d["schema"] == "emir.report/1" and d["source"] == "-"
     assert d["ir_by_power_net"] == [{"net": "VDD", "ir_drop_mV": d["nets"][0]["ir_drop_mV"],
-                                     "ir_kind": "drop"}]
+                                     "ir_kind": "drop", "ir_resistance": {
+                                         "kind": "as extracted", "temp_C": 100.0,
+                                         "stated": True}}]
     p = emir("report", "--from", PROC)
     assert p.returncode == 2 and "EMIR-E104" in p.stderr
     bad = write(tmp_path / "x.json", json.dumps({"schema": "emir.check/1"}))

@@ -1,7 +1,7 @@
 """The open-simulator path without a simulator: netlist trees and their
 rewriting (`emir/opensim_netlist.py`), save sets and names sidecars, `emir
-save-lines --sim`, `emir probe`, the input checks of `emir simulate`, and the
-`emir next` rules (`emir/plan_opensim.py`). Runs with real Xyce / ngspice are
+save-lines --sim`, the input checks of `emir simulate`, and the `emir next`
+rules (`emir/plan_opensim.py`). Runs with real Xyce / ngspice are
 in tests/test_opensim_sims.py."""
 import json
 import os
@@ -15,8 +15,7 @@ from emir import plan as P
 from emir import schemas
 from emir.dspf import parse
 from emir.errors import EmirError, collecting
-from emir.opensim import (infer_names, lead, load_probes, ngspice_name, probe_keys,
-                          save_set, split_path, xyce_name)
+from emir.opensim import infer_names, ngspice_name, save_set, split_path, xyce_name
 from emir.opensim_netlist import Tree, Writer, tokens
 from emir.waves import Waves
 
@@ -35,9 +34,15 @@ def jdoc(p, rc=0):
 
 @pytest.fixture
 def ex(tmp_path):
-    """A copy of the loadrail example's inputs."""
-    for f in ("loadrail.dspf", "models.sp", "cc.sp", "tb_cc.cir", "tb_rcc.cir"):
+    """A copy of the loadrail example's inputs, and a testbench of the
+    schematic (the four devices on ideal nets: no resistor of the DSPF)."""
+    for f in ("loadrail.dspf", "models.sp", "tb_rcc.cir"):
         shutil.copy(os.path.join(EX, f), tmp_path / f)
+    write(tmp_path / "sch.sp", ".SUBCKT loadrail VDD VSS G0 G1 G2 G3\n"
+          + "".join(f"XMN{k} VDD G{k} VSS VSS nsink W=80u L=1u\n" for k in range(4))
+          + ".ENDS loadrail\n")
+    write(tmp_path / "tb_sch.cir", (tmp_path / "tb_rcc.cir").read_text()
+          .replace(".include loadrail.dspf", ".include sch.sp"))
     return tmp_path
 
 
@@ -157,20 +162,14 @@ def test_simulator_names():
     assert xyce_name(["XI0"], "RM1") == "XI0:RM1" and xyce_name([], "RM1") == "RM1"
     assert ngspice_name([], "Rm1") == "rm1"
     assert ngspice_name(["XTOP", "XI0"], "Rm1") == "r.xtop.xi0.rm1"
-    assert probe_keys(["XI0"], "VEMIR0") == ["I(XI0:VEMIR0)", "I(V.XI0.VEMIR0)",
-                                             "V.XI0.VEMIR0#BRANCH", "I(XI0.VEMIR0)"]
-    assert lead("M", "s") == ("S", 1) and lead("M", "SOURCE") == ("S", 1)
-    assert lead("M", "3") == ("S", 1) and lead("Q", "c") == ("C", 1)
-    assert lead("R", "2") == ("", -1) and lead("D", "anode") == ("", 1)
-    assert lead("X", "d") is None and lead("M", "x") is None
 
 
 def test_rcc_save_set_in_both_syntaxes():
     d = parse(DSPF)
-    x = save_set(d, ["VDD"], "rcc", "xyce", ["XI0"])
+    x = save_set(d, ["VDD"], "xyce", ["XI0"])
     assert x.signals[0] == "I(XI0:Rm1)" and len(x.signals) == 16
     assert x.names["I(XI0:RM1)"] == ["Rm1:1", 1]
-    n = save_set(d, ["VDD"], "rcc", "ngspice", ["XI0"])
+    n = save_set(d, ["VDD"], "ngspice", ["XI0"])
     assert n.signals[0] == "@r.xi0.rm1[i]" and n.names["I(@R.XI0.RM1[I])"] == ["Rm1:1", 1]
     lines = x.lines("r.raw")
     assert lines[1].startswith(".print tran format=raw file=r.raw I(XI0:Rm1)")
@@ -180,45 +179,11 @@ def test_rcc_save_set_in_both_syntaxes():
     assert "write r.raw" in nl[1]
 
 
-def test_cc_save_set_direct_leads_probes_and_unprintable():
-    d = parse(DSPF)                                   # MP0..MP3: M devices, pin s
-    x = save_set(d, ["VDD"], "cc", "xyce", ["XI0"])
-    assert x.signals == [f"IS(XI0:MP{k})" for k in range(4)] and x.direct == 4
-    assert x.names["IS(XI0:MP0)"] == ["MP0:s", 1]
-    # ngspice: @mp0[is] carries the PMOS's polarity (the opposite sign of the
-    # current into the pin, measured on ngspice 45): a probe reads them
-    n = save_set(d, ["VDD"], "cc", "ngspice")
-    assert not n.signals and n.unprintable == n.polarity == [f"MP{k}:s" for k in range(4)]
-    # the netlist says they are subcircuit instances: not printable ...
-    xk = save_set(d, ["VDD"], "cc", "xyce", inst_kinds={f"MP{k}": "X" for k in range(4)})
-    assert xk.unprintable == [f"MP{k}:s" for k in range(4)] and not xk.signals
-    # ... unless probed
-    pr = {"MP0:S": {"source": "VEMIR0", "path": ["XI0"], "sign": 1, "pin": "MP0:s"}}
-    xp = save_set(d, ["VDD"], "cc", "ngspice", inst_kinds={f"MP{k}": "X" for k in range(4)},
-                  probes=pr)
-    assert xp.signals == ["i(v.xi0.vemir0)"] and xp.names["I(V.XI0.VEMIR0)"] == ["MP0:s", 1]
-    assert xp.probed == 1 and len(xp.unprintable) == 3
-
-
-def test_both_pins_of_a_two_terminal_device_need_a_probe(tmp_path):
-    """One current, I(RD0), for two DSPF pins: a sidecar maps one name to one
-    pin, so the second pin is left for a probe instead of being misread."""
-    text = (open(DSPF).read().replace(".ENDS", "")
-            + "*|NET OUT 0\n*|I (RD0:2 RD0 2 I 0 70.0 0.0)\n"
-              "Ro1 OUT OUT:1 1.0 $metal1 $L=5 $W=0.75\nRo2 OUT:1 RD0:2 1.0 $metal1 $L=5 $W=0.75\n"
-              ".ENDS\n").replace("*|I (MP3:s MP3 s I 0 60.0000 0.0000)",
-                                  "*|I (MP3:s MP3 s I 0 60.0000 0.0000)\n"
-                                  "*|I (RD0:1 RD0 1 I 0 62.0000 0.0000)")
-    d = parse(write(tmp_path / "r.dspf", text))
-    ss = save_set(d, ["OUT", "VDD"], "cc", "xyce")
-    assert ss.names["I(RD0)"] == ["RD0:2", -1] and ss.unprintable == ["RD0:1"]
-
-
 def test_infer_names_finds_the_lines_a_result_was_made_with():
     d = parse(DSPF)
-    ss = save_set(d, ["VDD"], "rcc", "xyce", ["XTOP", "XI0"])
+    ss = save_set(d, ["VDD"], "xyce", ["XTOP", "XI0"])
     w = Waves([0, 1], {k: [0.0, 1.0] for k in ss.names})
-    assert infer_names(d, ["VDD"], w) == ("xyce", "rcc", "XTOP.XI0.", 16, 16)
+    assert infer_names(d, ["VDD"], w) == ("xyce", "XTOP.XI0.", 16, 16)
     assert infer_names(d, ["VDD"], Waves([0, 1], {"I(VX)": [0, 1]})) is None
 
 
@@ -228,137 +193,36 @@ def test_infer_names_finds_the_lines_a_result_was_made_with():
 def test_save_lines_xyce_writes_the_sidecar(tmp_path):
     side = tmp_path / "r.raw.names"
     p = emir("save-lines", DSPF, "--net", "VDD", "--sim", "xyce", "--prefix", "XI0.",
-             "--names-out", side, "--mode", "rcc")
+             "--names-out", side)
     assert p.returncode == 0, p.stderr
     # text mode: stdout holds the lines only (it is redirected into a deck)
     out = p.stdout.splitlines()
-    assert out[0].startswith("* emir: 16 currents for rcc")
+    assert out[0].startswith("* emir: 16 branch currents for rcc")
     assert out[1].startswith(".print tran format=raw file=") and str(tmp_path / "r.raw") in out[1]
     assert "[emir]" not in p.stdout and "names sidecar" in p.stderr
     sc = json.loads(side.read_text())
     jsonschema.Draft202012Validator(schemas.get("names")).validate(sc)
     assert sc["map"]["I(XI0:RM1)"] == ["Rm1:1", 1]
-    d = jdoc(emir("save-lines", DSPF, "--sim", "ngspice", "--mode", "rcc", "--format",
-                  "json"))
+    d = jdoc(emir("save-lines", DSPF, "--sim", "ngspice", "--format", "json"))
     assert d["simulator"] == "ngspice" and d["count"] == 16 and d["sidecars"] == []
-    assert d["names"]["I(@RM1[I])"] == ["Rm1:1", 1]
+    assert d["names"]["I(@RM1[I])"] == ["Rm1:1", 1] and d["mode"] == "rcc"
     assert d["lines"][2] == ".options filetype=ascii"
-    # the sample's MOS pins: ngspice's @m[is] carries the model's polarity, so
-    # save-lines refuses them and says to probe them
-    d = jdoc(emir("save-lines", DSPF, "--sim", "ngspice", "--mode", "cc-grid", "--format",
-                  "json"), rc=2)
-    assert d["code"] == "EMIR-E460" and "polarity" in d["message"]
-    assert d["details"]["pins"] == [f"MP{k}:s" for k in range(4)]
 
 
 def test_save_lines_without_names_out_warns_and_spectre_refuses_the_options(tmp_path):
-    p = emir("save-lines", DSPF, "--sim", "xyce", "--mode", "rcc")
+    p = emir("save-lines", DSPF, "--sim", "xyce")
     assert p.returncode == 0 and "EMIR-W460" in p.stderr
     p = emir("save-lines", DSPF, "--sim", "xyce", "--raw", tmp_path / "r.raw", "--names-out",
-             tmp_path / "x.names", "--mode", "rcc")
+             tmp_path / "x.names")
     assert "EMIR-W462" in p.stderr                    # not <raw>.names: emir would not see it
-    p = emir("save-lines", DSPF, "--sim", "xyce", "--names-out", tmp_path / "x.json",
-             "--mode", "rcc")
+    p = emir("save-lines", DSPF, "--sim", "xyce", "--names-out", tmp_path / "x.json")
     assert "EMIR-W462" in p.stderr and "file=emir.raw" in p.stdout
-    d = jdoc(emir("save-lines", DSPF, "--names-out", tmp_path / "s.names", "--mode", "rcc",
-                  "--format", "json"), rc=2)
+    d = jdoc(emir("save-lines", DSPF, "--names-out", tmp_path / "s.names", "--format",
+                  "json"), rc=2)
     assert d["code"] == "EMIR-E513"
-    # Spectre output is what it was
-    p = emir("save-lines", DSPF, "--mode", "cc-grid")
-    assert p.stdout.strip() == "save MP0:s MP1:s MP2:s MP3:s"
-
-
-def test_save_lines_refuses_subcircuit_pins(ex):
-    d = jdoc(emir("save-lines", ex / "loadrail.dspf", "--sim", "xyce", "--mode", "cc-grid",
-                  "--format", "json"), rc=2)
-    assert d["code"] == "EMIR-E460" and d["details"]["pins"][0] == "XMN0:d"
-    assert d["next_steps"][0]["command"] == "emir probe --help --format json"
-
-
-# ------------------------------------------------------------ emir probe
-
-
-def test_probe_a_testbench(ex, tmp_path):
-    out = tmp_path / "o" / "tb.probed.cir"
-    side = tmp_path / "o" / "probes.names"
-    d = jdoc(emir("probe", ex / "tb_cc.cir", "-o", out, "--dspf", ex / "loadrail.dspf",
-                  "--net", "VDD", "--names-out", side, "--format", "json", env=NO_SIM))
-    assert d["count"] == 4 and d["scope"] == "loadrail" and d["path"] == ["XI0"]
-    assert [p["pin"] for p in d["probes"]] == [f"XMN{k}:d" for k in range(4)]
-    assert all(p["matched"] for p in d["probes"]) and not d["uncovered"]
-    assert d["next_steps"] == []                      # no simulator here to suggest
-    probed = (tmp_path / "o" / "cc.probed.sp").read_text()
-    assert "VEMIR0 VDD VDD__emir0 0\nXMN0 VDD__emir0 G0 VSS VSS nsink W=80u L=1u" in probed
-    top = out.read_text()
-    assert ".include cc.probed.sp" in top and ".include ../models.sp" in top
-    sc = json.loads(side.read_text())
-    jsonschema.Draft202012Validator(schemas.get("names")).validate(sc)
-    assert sc["map"]["I(XI0:VEMIR0)"] == ["XMN0:d", 1] == sc["map"]["I(V.XI0.VEMIR0)"]
-    assert load_probes(str(side))["XMN0:D"]["source"] == "VEMIR0"
-    # the original is untouched
-    assert "VEMIR" not in (ex / "cc.sp").read_text()
-
-
-def test_probe_reports_pins_it_cannot_match(ex, tmp_path):
-    cc = (ex / "cc.sp").read_text().replace("XMN3 VDD G3", "XMN3 VSS G3")  # off the rail
-    cc = cc.replace("XMN2 VDD", "XOTHER VDD")                               # not in the DSPF
-    write(ex / "cc.sp", cc)
-    p = emir("probe", ex / "tb_cc.cir", "-o", tmp_path / "p.cir", "--dspf",
-             ex / "loadrail.dspf", "--net", "VDD")
-    assert p.returncode == 0, p.stderr
-    assert "EMIR-W260" in p.stderr and "XMN2:d, XMN3:d" in p.stderr       # no probe
-    assert "EMIR-W261" in p.stderr and "XOTHER:" in p.stderr               # not in the DSPF
-
-
-def test_probe_names_unknown_subcircuit_pins_by_position(tmp_path):
-    tb = write(tmp_path / "tb.cir", "* t\nV1 vdd 0 1\nX1 vdd g 0 0 pdkfet\n.tran 1n 2n\n.end\n")
-    p = emir("probe", tb, "-o", tmp_path / "o.cir", "--net", "vdd", "--format", "json")
-    d = jdoc(p)
-    assert d["probes"][0]["pin"] == "X1:1" and d["guessed"] == ["pdkfet"]
-    assert "EMIR-W262" in p.stderr
-    d = jdoc(emir("probe", tb, "-o", tmp_path / "o.cir", "--net", "vdd", "--pins",
-                  "pdkfet=d,g,s,b", "--format", "json"))
-    assert d["probes"][0]["pin"] == "X1:d" and d["guessed"] == []
-
-
-def test_probe_refusals(ex, tmp_path):
-    d = jdoc(emir("probe", ex / "tb_cc.cir", "-o", tmp_path / "o.cir", "--net", "NOPE",
-                  "--format", "json"), rc=2)
-    assert d["code"] == "EMIR-E262"
-    d = jdoc(emir("probe", ex / "tb_cc.cir", "-o", ex / "tb_cc.cir", "--net", "VDD",
-                  "--format", "json"), rc=2)
-    assert d["code"] == "EMIR-E513"
-    tb = (ex / "tb_cc.cir").read_text().replace("XI0 vdd", "XI1 vdd 0 g0 g1 g2 g3 loadrail\n"
-                                                           "XI0 vdd")
-    write(ex / "tb2.cir", tb)
-    d = jdoc(emir("probe", ex / "tb2.cir", "-o", tmp_path / "o.cir", "--dspf",
-                  ex / "loadrail.dspf", "--format", "json"), rc=2)
-    assert d["code"] == "EMIR-E261" and "--prefix" in d["message"]
-    assert d["next_steps"][0]["command"].startswith("emir probe --help")
-    d = jdoc(emir("probe", ex / "tb2.cir", "-o", tmp_path / "o.cir", "--dspf",
-                  ex / "loadrail.dspf", "--prefix", "XI1.", "--format", "json"))
-    assert d["path"] == ["XI1"]
-    d = jdoc(emir("probe", ex / "tb_cc.cir", "-o", tmp_path / "o.cir", "--format", "json"),
-             rc=2)
-    assert d["code"] == "EMIR-E507"
-    d = jdoc(emir("probe", ex / "tb_cc.cir", "-o", tmp_path / "o.cir", "--net", "VDD",
-                  "--types", "M1", "--format", "json"), rc=2)
-    assert d["code"] == "EMIR-E513"
-
-
-@pytest.mark.parametrize("text, code", [
-    ("{not json", "EMIR-E424"),
-    ('{"map": {"I(V1)": "MP0:s"}}', "EMIR-E424"),
-    ('{"map": {"I(V1)": ["MP0:s", 1]}}', "EMIR-E461"),
-    ('{"map": {"I(V1)": ["MP0:s", 1]}, "probes": [{"source": 1}]}', "EMIR-E424"),
-    ('{"map": {"I(V1)": ["MP0:s", 1]}, "probes": [{"source": "V1", "pin": "MP0:s", '
-     '"path": [], "sign": "x"}]}', "EMIR-E424"),
-])
-def test_a_bad_probes_file_is_coded(tmp_path, text, code):
-    f = write(tmp_path / "p.names", text)
-    d = jdoc(emir("save-lines", DSPF, "--sim", "xyce", "--mode", "cc-grid", "--probes", f,
-                  "--format", "json"), rc=2)
-    assert d["code"] == code and d["message"].startswith(str(f))
+    # Spectre output: every branch current, in Spectre's syntax
+    p = emir("save-lines", DSPF)
+    assert p.stdout.startswith("save Rm1:1 Rm2:1")
 
 
 # ------------------------------------------------------------ emir simulate: the checks
@@ -378,53 +242,22 @@ def test_a_spiceinit_beside_the_testbench_goes_beside_the_deck(tmp_path):
 
 def test_simulate_refuses_bad_inputs_before_running(ex, tmp_path):
     base = ["simulate", "--dspf", ex / "loadrail.dspf", "--sim", "xyce", "--format", "json"]
-    d = jdoc(emir(*base, ex / "tb_cc.cir", "--out", tmp_path / "c.raw", env=NO_SIM), rc=2)
-    assert d["code"] == "EMIR-E520"                   # the mode is the person's choice
-    base += ["--mode", "cc-grid"]
-    d = jdoc(emir(*base, ex / "tb_cc.cir", "--out", tmp_path / "c.raw", env=NO_SIM), rc=2)
-    assert d["code"] == "EMIR-E460"
-    again = d["next_steps"][0]["command"]
-    assert again.endswith("--probe") and "--format json" in again
-    d = jdoc(emir(*base, ex / "tb_cc.cir", "--mode", "rcc", "--out", tmp_path / "c.raw",
-                  env=NO_SIM), rc=2)
+    # the schematic's testbench has none of the RC netlist's resistors
+    d = jdoc(emir(*base, ex / "tb_sch.cir", "--out", tmp_path / "c.raw", env=NO_SIM), rc=2)
     assert d["code"] == "EMIR-E263" and "Rm1" in d["message"]
-    write(ex / "other.cir", "* t\n.include models.sp\nX9 vdd g 0 0 nsink\n.tran 1n 2n\n.end\n")
-    d = jdoc(emir(*base, ex / "other.cir", "--mode", "cc-grid", "--probe", "--out",
-                  tmp_path / "c.raw", env=NO_SIM), rc=2)
-    assert d["code"] == "EMIR-E263" and "XMN0, XMN1, XMN2, XMN3" in d["message"]
     write(ex / "notran.cir", (ex / "tb_rcc.cir").read_text().replace(".tran", "*.tran"))
-    d = jdoc(emir(*base, ex / "notran.cir", "--mode", "rcc", "--out", tmp_path / "c.raw",
-                  env=NO_SIM), rc=2)
+    d = jdoc(emir(*base, ex / "notran.cir", "--out", tmp_path / "c.raw", env=NO_SIM), rc=2)
     assert d["code"] == "EMIR-E462"
-    d = jdoc(emir(*base, ex / "tb_rcc.cir", "--mode", "rcc", "--out", tmp_path / "a b.raw",
-                  env=NO_SIM), rc=2)
+    d = jdoc(emir(*base, ex / "tb_rcc.cir", "--out", tmp_path / "a b.raw", env=NO_SIM), rc=2)
     assert d["code"] == "EMIR-E513"
     d = jdoc(emir(*base, ex / "tb_rcc.cir", "--net", "VSS", env=NO_SIM), rc=2)
     assert d["code"] == "EMIR-E204"
-    # everything is in order but the simulator: exit 3
+    # everything is in order but the simulator (--mode rcc may be given): exit 3
     d = jdoc(emir(*base, ex / "tb_rcc.cir", "--mode", "rcc", "--out", tmp_path / "r.raw",
                   env=NO_SIM), rc=3)
     assert d["code"] == "EMIR-E660"
     assert d["next_steps"][0]["command"] == "emir info --format json"
     assert not (tmp_path / "r.raw").exists()
-
-
-def test_a_probe_that_leaves_pins_out_says_which_types_to_add(tmp_path):
-    """--probe probes devices (MXQJDN); an inductor's pin is printable by no
-    simulator and not probed: the refusal names the --types that would."""
-    text = open(DSPF).read().replace("*|I (MP3:s MP3 s I 0 60.0000 0.0000)",
-                                     "*|I (MP3:s MP3 s I 0 60.0000 0.0000)\n"
-                                     "*|I (LX0:1 LX0 1 I 0 61.0000 0.0000)")
-    dspf = write(tmp_path / "l.dspf", text)
-    tb = write(tmp_path / "tb.cir", "* t\n.model p PMOS level=1\n"
-               + "".join(f"MP{k} o g VDD VDD p\n" for k in range(4))
-               + "LX0 VDD o 1n\nV1 VDD 0 1\n.tran 1n 2n\n.end\n")
-    d = jdoc(emir("simulate", tb, "--sim", "ngspice", "--dspf", dspf, "--mode", "cc-grid",
-                  "--probe", "--out", tmp_path / "r.raw", "--format", "json", env=NO_SIM),
-             rc=2)
-    assert d["code"] == "EMIR-E460" and d["details"]["pins"] == ["LX0:1"]
-    assert "--types MXQJDNL" in d["next_steps"][0]["command"]
-    assert "--probe" in d["next_steps"][0]["command"]
 
 
 # ------------------------------------------------------------ emir next
@@ -456,10 +289,10 @@ def ids(pl):
 
 def test_next_without_a_testbench_waits_for_one(tools, ex):
     tools(xyce=True)
-    pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC, mode="rcc")
+    pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC, period=1e-8)
     sim = next(s for s in pl.steps if s["id"] == "simulate")
     assert sim["status"] == "waiting" and sim["placeholders"] == ["<testbench.cir>"]
-    assert "--sim xyce" in sim["command"] and "--mode rcc" in sim["command"]
+    assert "--sim xyce" in sim["command"] and "--mode" not in sim["command"]
     assert any(m["what"] == "a xyce testbench of the block" for m in pl.missing)
     check = next(s for s in pl.steps if s["id"] == "check")
     assert "--cc-sim emir_out/sim/result.raw" in check["command"]
@@ -470,7 +303,7 @@ def test_next_without_a_testbench_waits_for_one(tools, ex):
 def test_next_with_an_rc_testbench_plans_rcc_that_runs_as_printed(tools, ex):
     tools(ngspice=True)
     pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC, netlist=str(ex / "tb_rcc.cir"),
-              mode="rcc")
+              period=1e-8)
     assert pl.mode["chosen"] == "rcc" and not pl.missing and not pl.blocked
     # the route is verified on this machine first (no record in the test's
     # state directory), then simulated
@@ -483,22 +316,6 @@ def test_next_with_an_rc_testbench_plans_rcc_that_runs_as_printed(tools, ex):
     assert not sim["needs_human"]                     # a small net: not a long run
 
 
-def test_next_with_a_cc_testbench_plans_probes(tools, ex):
-    tools(xyce=True, ngspice=True)
-    f = P.Facts(dspf=str(ex / "loadrail.dspf"), process=PROC, netlist=str(ex / "tb_cc.cir"))
-    pl = P.build(f)
-    assert f.inputs["netlist"] == str(ex / "tb_cc.cir")     # set aside, then put back
-    # no mode: the person's choice; a CC testbench cannot give rcc's currents
-    c = {x["route"]: x for x in pl.steps[0]["choices"]}
-    assert not c["rcc"]["possible"] and "does not hold every resistor" in c["rcc"]["why_not"]
-    f = P.Facts(dspf=str(ex / "loadrail.dspf"), process=PROC, netlist=str(ex / "tb_cc.cir"),
-                mode="cc-grid")
-    pl = P.build(f)
-    assert pl.mode["chosen"] == "cc-grid"
-    sim = next(s for s in pl.steps if s["id"] == "simulate")
-    assert "--sim xyce" in sim["command"] and "--mode cc-grid --probe" in sim["command"]
-
-
 def test_next_blocks_a_testbench_it_cannot_use(tools, ex):
     tools(xyce=True)
     write(ex / "notran.cir", (ex / "tb_rcc.cir").read_text().replace(".tran", "*.tran"))
@@ -508,14 +325,15 @@ def test_next_blocks_a_testbench_it_cannot_use(tools, ex):
     write(ex / "noinc.cir", "* t\n.include nope.sp\n.tran 1n 2n\n.end\n")
     pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC, netlist=str(ex / "noinc.cir"))
     assert pl.blocked and any(m["what"] == "a readable testbench" for m in pl.missing)
-    pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC, netlist=str(ex / "tb_cc.cir"),
-              mode="rcc")
+    f = P.Facts(dspf=str(ex / "loadrail.dspf"), process=PROC, netlist=str(ex / "tb_sch.cir"))
+    pl = P.build(f)
+    assert f.inputs["netlist"] == str(ex / "tb_sch.cir")
     assert pl.blocked and any("RC netlist" in m["what"] for m in pl.missing)
 
 
 def test_next_keeps_the_spectre_route_at_a_cadence_site(tools, ex):
     tools(spectre=True, xyce=True)
-    pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC, mode="rcc")
+    pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC)
     sim = next(s for s in pl.steps if s["id"] == "simulate")
     assert sim["command"].startswith("spectre ") and sim["licensed_tool"] == "spectre"
 
@@ -535,25 +353,18 @@ def _nutascii(path, names, n=11):
 def test_next_maps_a_result_made_with_emirs_lines(tools, ex, tmp_path):
     tools(xyce=True)
     d = parse(str(ex / "loadrail.dspf"))
-    ss = save_set(d, ["VDD"], "rcc", "xyce", ["XI0"])
+    ss = save_set(d, ["VDD"], "xyce", ["XI0"])
     raw = _nutascii(tmp_path / "r.raw", ss.signals)
     pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC, cc_sim=raw)
     step = next(s for s in pl.steps if s["id"] == "names-sidecar")
-    assert step["command"] == (f"emir save-lines {ex / 'loadrail.dspf'} --mode rcc --sim xyce "
+    assert step["command"] == (f"emir save-lines {ex / 'loadrail.dspf'} --sim xyce "
                                f"--prefix XI0. --names-out {raw}.names")
     assert ids(pl)[-1] == "next" and pl.steps[-1]["after"] == ["names-sidecar"]
     # the step does what it says: the plan then sees every branch current
     p = emir(*step["command"].split()[1:])
     assert p.returncode == 0, p.stderr
-    pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC, cc_sim=raw, mode="rcc")
+    pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC, cc_sim=raw, period=5e-10)
     assert pl.mode["chosen"] == "rcc" and "run" in ids(pl)
-
-
-def test_next_points_probe_results_at_the_probe_sidecar(tools, ex, tmp_path):
-    tools(ngspice=True)
-    raw = _nutascii(tmp_path / "c.raw", ["i(v.xi0.vemir0)"])
-    pl = plan(dspf=str(ex / "loadrail.dspf"), process=PROC, cc_sim=raw)
-    assert any("emir probe" in a and "c.raw.names" in a for a in pl.advice)
 
 
 def test_the_opensim_rules_are_registered():

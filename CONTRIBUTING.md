@@ -134,9 +134,9 @@ skip. Run them locally before changing the open-simulator code.
 ### An error code
 
 1. Pick the area (1 files, 2 DSPF and layout, 3 process, 4 currents, 5 options,
-   6 tools, 7 outputs, 8 hierarchy, 9 internal), then the decade of the part of
-   emir raising it (`errors.DECADES`: x01-x39 the base package, x40 the open
-   layout path, x50 big blocks, x60 the simulators, x70 the GDS layout reader
+   6 tools, 7 outputs, 9 internal; 8 is retired), then the decade of the part of
+   emir raising it (`errors.DECADES`: x01-x39 the base package, x40 the magic
+   route, x50 retired, x60 the simulators, x70 the GDS layout reader
    and the PDK files, x80 Cadence, x90 MCP), and a free number in it
    (`emir explain --list`). Codes are never reused.
 2. Add a `Code(...)` to `_ENTRIES` in `emir/errors.py`: code, title, meaning, hint,
@@ -152,8 +152,9 @@ skip. Run them locally before changing the open-simulator code.
 
 `tests/test_errors.py` fails on an unregistered or unused code, a level that
 does not match the letter, a plain `raise`, an uncoded warning line and a stale
-catalog. If an agent needs to know what to do about the code, add it to
-`agent/playbooks/08-troubleshooting.md`.
+catalog. If an agent needs to know what to do about the code, add it to the
+decision table of the playbook that meets it (errors in general:
+`agent/playbooks/00-preflight.md`).
 
 ### A schema
 
@@ -187,10 +188,9 @@ what `emir check` accepts. Test the plan, and run its steps as printed.
 ### A playbook
 
 The playbooks in `agent/playbooks/` are what an agent follows: `00-preflight`,
-`01-screen-a-block`, `02-big-block-cc`, `03-chip-level-hierarchy`,
-`04-onboard-a-pdk`, `05-open-source-flow`, `06-cadence-flow`,
-`07-report-to-human`, `08-troubleshooting`, `09-gds-only`, `10-mcp`. A new one
-takes the next number and is listed in `AGENTS.md` and `agent/README.md`.
+`01-screen-a-block`, `02-process-file`, `03-open-source-flow`, `04-cadence-flow`. Keep them
+few: a new task goes into the playbook it belongs to; a new playbook takes the next number
+and is listed in `AGENTS.md`.
 Write them for an agent: short, operational, every command one that exists
 (copied from `emir next` or `--help`, never an invented flag), the codes to
 branch on, the guardrails (never invent a process limit, never call a result

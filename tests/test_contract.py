@@ -72,13 +72,15 @@ def test_the_contract_covers_the_code():
     # the rules an agent leans on, stated where they live
     for needle in ("EMIR-E590", "EMIR-E591", "EMIR-E592", '"shell": true',
                    "keeps the caller's `--format`", "Screening, not sign-off.",
-                   "area 8 is the hierarchy flow's alone", "| x40-x49 | the magic route"):
+                   "area 8 is retired whole",
+                   "| x40-x49 | the magic route"):
         assert needle in text, needle
     # the commands' options are the parsers' (one line each)
     run = text.split("### emir run\n", 1)[1].split("\n### ", 1)[0]
-    for opt in ("--summary-out", "--fail-on-violation", "--currents", "--abstract",
-                "--max-memory", "--superposition"):
+    for opt in ("--summary-out", "--fail-on-violation", "--currents", "--mode"):
         assert re.search(rf"^- `{re.escape(opt)}`", run, re.M), opt
+    for opt in ("--abstract", "--vdd", "--testbench", "--guard-sim"):
+        assert not re.search(rf"^- `{re.escape(opt)}`", run, re.M), opt
 
 
 def test_pre_commit_checks_every_generated_file():
@@ -92,24 +94,19 @@ def test_pre_commit_checks_every_generated_file():
 
 
 def test_exit_one_names_every_reason_the_run_has():
-    """`emir run --fail-on-violation` exits 1 on a FAIL verdict, an IR budget
-    FAIL, and an EM basis asked for and not computed (em_basis.honoured
-    false: `cli._cmd_run`, AGENTS.md section 3). The registry's exit table,
-    `emir --help`, this contract and the CLI reference said "violations
-    found" only, so an agent reading them took exit 1 on a CLEAN verdict for
-    a bug."""
+    """`emir run --fail-on-violation` exits 1 on a FAIL verdict (`cli._cmd_run`,
+    AGENTS.md section 3), and on nothing else since the IR budgets left with
+    the chip-level hierarchy (1.1). The registry's exit table, `emir --help`,
+    this contract and the CLI reference say so."""
     from emir.errors import EXIT_VIOLATION
     with open(CONTRACT, encoding="utf-8") as f:
         contract = f.read()
     with open(os.path.join(ROOT, "docs", "cli-reference.md"), encoding="utf-8") as f:
         ref = f.read()
-    with open(os.path.join(ROOT, "docs", "errors.md"), encoding="utf-8") as f:
-        errs = f.read()
     for where, text in (("EXIT_CODES", EXIT_CODES[EXIT_VIOLATION]), ("emir --help", cli.__doc__),
-                        ("CONTRACT.md", contract), ("cli-reference.md", ref),
-                        ("docs/errors.md", errs)):
+                        ("CONTRACT.md", contract), ("cli-reference.md", ref)):
         flat = " ".join(text.split())
-        assert "EM basis asked for and not computed" in flat, where
-        assert "honoured" in flat, where
-    assert "`run`: 1 on a FAIL verdict, an IR budget FAIL, or an EM basis" in \
+        assert "FAIL verdict" in flat and "IR budget" not in flat, where
+        assert "EM basis" not in flat, where
+    assert "`run`: 1 on a FAIL verdict, only with `--fail-on-violation`" in \
         " ".join(contract.split())

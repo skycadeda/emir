@@ -105,16 +105,14 @@ def _schema_keys():
     def entry(name):
         e = props[name]["additionalProperties"]
         return set(e["properties"])
-    return {"top": set(props), "layer": entry("layers"), "via": entry("vias"),
-            "cap": entry("cap_models")}
+    return {"top": set(props), "layer": entry("layers"), "via": entry("vias")}
 
 
 def _doc_keys():
     """The keys the reference's tables name, per section."""
-    text = _text(os.path.join(DOCS, "process-file-reference.md"))
+    text = _text(os.path.join(DOCS, "process-files.md"))
     out, cur = {}, None
-    names = {"## Top level": "top", "## A conductor layer": "layer",
-             "## A via": "via", "## A capacitor or decap model": "cap"}
+    names = {"## Top level": "top", "## A conductor layer": "layer", "## A via": "via"}
     for line in text.splitlines():
         if line.startswith("## "):
             cur = next((v for k, v in names.items() if line.startswith(k)), None)
@@ -134,7 +132,7 @@ def test_process_reference_names_exactly_the_schema_keys():
 def test_process_reference_minimal_file_loads(tmp_path):
     """The page's minimal example is a valid process file."""
     from emir.engine import Process
-    text = _text(os.path.join(DOCS, "process-file-reference.md"))
+    text = _text(os.path.join(DOCS, "process-files.md"))
     block = re.search(r"```yaml\n(.*?)```", text, re.S).group(1)
     path = tmp_path / "min.yaml"
     path.write_text(block, encoding="utf-8")
@@ -201,8 +199,8 @@ def test_mkdocs_nav_lists_every_page_once():
 @pytest.mark.parametrize("page", PAGES + ["../README.md"])
 def test_pages_say_screening_not_sign_off(page):
     text = _text(os.path.normpath(os.path.join(DOCS, page)))
-    if page in ("changelog.md", "cli-reference.md", "errors.md", "process-file-reference.md"):
-        pytest.skip("a pointer or a reference page, not a presentation of results")
+    if page == "cli-reference.md":
+        pytest.skip("the generated reference, not a presentation of results")
     assert "screening, not sign-off" in text.lower() or "is a screening tool" in text
 
 
@@ -218,8 +216,10 @@ def test_examples_have_an_index_that_matches_the_readme():
     rows, says where 01 went (the quickstart), and repeats the quickstart as
     the README has it; AGENTS.md links the index, not a bare directory."""
     ex = os.path.join(ROOT, "examples")
+    # an example is a directory with its README (a removed example's ignored
+    # outputs can linger in a working tree)
     dirs = sorted(d for d in os.listdir(ex)
-                  if os.path.isdir(os.path.join(ex, d)) and re.match(r"\d\d_", d))
+                  if os.path.isfile(os.path.join(ex, d, "README.md")) and re.match(r"\d\d_", d))
     index = _text(os.path.join(ex, "README.md"))
     readme = _text(os.path.join(ROOT, "README.md"))
     rows = re.findall(r"^\| \[`(\d\d_[a-z0-9_]+)`\]\(\1/\) \| (.*)$", index, re.M)
@@ -268,7 +268,7 @@ def test_readme_quickstart_runs_as_written(tmp_path):
 # ------------------------------------------------------------------ help text the pages quote
 
 
-@pytest.mark.parametrize("cmd", ["run", "check", "abstract"])
+@pytest.mark.parametrize("cmd", ["run", "check"])
 def test_em_temp_help_names_the_default_the_engine_uses(cmd, tmp_path):
     """`--em-temp` defaults to the process file's `em_tref` (engine.Process);
     two help texts said `temp_reference`, and the reference page repeats them."""
@@ -394,13 +394,13 @@ def _emir(*args, cwd=None):
 
 
 def _documented(phrase):
-    pages = [os.path.join(DOCS, "limits.md"), os.path.join(DOCS, "faq.md")]
+    pages = [os.path.join(DOCS, p) for p in PAGES] + [os.path.join(ROOT, "README.md")]
     return [os.path.basename(p) for p in pages if phrase in _text(p)]
 
 
 def test_former_known_issue_currents_file_works(tmp_path):
-    """`--currents FILE` on run/check was a known issue in docs/limits.md and
-    docs/faq.md until it was fixed; it works now, and no page says otherwise."""
+    """`--currents FILE` on run/check was a known issue in the docs until it
+    was fixed; it works now, and no page says otherwise."""
     dspf, proc = _sample()
     f = tmp_path / "currents.json"
     f.write_text(json.dumps({"VDD": 0.004, "MP0:s": -0.001, "MP1:s": -0.001,
@@ -412,11 +412,11 @@ def test_former_known_issue_currents_file_works(tmp_path):
 
 
 def test_the_validation_page_lists_every_example_with_golden_results():
-    """docs/validation.md's table of the examples with golden results stopped
-    at 10_mcp_agent; 11, 12 and 13 compare against goldens too. Every example
-    with an `expected/` directory has a row naming each of its files."""
+    """docs/method.md's table of the examples with golden results (it once
+    stopped at 10_mcp_agent while 11 compared against goldens too). Every
+    example with an `expected/` directory has a row naming each of its files."""
     ex = os.path.join(ROOT, "examples")
-    with open(os.path.join(DOCS, "validation.md"), encoding="utf-8") as f:
+    with open(os.path.join(DOCS, "method.md"), encoding="utf-8") as f:
         text = f.read()
     start = text.index("## The examples, with golden results")
     section = text[start:text.index("\n## ", start + 1)]
@@ -426,7 +426,7 @@ def test_the_validation_page_lists_every_example_with_golden_results():
         exp = os.path.join(ex, name, "expected")
         if not os.path.isdir(exp):
             continue
-        assert name in rows, f"docs/validation.md: no row for examples/{name}"
+        assert name in rows, f"docs/method.md: no row for examples/{name}"
         if "`expected/*.json`" in rows[name]:
             continue
         for f in sorted(os.listdir(exp)):

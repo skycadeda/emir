@@ -42,25 +42,25 @@ env -u PVS_RULES -u QRC_TECH_DIR -u QRC_CORNER -u EMIR_EXTRACT_TEMP -u PVS_BIN -
     --cell railblock --kind r_only --work "$out/work" --format json > "$out/plan_unconfigured.json"
 
 # 2. A site file with the decks, a corner and a temperature (tools: whatever
-#    $PATH has; here, most likely none), then the plans of both extractions
-#    of the big-block flow: the R-only grid and the C-only CC netlist, one LVS.
+#    $PATH has; here, most likely none), then the plans of two extractions from
+#    one LVS: the R-only grid (for DC currents) and the RC netlist rcc simulates.
 cat > "$out/site.yaml" <<YAML
 pvs_lvs_rules: $out/pdk/lvs.rul
 qrc_tech_dir: $out/pdk/qrc
 qrc_corner: typ
 extract_temperature: 25
 YAML
-for kind in r_only c_only_coupled; do
+for kind in r_only rc_coupled; do
     env -u PVS_RULES -u QRC_TECH_DIR -u QRC_CORNER -u EMIR_EXTRACT_TEMP \
         $EMIR extract --gds "$out/inputs/railblock.gds" --cdl "$out/inputs/railblock.cdl" \
         --cell railblock --kind "$kind" --work "$out/work" --site "$out/site.yaml" \
         --format json > "$out/plan_$kind.json"
 done
 
-# 3. The Spectre save lines for the testbench in the person's mode (rcc here: the
-#    17-node sample, every branch current), with the testbench's instance name,
-#    written to the file the testbench includes.
-$EMIR save-lines "$sample" --mode rcc --prefix XDUT. --out "$out/tb/emir_save.scs" \
+# 3. The Spectre save lines for the testbench (rcc: every branch current of the
+#    sample), with the testbench's instance name, written to the file the
+#    testbench includes.
+$EMIR save-lines "$sample" --prefix XDUT. --out "$out/tb/emir_save.scs" \
     --format json > "$out/save_lines.json"
 
 # 4. The RCC testbench template, filled (the models line is a placeholder:

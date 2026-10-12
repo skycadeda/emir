@@ -5,11 +5,11 @@ is posted by hand, after the checklist at the end.
 
 | file | what |
 |---|---|
-| [`linkedin-article.md`](linkedin-article.md) | the long-form article (about 1,800 words, 8 images) |
+| [`linkedin-article.md`](linkedin-article.md) | the long-form article (about 1,400 words, 6 images) |
 | [`linkedin-post.md`](linkedin-post.md) | the feed post that announces it, with the carousel |
 | [`carousel-script.md`](carousel-script.md) | the text, alt text and number sources of each carousel page |
-| `carousel.pdf` | the carousel: 10 pages, 1080 x 1350, vector text |
-| `images/carousel_01.png` .. `carousel_10.png` | the same pages as PNGs |
+| `carousel.pdf` | the carousel: 5 pages, 1080 x 1350, vector text |
+| `images/carousel_01.png` .. `carousel_05.png` | the same pages as PNGs |
 | `images/cover_article_1920x1080.png` | the article's header (16:9) |
 | `images/cover_1200x627.png` | the same cover at 1.91:1, for a single-image post or a link preview |
 
@@ -43,21 +43,20 @@ In LinkedIn: **Write article**.
 
 | # | section | file | alt text | caption |
 |---|---|---|---|---|
-| 1 | header | `blog/images/cover_article_1920x1080.png` | EMIR: EM / IR-drop screening your AI agent can run, beside EMIR's chart of a synthetic power mesh on black: four straps at the feed fail, and the two that leave it carry their fixes. | A synthetic power mesh, invented limits (examples/06_big_block). |
-| 2 | What EMIR is | `docs/images/flow.png` | Flow diagram: an AI agent drives four stages, extraction (RC, C-only, R-only), simulation (Spectre, HSPICE, Xyce, ngspice), emir (rcc, cc-grid, streaming) and the report (JSON, HTML, Virtuoso Explorer, KLayout). | How EMIR fits a flow. |
-| 3 | Built for an agent first | `docs/images/agent_transcript.png` | Terminal: emir next, given the person's choice of cc-grid, prints a seven-step plan, the verification of Xyce on this machine among them; each step runs as printed; emir report prints a FAIL verdict and the fix, 1 -> 2 cuts. | emir next's plan for examples/02_xyce, each step run as printed (scripted, not a model). |
-| 4 | Big blocks | `docs/images/cc_vs_rcc_scaling.png` | Three charts on a synthetic mesh: the RCC simulation time and its result file grow steeply with the mesh, the CC route and its result stay small, and the CC route's speed-up grows with the mesh. | RCC against CC + cc-grid. Read the trends, not the absolute times. |
-| 5 | Big blocks | `docs/images/accuracy.png` | Range plot of cc-grid error against RCC per metric: averages and IR within a fraction of a percent; rms and peak conservative on the governing branch but not on every branch. | cc-grid against RCC, branch by branch. |
-| 6 | Closing the loop | `docs/images/selfconsist_waveform.png` | Three charts on synthetic inverter meshes: the governing branch's rms and peak error against the pass, falling from up to +70 % to within 1 % of RCC; the residual that stops the loop; what remains, the minor branches' error, widening with the grid. | The waveform loop on switching inverters (Xyce, synthetic, serial). |
-| 7 | Streaming | `docs/images/streaming_memory.png` | Five synthetic grids: the dense transfer matrix of the largest exceeds the 2 GiB default --max-memory; the streamed path keeps peak memory low and is faster on the large cases. | Dense against streamed: the same currents, in bounded memory. |
-| 8 | Chip level | `docs/images/chip_level.png` | Chip-level diagram: two block abstracts, the top-level network with the ADC and PLL black-boxed and their pin voltages, the IR budget per block, and a PLL segment that turns from WARN to FAIL when back-annotated with the top's pin voltages. | Chip-level EM/IR, hierarchically (synthetic, offline). |
+| 1 | header | `blog/images/cover_article_1920x1080.png` | EMIR: EM / IR-drop screening your AI agent can run, beside EMIR's chart of a synthetic power mesh on black: four straps at the feed fail, and the two that leave it carry their fixes. | A synthetic power mesh, invented limits (examples/06_supply_mesh). |
+| 2 | What EMIR is | `docs/images/flow.png` | Flow diagram: an AI agent drives four stages, extraction (RC, R-only, magic for SKY130), simulation (Spectre, HSPICE, Xyce, ngspice), emir (rcc, the DC screen) and the report (JSON, HTML, Virtuoso Explorer, KLayout). | How EMIR fits a flow. |
+| 3 | Built for an agent first | `docs/images/agent_transcript.png` | Terminal: emir next prints a seven-step plan, the verification of Xyce on this machine among them; each step runs as printed; emir report prints a FAIL verdict, the worst item a contact at 1.042x on its peak with its fix, and the IR drop. | emir next's plan for examples/02_xyce, each step run as printed (scripted, not a model). |
+| 4 | Exact: every branch current, every metric | `blog/images/carousel_02.png` | The cover's mesh zoomed at its feed corner: four straps fail, at 1.83x, 1.75x, 1.07x and 1.03x; by hand, the currents leaving the feed add up to the devices' 7.397 mA, and 3.656 mA over 2.0 um at 1.0 mA/um is 1.83x. | The feed corner of the cover's mesh, checked by hand (examples/06_supply_mesh, invented limits). |
+| 5 | From a GDS on SKY130 | `docs/images/example08_sink.png` | EM and IR charts of example 08's SKY130 NMOS array over its layout, from magic's network: out and vss FAIL on their single via2 cut (1.36x avg, fix 1 -> 2 cuts); the diffusion, poly and well under the devices drawn grey, not checked. | Example 08: magic's network, simulated with Xyce and screened with rcc (synthetic layout, the SKY130 limits of pdks/sky130.yaml). |
+| 6 | Cadence, and verification on site | `docs/images/html_report.png` | Screenshot of EMIR's per-net HTML report of an rcc run: verdict FAIL, the worst EM item a contact at 1.042x of its peak limit, the net drawn on black as a vector map coloured by each element's EM ratio, its legend, coverage per metric and the violations table. | The HTML report of examples/02_xyce (Xyce currents, illustrative limits). |
 
 The article uses the light variants (LinkedIn's default theme is light); each has a
-`_dark` twin in `docs/images/` except the transcript, which is dark only.
+`_dark` twin in `docs/images/` except the transcript, which is dark only, and the
+carousel page, which is dark.
 
 6. **Links**: the repository is `https://github.com/skycadeda/emir`. File names in the
-   text (examples/06_big_block/results, pdks/sky130.yaml) may be linked to the
-   repository, e.g. `https://github.com/skycadeda/emir/tree/main/examples/06_big_block`.
+   text (examples/08_open_layout, pdks/sky130.yaml) may be linked to the
+   repository, e.g. `https://github.com/skycadeda/emir/tree/main/examples/06_supply_mesh`.
 7. **Last line**: the trademark note, in italics.
 8. Preview on a desktop and a phone before publishing.
 
@@ -69,7 +68,7 @@ is. Then either:
 - **a document post**: attach `carousel.pdf`, title "EMIR: EM/IR screening your AI agent
   can run" (a document post takes no alt text per page; the post text carries the
   content), or
-- **a multi-image post**: attach `images/carousel_01.png` .. `carousel_10.png` in order,
+- **a multi-image post**: attach `images/carousel_01.png` .. `carousel_05.png` in order,
   each with its **Alt text** line from [`carousel-script.md`](carousel-script.md). Each
   is under 250 characters; guides quote LinkedIn's alt-text limit as 300 or 1,000
   characters (not checked).
@@ -94,25 +93,25 @@ first sentence (128 characters) carries the problem on its own.
       fails until they agree): the article, the post, the issue forms, `mkdocs.yml`.
       `ARTICLE-URL` replaced in the post.
 - [ ] **What the article names exists on the published branch**: AGENTS.md, the playbooks
-      and the 16 eval cards under `agent/`, `emir mcp`, `emir verify-sim`, `emir process
-      new` and `check`, `--self-consistent`, `--dynamic`, the docs, and examples 02, 05,
-      06, 12 and 13.
+      and the 11 eval cards under `agent/`, `emir mcp`, `emir verify-sim`, `emir process
+      new` and `check`, the docs, and examples 02, 03, 06 and 08.
 - [ ] **The magic patch.** The article, page 4 and the flow figure say magic runs the
       extraction for SKY130 with the `geoout` patch. Check
       https://github.com/RTimothyEdwards/magic/pull/562: still open, the patch is the fork
-      branch's (`docs/open-source-flow.md` says how to build it); merged, name the magic
+      branch's (`docs/process-files.md` says how to build it); merged, name the magic
       release that has it.
 - [ ] **Product names.** The article, the flow figure and the carousel name Cadence
       products as integration targets; the article ends with a trademark note.
 - [ ] **What is unverified is said so.** No licensed tool (Spectre, HSPICE, Virtuoso,
       PVS, Quantus) runs here, and the article, the post and the carousel claim none as
       verified: each must be verified on site by the user's agent (`emir verify-sim` for
-      the simulators, the self-consistent loop's Spectre and HSPICE routes included), and
-      is UNVERIFIED until then. Never write that one "is verified". Codex, Cursor and Claude
-      Desktop appear on carousel page 10 and in the docs; their MCP configurations follow
-      the clients' published formats and were not run (Claude Code was).
-- [ ] **Known issues.** `docs/limits.md` lists what EMIR leaves out, and no open bug. If
-      a bug is listed there, fix it or accept it: an agent following "Try it" may meet it.
+      the simulators), and is UNVERIFIED until then. Never write that one "is verified".
+      Codex appears on carousel page 5, and Cursor and Claude Desktop in the docs; their MCP
+      configurations follow the clients' published formats and were not run (Claude Code
+      was).
+- [ ] **What it leaves out.** `docs/method.md` ("What EMIR leaves out") lists it, and no
+      open bug. If a bug is listed there, fix it or accept it: an agent following "Try
+      it" may meet it.
 - [ ] **Numbers current.** `python scripts/make_figures.py --check` and
       `pytest tests/test_blog.py tests/test_make_figures.py` pass. If a result or a figure
       changed, update the numbers in the article and the post; the test names the one
@@ -122,34 +121,19 @@ first sentence (128 characters) carries the problem on its own.
 
 ## Where each number in the article comes from
 
-`tests/test_blog.py` recomputes every one of these from its source, except the three
-marked "not checked".
+`tests/test_blog.py` recomputes every one of these from its source, except those marked
+"not checked".
 
 | number in the article | source |
 |---|---|
-| "Metal1: widen 2.000 -> 3.655 um" | `examples/06_big_block/expected/screen_n10.json` (run.sh step 4: the worst item's ratio, 1.82741, on its 2.000 um strap; the fix rounds 2.000 x 1.82741 up to the next 5 nm) |
-| 21 commands, 30 JSON schemas, 311 stable codes (errors, warnings, notes) | the package: `emir.cli.COMMANDS`, `emir.schemas.SCHEMAS`, `emir.errors.REGISTRY` |
-| sixteen task cards | `agent/evals/cards/` (checked when the directory is present) |
-| 32 inverters; 132, 1,632, 4,932 and 40,032 nodes | `examples/06_big_block/results/sweep.csv`, rows k32 |
-| RCC simulation 0.64 s to 350 s; CC route 6.96 s | the same rows: `rcc_sim_s`; `cc_sim_s` + `cc_post_s` at N = 200 |
-| 9.52 MiB to 1,298 MiB; 1.41 MiB | `rcc_raw_MB`, `cc_raw_MB` |
-| 2.0x, 16.9x, 32.4x; 50.3x | `speedup_route` at N = 10, 40, 70; `speedup_sim_vs_cc_route` at N = 200 |
-| 10 to 100 times slower | the maintainer's experience, labelled so (not checked) |
-| avg and IR 0.12 to 0.15 % low; rms 6.83 to 13.68 %; peak 15.28 to 24.29 % | `avg_gov`, `ir_err`, `rms_gov`, `peak_gov`, rows k32 N = 10 to 70 |
-| peak 18.95 % below RCC on minor branches | `peak_minor_min`, same rows |
-| eight times the devices, 4.1 % droop, peak 79.90 % high | row k256: 256 against 32 devices, `ir_rcc_mV` on the 1 V rail of `mesh.py`, `peak_gov` |
-| ±2 %, about 2 % droop | the guard band the docs derive from these rows (`docs/big-blocks.md`, "Measured accuracy, and the guard band"; not checked) |
-| 25 to 52 % high, decap-aware 0.6 to 5.3 %; straps 5.52 % low | `examples/13_decap_aware/results/decap.csv`: `free_rms_gov` and `aware_rms_gov` of the single-rail cases with decaps (`decaps` > 0, `two_rail` False); the decap-free straps' `free_rms_strap_*` (-100 %); the two-rail case's `vdd_aware_rms_strap_min` |
-| peak from 15 to 18 % high to within 0.7 % of RCC, four or five simulations, 0.38 to 0.55 % droop | `examples/06_big_block/results/selfconsist_waveform.csv`, the 32-inverter meshes (k32_n10, k32_n20, k32_n40), net VDD: `peak_gov` of the split testbench's pass 0 (the open loop) and of the pass the run reports (`reported_pass`; pass 0 is a simulation), `droop_pct` |
-| on a smaller mesh at the same 4.1 % droop (128 inverters, 384 nodes), from +69.8 % to +0.78 % in eight | the same file, case hd16b (`grid_nodes` 384): pass 0 and the reported pass 7 (`stopped`: settled); the waveform figure prints the same. The 4.1 % open-loop case of page 7 and of "eight times the devices" is sweep.csv's k256 (256 inverters, `grid_nodes` 5156), which the loop's table does not hold |
-| within 0.77 % on 132 nodes, up to 11.3 % off on 1,632, within 0.2 % without the grid's capacitors | the same file, the 32-inverter meshes at the reported pass: `peak_minor_min`, `peak_minor_max`, and the same against RCC without the grid's capacitors (`*_nc`) |
-| 31.3 s, 1.9 s | the same file, case hd16b: `total_s` at the last pass, `rcc_sim_s` |
-| 108.000 mV, 100.050 mV, 100.050 mV | `examples/12_self_consistent/expected/summary.json`: `ir_drop_mV` of `runs.open`, `runs.sc`, `runs.rcc` |
-| 92,001 nodes, 2,000 taps, 2.70 GiB | `examples/06_big_block/results/stream_bench.csv`, row s300_k2000_t501 |
-| 11.7 s, 804 MiB; 61.2 s, 4,593 MiB; 7e-15 | the same row: `auto_*`, `dense_*`, the largest `rel_diff_*` |
-| 5e-13 | `examples/05_chip_level/measure.py`, `top_vs_flat_max_rel` (4.94e-13, rounding noise; not checked here, the example's test holds it to 1e-9) |
-| 4.00 + 7.50 = 11.50 mV; 14.96 mV; 14.81 mV | `examples/05_chip_level/expected/`: `top.summary.json`, `adc.summary.json`, `measured.json` |
-| 0.952x (WARN), 1.005x (FAIL) | `examples/05_chip_level/expected/pll.summary.json`, `pll.annotated.summary.json` |
+| "Metal1: widen 2.000 -> 3.660 um" | `examples/06_supply_mesh/expected/screen_n10.json` (run.sh: the worst item's ratio, 1.827832, on its 2.000 um strap; the fix rounds 2.000 x 1.827832 up to the next 5 nm) |
+| 19 commands, 26 JSON schemas, 210 stable codes (errors, warnings, notes) | the package: `emir.cli.COMMANDS`, `emir.schemas.SCHEMAS`, `emir.errors.REGISTRY` |
+| 11 task cards | `agent/evals/cards/` (checked when the directory is present) |
+| 1.042x, 0.847x, 28.07 mV, 90.0 mV | `examples/02_xyce/expected/summary.json` (the rcc run: `Rc3:peak`, `Rm1:avg`, `ir_drop_mV`, `dynamic_mV`) |
+| Xyce and ngspice agree to 1.1e-4 | `scripts/opensim_proof.py` (`docs/simulators.md`; not checked here) |
+| 1.83x, 1.75x, 1.07x, 1.03x; 3.656 + 3.510 + 0.231 = 7.397 mA | the carousel's page 2, drawn from the screen of `examples/06_supply_mesh` (`scripts/make_figures.py`) |
+| 1135 resistors; 1.36x, via2: 1 -> 2 cuts | `examples/08_open_layout/expected/results.json` |
+| more than 2 % (the last two periods) | `emir/waveform.py` (`TOL`), the rule in `docs/method.md` |
 
 The post's numbers are a subset; [`linkedin-post.md`](linkedin-post.md) lists them with
 their sources, and the carousel's are in [`carousel-script.md`](carousel-script.md).

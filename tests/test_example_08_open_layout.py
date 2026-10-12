@@ -1,9 +1,10 @@
 """Example 08 (an open-PDK layout on the magic route): run.sh extracts the
-layout with magic, simulates it with Xyce or ngspice in rcc and cc-grid (open
-loop and self-consistent), and compare.py checks every result against
-expected/results.json, rcc branch by branch against the simulator's own output.
+layout with magic, simulates it with Xyce or ngspice and screens it with rcc,
+and compare.py checks every result against expected/results.json and rcc branch
+by branch against the simulator's own output.
 It needs PDK_ROOT with sky130A, a magic that writes resistor geometry and Xyce
 or ngspice; without them the script says what it skips and exits 0."""
+import json
 import os
 import shutil
 import subprocess
@@ -31,8 +32,21 @@ def test_example_08_runs_and_matches_its_golden_results(tmp_path):
     assert "expected/results.json: matches" in p.stdout
     md = (tmp_path / "comparison.md").read_text()
     assert "rcc against the simulator's own output" in md
+    assert "| op_rcc | vss |" in md and "cc-grid" not in md and "cc_grid" not in md
+    # the window: the record's last three 4 ns periods; without --period, and
+    # with a period 10 % off, refused with no number
+    for n in json.loads((tmp_path / "rcc.json").read_text())["nets"]:
+        assert n["window"]["n_periods"] == 3 and n["window"]["period_s"] == 4e-9
+    for run, code in (("rcc_no_period", "EMIR-E428"), ("rcc_near_period", "EMIR-E429")):
+        doc = json.loads((tmp_path / f"{run}.json").read_text())
+        assert doc["schema"] == "emir.error/1" and doc["code"] == code
+    assert "rcc_no_period (the same result, no --period): refused, EMIR-E428" in md
+    assert "rcc_near_period (the same result, --period 3.6e-9, 10 % off): refused, " \
+           "EMIR-E429" in md
     report = (tmp_path / "report.md").read_text()
-    assert "Screening, not sign-off." in report
+    assert "Screening, not sign-off." in report and "Mode: rcc" in report
+    assert json.loads((tmp_path / "rcc.json").read_text())["nets"][0]["mode"] == "rcc"
+    assert not (tmp_path / "extract" / "sink.cc.spice").exists()
     assert os.path.isfile(tmp_path / "html" / "emir_chart.png")
 
 

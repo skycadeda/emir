@@ -6,10 +6,10 @@ resistor's geometry (`extresist geoout`, a public patch; `emir extract`
 finds one or says how to build it, EMIR-E643), the PDK's magic technology
 (the process file's `pdk:` name under $PDK_ROOT, or --magicrc) and the process
 file's `magic:` section (magic's layer names, the devices' terminals). The
-extraction writes the DSPF (also the RC netlist rcc simulates) and the CC
-netlist cc-grid simulates; the next step is the DSPF plan, `emir next --dspf
-<cell>.dspf`, which asks the person for the mode. With a DSPF as well, the DSPF
-plan stands, and `--gds` draws the layout under the charts (`emir run --gds`).
+extraction writes the DSPF, which is also the RC netlist rcc simulates; the
+next step is the DSPF plan, `emir next --dspf <cell>.dspf`. With a DSPF as
+well, the DSPF plan stands, and `--gds` draws the layout under the charts
+(`emir run --gds`).
 
 Without `--gds` or `--dspf`, the plan says the route exists.
 """
@@ -57,7 +57,7 @@ def _magic(f, plan):
     if f.get("dspf"):
         return                           # the DSPF plan stands (--gds: the chart's layout)
     plan.mode = {"chosen": None, "why": "the magic route: the DSPF is extracted first, and "
-                                        "the mode is asked for with it"}
+                                        "the currents are planned with it"}
     if not os.path.isfile(gds):
         plan.need("a readable layout", f"--gds {gds!r} is not found", "check the path")
         plan.stop()
@@ -86,6 +86,32 @@ def _magic(f, plan):
         plan.note(f"{proc} has no `magic:` section: magic's layer names map only where "
                   f"they equal (or fold onto) the file's, and the devices' pins are named "
                   f"t1, t2 ... (EMIR-W643); pdks/TEMPLATE.yaml documents the section")
+    # the magic the extraction would run, and the PDK it finds: facts the
+    # agent states from here, never from guesses (`emir info` says the same)
+    from .magic import route_magic
+    mr = route_magic(_process_data(proc) if os.path.isfile(proc) else None)
+    extra = f._cache.setdefault("extra_facts", {})
+    extra["magic_route"] = mr
+    extra["pdk_root"] = os.environ.get("PDK_ROOT") or None
+    if mr["writes_geometry"]:
+        plan.note(f"magic for this route: {mr['path']} ({mr['source']}, version "
+                  f"{mr['version']}) writes resistor geometry; PDK_ROOT is "
+                  f"{extra['pdk_root'] or 'not set (give --magicrc)'}")
+    else:
+        # the extraction would stop with EMIR-E643 (exit 3): what cannot run is
+        # not planned as a step, it is asked for, with how to build it
+        from .errors import lookup
+        e643 = lookup("EMIR-E643")
+        tried = "; ".join(f"{t.get('path') or t.get('value')} ({t.get('source')})"
+                          for t in (mr.get("tried") or [])[:4] if isinstance(t, dict))
+        plan.need("a magic with the geoout patch (it writes each resistor's geometry)",
+                  "none of the magics tried writes resistor geometry"
+                  + (f" ({tried})" if tried else "") + ", so `emir extract --tool magic` "
+                  "would stop with EMIR-E643 (exit 3): " + e643.meaning.split(". ")[0],
+                  e643.hint + " Then plan again (`emir info` names the magic the route "
+                  "finds, magic_route)")
+        plan.stop()
+        return
     cell = f.get("cell")
     fmt = f.fmt()
     out = f"emir_out/extract_{cell}" if cell else "emir_out/extract"
@@ -94,17 +120,16 @@ def _magic(f, plan):
     plan.add("extract-magic", command_line(args, fmt),
              "extract the block with magic (open source, seconds on a small block): every "
              "resistor one drawn segment with its layer, width and place; it writes the "
-             "DSPF (also the RC netlist an rcc simulation runs) and the CC netlist "
-             "(<cell>.cc.spice) a cc-grid simulation runs, and exits 3 (EMIR-E643) with "
-             "how to build the magic it needs when there is none")
+             "DSPF (also the RC netlist an rcc simulation runs), and exits 3 (EMIR-E643) "
+             "with how to build the magic it needs when there is none")
     dspf = f"{out}/{cell}.dspf" if cell else f"{out}/<cell>.dspf"
     plan.add("next-dspf", command_line("next", "--dspf", dspf, "--process", proc,
                                        "--gds", gds, *(["--cell", cell] if cell else []),
                                        *(["--netlist", f.get("netlist")]
                                          if f.get("netlist") else []), fmt),
              "plan the run on the extracted DSPF: the currents (your testbench, with the "
-             "DSPF for rcc or the CC netlist for cc-grid) and the mode, which is the "
-             "person's choice; --gds draws the layout under the charts",
+             "DSPF as its RC netlist; or DC currents); --gds draws the layout under the "
+             "charts",
              after=["extract-magic"])
     plan.note("magic's network holds every conductor it extracts -- contacts, local "
               "interconnect, diffusion, poly: a layer the process file gives no limit "

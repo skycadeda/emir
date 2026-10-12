@@ -173,7 +173,7 @@ def test_the_positional_stays_the_documented_form():
     p = emir("run", "--help")
     assert "--dspf" not in p.stdout.split("positional arguments")[0]
     assert "`--dspf FILE` is accepted as the same" in " ".join(p.stdout.split())
-    for command in ("run", "nets", "pins", "save-lines", "abstract"):
+    for command in ("run", "nets", "pins", "save-lines"):
         params = {q.name: q for q in mcp_tools.params_of(
             command, mcp_tools.capture_parser(command))}
         assert params["dspf"].required and params["dspf"].flag is None, command

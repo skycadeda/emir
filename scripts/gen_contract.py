@@ -207,8 +207,7 @@ def _exits(out: list):
     out += ["", "`check`, `selftest`, `validate`, `verify-sim` and `run` judge something: they "
             "always print their own document, and their status follows the verdict (`check`: "
             "2 when an input FAILs; `selftest`, `validate`, `verify-sim`: 70 on a failure; "
-            "`run`: 1 on a FAIL verdict, an IR budget FAIL, or an EM basis asked for and not "
-            "computed (`em_basis.honoured` false), only with `--fail-on-violation`). "
+            "`run`: 1 on a FAIL verdict, only with `--fail-on-violation`). "
             "Text-mode errors go "
             "to stderr as `emir: EMIR-Exxx: "
             "message`, then `  hint:` and `  next:` lines. `EMIR_DEBUG=1` re-raises an "
@@ -236,7 +235,7 @@ def _codes(out: list):
         out.append(f"| {a}xx | {AREAS[a]} | {n.get('E', 0)} | {n.get('W', 0)} | "
                    f"{n.get('I', 0)} |")
     out += ["", "Within an area each part of emir has its own decade (so parallel work "
-            "never collides); area 8 is the hierarchy flow's alone:", "",
+            "never collides); area 8 is retired whole:", "",
             "| numbers | owner |", "|---|---|"]
     out += [f"| x{lo:02d}-x{hi:02d} | {who} |" for who, (lo, hi) in DECADES.items()]
     out += ["", "- A code's `command` template may hold `[...]` optional parts and may "
@@ -284,7 +283,7 @@ def _next_steps(out: list):
             "run as printed: replace its `placeholders` (`<result.raw>`, "
             "`<testbench.cir>` ...; the pattern is `" + plan.PLACEHOLDER.pattern + "`) "
             "with what the steps in `after` produced. Inputs it is given (a currents "
-            "file, a tap file, a process file, abstracts) are read as the run reads "
+            "file, a tap file, a process file) are read as the run reads "
             "them: it plans no step the run would refuse, and `missing[]` says what is "
             "needed.", "",
             "Thresholds (printed in every plan): " + ", ".join(
@@ -316,9 +315,7 @@ def _mcp(out: list):
             "- Arguments are the tool's parameter names exactly: an unknown one, or a "
             "required one left out, is refused with EMIR-E592 and nothing runs.",
             f"- `{T.CONFIRM}: true` is the person's go-ahead. A call that would run a "
-            "licensed tool, run long, rewrite a file in place, loosen the EM verdict "
-            "(`emir_run` with an `em_basis` other than the default, or `dynamic` with "
-            "`ground`, with `dyn_steps` below 2000 or without `period`), or run a command "
+            "licensed tool, run long, rewrite a file in place, or run a command "
             "the server has not classified is refused with EMIR-E590 without it; ask the "
             "person first, every time.",
             "- `emir next` over MCP gives each step its `tool` call (null for a step that "

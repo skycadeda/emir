@@ -9,10 +9,8 @@ Tools: one per emir command, ``emir_<command>``, with the command's options
 as typed parameters, returning the document ``emir <command> --format json``
 prints (`emir/mcp_tools.py` builds them from the CLI's own parsers), plus
 ``emir_cli`` for a whole command line. A tool that would start a licensed
-tool, run long, rewrite a file in place, loosen the EM verdict (an EM basis
-other than the default; --dynamic with --ground, with --dyn-steps below 2000
-or without --period), or run a command the server has not classified
-needs ``confirm: true``, which the agent passes only after the
+tool, run long, rewrite a file in place, or run a command the server has not
+classified needs ``confirm: true``, which the agent passes only after the
 person agreed (EMIR-E590 otherwise).
 
 Resources: the error catalog (``emir://catalog/errors.md``), every JSON

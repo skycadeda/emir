@@ -69,26 +69,21 @@ def test_registry_entries_are_complete():
             assert e.exit_code is None, code
 
 
-def test_hierarchy_area_is_the_hierarchy_flows_and_internal_codes_exit_70():
-    # area 8 is the hierarchy flow's alone (emir/hier.py, emir/hier_cli.py):
-    # the magic route's codes sit in the x40 decade of the areas their
-    # conditions belong to (the cell's name 2, tools 6)
-    eight = [c for c in REGISTRY if c[6] == "8"]
-    assert eight and all(1 <= int(c[7:]) <= 49 for c in eight)
-    assert AREAS[8] == "hierarchy"
-    src = "".join(open(os.path.join(ROOT, "emir", f), encoding="utf-8").read()
-                  for f in ("hier.py", "hier_cli.py", "plan_hierarchy.py", "check.py",
-                            "cli.py", "dspf.py"))
-    assert all(f'"{c}"' in src for c in eight)
+def test_hierarchy_area_is_retired_and_internal_codes_exit_70():
+    # area 8 was the chip-level hierarchy's alone, removed in 1.1: every code
+    # of it is retired (kept, never reused); the magic route's codes sit in
+    # the x40 decade of the areas their conditions belong to (the cell's
+    # name 2, tools 6)
+    assert not [c for c in REGISTRY if c[6] == "8"]
+    assert {c for c in RETIRED if c[6] == "8"} >= {"EMIR-E801", "EMIR-E814", "EMIR-W808"}
+    assert AREAS[8] == "hierarchy (removed)"
     forty = {c for c in REGISTRY if 40 <= int(c[7:]) <= 49 and c[6] != "5"}
     route = open(os.path.join(ROOT, "emir", "magic.py"), encoding="utf-8").read()
     assert forty and all(f'"{c}"' in route for c in forty)
     assert {c[6] for c in forty} == {"2", "6"}
-    # area 5's x40 decade is the waveform self-consistent loop's (the module doc)
-    loop = {c for c in REGISTRY if c[6] == "5" and 40 <= int(c[7:]) <= 49}
-    sc = "".join(open(os.path.join(ROOT, "emir", f), encoding="utf-8").read()
-                 for f in ("tdloop.py", "selfconsist.py", "dspf.py", "check.py"))
-    assert loop and all(f'"{c}"' in sc for c in loop)
+    # area 5's x40 decade was the removed self-consistent loop's: retired
+    assert not {c for c in REGISTRY if c[6] == "5" and 40 <= int(c[7:]) <= 49}
+    assert {c for c in RETIRED if c[6] == "5" and 40 <= int(c[7:]) <= 49}
     assert lookup("EMIR-E642").exit_code == 3          # magic cannot start: a missing tool
     assert lookup("EMIR-E643").exit_code == 3          # no magic writes geometry: the same
     for c, e in REGISTRY.items():
@@ -127,8 +122,8 @@ def test_command_templates_are_filled_and_quoted():
     assert e.command_for() == ""
     assert e.command_for(dspf="/a b/x.dspf") == "emir nets '/a b/x.dspf'"
     # {args} is already a quoted argument string
-    assert lookup("EMIR-E418").command_for(args="x.dspf --net VDD") \
-        == "emir run x.dspf --net VDD --scalars"
+    assert lookup("EMIR-E420").command_for(args="x.dspf --net VDD") \
+        == "emir check x.dspf --net VDD"
 
 
 def test_emir_error_carries_code_hint_exit_and_next_steps():
@@ -145,12 +140,14 @@ def test_emir_error_carries_code_hint_exit_and_next_steps():
 def test_notice_logs_a_coded_line_and_records_it():
     lines = []
     with collecting() as found:
-        line = notice("EMIR-W403", "2 of 4 pins on VDD not saved", lines.append)
+        line = notice("EMIR-W203", "VDD has no instance-pin records", lines.append)
         with collecting() as inner:                # nested collectors both see it
             notice("EMIR-I305", "metal1_conn -> Metal1", None)
-    assert line == "[emir] WARNING EMIR-W403: 2 of 4 pins on VDD not saved" == lines[0]
+    assert line == "[emir] WARNING EMIR-W203: VDD has no instance-pin records" == lines[0]
     assert inner == [{"code": "EMIR-I305", "level": "info", "message": "metal1_conn -> Metal1"}]
-    assert [n["code"] for n in found] == ["EMIR-W403", "EMIR-I305"]
+    assert [n["code"] for n in found] == ["EMIR-W203", "EMIR-I305"]
+    with pytest.raises(KeyError, match="retired"):
+        notice("EMIR-W403", "a retired code is never noticed")
     with pytest.raises(KeyError):
         notice("EMIR-E204", "an error is raised, not noticed")
 

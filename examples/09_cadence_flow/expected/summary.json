@@ -1,15 +1,15 @@
 {
  "_about": "example 09's digest (summarize.py): exact match except the numbers named in _tolerances (absolute). No Cadence tool runs in this example.",
  "_tolerances": {
-  "extract_c_only_coupled.temperature": 1e-09,
-  "extract_r_only.temperature": 1e-09
+  "extract_r_only.temperature": 1e-09,
+  "extract_rc_coupled.temperature": 1e-09
  },
- "extract_c_only_coupled": {
+ "extract_r_only": {
   "ccl_command_lines": 52,
-  "ccl_type": "c_only_coupled",
+  "ccl_type": "r_only",
   "dry_run": true,
-  "dspf": "railblock.c_only_coupled.dspf",
-  "kind": "c_only_coupled",
+  "dspf": "railblock.r_only.dspf",
+  "kind": "r_only",
   "licensed": [
    "pvs",
    "quantus"
@@ -30,12 +30,12 @@
   ],
   "temperature": 25.0
  },
- "extract_r_only": {
+ "extract_rc_coupled": {
   "ccl_command_lines": 52,
-  "ccl_type": "r_only",
+  "ccl_type": "rc_coupled",
   "dry_run": true,
-  "dspf": "railblock.r_only.dspf",
-  "kind": "r_only",
+  "dspf": "railblock.rc_coupled.dspf",
+  "kind": "rc_coupled",
   "licensed": [
    "pvs",
    "quantus"

@@ -98,6 +98,19 @@
                 "type": "null"
               }
             ]
+          },
+          "route_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "writes_geometry": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -111,6 +124,55 @@
     },
     "records_file": {
       "type": "string"
+    },
+    "magic_route": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "writes_geometry": {
+          "type": "boolean"
+        },
+        "tried": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "required": [
+        "path",
+        "writes_geometry"
+      ],
+      "description": "The magic `emir extract --tool magic` would run (the SKY130 route): the first of --magic, $EMIR_MAGIC, the site file's magic:, magic-8.3.515-geo and magic on $PATH that writes resistor geometry (the geoout patch); path null when none does (the extraction stops with EMIR-E643). A process file's `magic: binary:` is tried first by `emir extract` and `emir next --gds`."
     },
     "settings": {
       "type": "array",

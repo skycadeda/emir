@@ -1,7 +1,7 @@
 """The Cadence side of EMIR: `emir extract` (GDS + CDL -> DSPF with PVS LVS
-and Quantus). (The Virtuoso form's save lines are `emir save-lines --mode
-rcc|cc-grid`: the person picks the mode in the form.) `emir extract --tool
-magic`, the open-PDK extractor, is `emir.magic`; this module parses both.
+and Quantus). (The Virtuoso form's save lines are `emir save-lines`: every
+branch current of the RC netlist.) `emir extract --tool magic`, the open-PDK
+extractor, is `emir.magic`; this module parses both.
 
 Status. This repository has no Cadence tool and claims none was verified
 anywhere: the PVS command line, the LVS MATCH gate and the Quantus command
@@ -20,23 +20,19 @@ is missing -- and runs nothing (EMIR-I680). With `--run`:
    Quantus reads (`-rc_data`). The report must say MATCH, or the extraction
    is refused (EMIR-E280): a netlist extracted on connectivity LVS has not
    verified simulates fine and means nothing. A matched LVS in the work
-   directory that is newer than the GDS and the CDL is reused, so the R-only
-   and the C-only extraction of one block share one LVS and their names agree.
+   directory that is newer than the GDS and the CDL is reused, so two kinds
+   extracted from one block share one LVS and their names agree.
 2. **Quantus** reads that database and writes `<cell>.<kind>.dspf` (one file
    per kind, so a second kind never overwrites the first).
 
 Which kind for which flow:
 
-* `r_only` -- the EM/IR grid: the DSPF `emir run` screens. For a big block
-  (ADC top, PLL top) it is screened in cc-grid mode.
-* `c_only_coupled` -- the CC netlist: devices and coupling capacitance, no
-  resistance, so the rails are ideal and a big block simulates. Its
-  instance-pin currents drive the R-only grid (`--mode cc-grid`).
-* `rc_coupled` -- the RC netlist of a small block, simulated with every
-  branch current saved (`--mode rcc`): the exact reference. An `r_only`
-  netlist is not an RCC reference (it has no capacitance at all).
-* `rc_decoupled`, `c_only_decoupled` -- grounded instead of coupling
-  capacitance (decap and dynamic-IR studies).
+* `rc_coupled` -- the RC netlist, simulated with every branch current saved
+  (rcc), and the DSPF `emir run` screens with those currents. An `r_only`
+  netlist is not an RCC netlist (it has no capacitance at all).
+* `rc_decoupled` -- R plus grounded instead of coupling capacitance.
+* `r_only` -- the resistor grid alone: the DSPF `emir run` screens with DC
+  currents (`--currents`).
 
 The settings in `LOAD_BEARING` carry the flow; `tests/test_cadence_extract.py`
 checks each one is in the command file of every kind.
@@ -54,16 +50,15 @@ import time
 from .errors import EmirError, notice
 
 #: the extraction kinds (Quantus `extract -type`)
-KINDS = ("r_only", "c_only_coupled", "rc_coupled", "rc_decoupled", "c_only_decoupled")
+KINDS = ("r_only", "rc_coupled", "rc_decoupled")
 
 #: what each kind is for (the plan and the docs say it)
 KIND_USE = {
-    "r_only": "the EM/IR grid DSPF that `emir run` screens (cc-grid for big blocks)",
-    "c_only_coupled": "the CC netlist simulated for instance-pin currents (--mode cc-grid)",
-    "rc_coupled": "the RC netlist of a small block, simulated with every branch "
-                  "current saved (--mode rcc)",
-    "rc_decoupled": "R plus grounded C (decap and dynamic-IR studies)",
-    "c_only_decoupled": "grounded C only (decap studies)",
+    "r_only": "the resistor grid alone: a DSPF `emir run` screens with DC currents "
+              "(--currents)",
+    "rc_coupled": "the RC netlist, simulated with every branch current saved (rcc), and "
+                  "the DSPF `emir run` screens with those currents",
+    "rc_decoupled": "R plus grounded C: the RC netlist with grounded capacitance (rcc)",
 }
 
 #: The Quantus command file. `${...}` fields are filled by `render_ccl`; the
@@ -75,8 +70,8 @@ CCL_TEMPLATE = r"""# SPDX-License-Identifier: MIT
 # on site by the local agent when `emir extract --run` passes its LVS MATCH gate
 # and `emir check` passes on the DSPF it writes.
 # Rendered by `emir extract` and by agent/cadence/quantus/render_ccl.py.
-# KIND: r_only (the EM/IR grid) | c_only_coupled, c_only_decoupled (the CC
-#       netlist for --mode cc-grid) | rc_coupled, rc_decoupled (RC netlists)
+# KIND: rc_coupled, rc_decoupled (the RC netlist rcc simulates and screens) |
+#       r_only (the resistor grid, for DC currents)
 # LOAD-BEARING (do not drop): -analysis "em", the three -include_*_model false
 # flags, -temperature, -sub_node_char ":", -disable_instances false,
 # -net_name_space "SCHEMATIC", -output_xy, an absolute LVS database path.
@@ -164,8 +159,8 @@ LOAD_BEARING = (
      "keeps the instance-pin (*|I) records that simulated currents attach to "
      "(inferred, not tested with the flag on)"),
     ('-net_name_space "SCHEMATIC"',
-     "the R-only and the C-only extraction name nets alike, so CC currents map "
-     "onto the R-only grid"),
+     "the DSPF names nets and instances as the schematic does, so the testbench's "
+     "saved currents and --currents' nodes match it"),
     ("-output_xy", "node and resistor coordinates: the viewer places results by them"),
     ("-include_parasitic_res_width_drawn true", "the wire width ($W) that J = I/w needs"),
 )
@@ -541,8 +536,8 @@ def build_parser():
         "without --run it prints the plan and runs nothing (licensed tools: ask the person "
         "before --run). --tool magic: magic (open source) extracts the cell with every "
         "resistor's layer, width, length and place (a magic that writes resistor "
-        "geometry: `extresist geoout`), and EMIR writes the DSPF, the RC netlist rcc "
-        "simulates, and the CC netlist cc-grid simulates; it runs at once."))
+        "geometry: `extresist geoout`), and EMIR writes the DSPF, which is also the RC "
+        "netlist rcc simulates; it runs at once."))
     ap.add_argument("--tool", default="quantus", choices=("quantus", "magic"),
                     help="quantus: PVS LVS + Quantus (licensed; planned unless --run); "
                          "magic: magic's extraction with resistor geometry (open source)")
@@ -553,9 +548,9 @@ def build_parser():
                     help="the layout top cell (quantus: required; magic: default the "
                          "layout's only top cell, read with the klayout package)")
     ap.add_argument("--kind", default=None, choices=KINDS,
-                    help="quantus (required): r_only: the EM/IR grid; c_only_coupled: the "
-                         "CC netlist (cc-grid); rc_coupled: the RC netlist of a small block "
-                         "(rcc)")
+                    help="quantus (required): rc_coupled: the RC netlist rcc simulates and "
+                         "screens; rc_decoupled: the same with grounded capacitance; r_only: "
+                         "the resistor grid, for DC currents")
     ap.add_argument("--source-cell", default=None,
                     help="quantus: the CDL top cell, if it is not --cell")
     ap.add_argument("--work", default=None,
@@ -595,10 +590,10 @@ def build_parser():
                          "on $PATH), the site file's magic:, then magic-8.3.515-geo and magic "
                          "on $PATH)")
     ap.add_argument("--out", default=None, metavar="DIR",
-                    help="magic: where the DSPF and the CC netlist go; magic runs in its "
-                         "magic/ subdirectory, EMIR's own (default <work_dir>/extract_<cell>;"
-                         " a <cell>.dspf or <cell>.cc.spice there that EMIR did not write is "
-                         "never overwritten: EMIR-E646)")
+                    help="magic: where the DSPF goes; magic runs in its magic/ "
+                         "subdirectory, EMIR's own (default <work_dir>/extract_<cell>; a "
+                         "<cell>.dspf there that EMIR did not write is never overwritten: "
+                         "EMIR-E646)")
     ap.add_argument("--tolerance", type=float, default=10.0,
                     help="magic: `extresist tolerance` (default 10): a net "
                          "whose resistance is small next to its devices' is not split into "

@@ -13,8 +13,8 @@ wants the command file without installing emir.
 
 Every site value (technology directory, corner, temperature) is an argument
 or an environment variable; nothing is baked in. The DSPF is named
-`<cell>.<kind>.dspf` by default, so an R-only and a C-only extraction in one
-work directory never overwrite each other.
+`<cell>.<kind>.dspf` by default, so two kinds of extraction in one work
+directory never overwrite each other.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE = os.path.join(HERE, "emir.ccl.tmpl")
-KINDS = ("r_only", "c_only_coupled", "rc_coupled", "rc_decoupled", "c_only_decoupled")
+KINDS = ("r_only", "rc_coupled", "rc_decoupled")
 #: input_db types Quantus reads LVS connectivity from (pvs the default); each
 #: is UNVERIFIED until checked on site
 LVS_DB_TYPES = ("pvs", "pegasus", "assura", "calibre")

@@ -20,15 +20,11 @@ the two words, `"process new"`, everywhere here.
 
 The guard rail (`gates`): a call that would start a licensed tool (Spectre or
 HSPICE, through `emir run --netlist --run`, `emir simulate --run` and `emir
-verify-sim --run`; PVS and Quantus, through `emir extract --run`), re-simulate
-(`emir run --self-consistent` with Xyce or ngspice),
-run long (a block of more than `plan.THRESHOLDS["big_block_nodes"]` nodes; an
+verify-sim --run`; PVS and Quantus, through `emir extract --run`), run long
+(a block of more than `plan.THRESHOLDS["big_block_nodes"]` nodes; an
 open-simulator run of a block above the small-net size; a transient of the
 extracted layout), rewrite a user file in place (`emir import-ict` without
---out), loosen the EM verdict (`emir run --em-basis` other than the default,
-or --dynamic with --ground, with --dyn-steps below 2000 or without --period:
-a choice that loosens the verdict is the person's), or run a command this
-server has not classified, is refused with
+--out), or run a command this server has not classified, is refused with
 EMIR-E590 unless the call carries ``confirm: true`` -- which the agent sets
 only after the person agreed. The same steps of `emir next` carry
 `needs_human`.
@@ -59,8 +55,8 @@ NOT_SERVED = frozenset({"mcp"})
 #: options no tool exposes: `--format` (always json), `--help`, opening a
 #: browser on the server's machine, and an option kept only for old argument
 #: files
-HIDDEN = {"*": {"help", "format"}, "run": {"open", "rcc_nodes"},
-          "check": {"open", "rcc_nodes"},
+HIDDEN = {"*": {"help", "format"}, "run": {"open"},
+          "check": {"open"},
           # a person at a terminal only (EMIR-E327): never over MCP
           "process new": {"interactive"}}
 #: tool parameter names for options whose own name is a Python keyword
@@ -79,7 +75,7 @@ READ_ONLY = frozenset({"info", "nets", "pins", "explain", "schema", "next", "rep
 #: the argparse dests of the options that name a file or directory a
 #: command writes (`emir next`'s --html/--viewer only name them in the plan)
 OUTPUT_DESTS = frozenset({"out", "names_out", "summary_out", "json_out", "html", "viewer",
-                          "taps_out", "port_voltages_out", "dir", "work"})
+                          "dir", "work"})
 PLAN_ONLY = frozenset({"next"})
 #: the gate every command with an output option has
 OVERWRITE_WHEN = ("an output parameter names an existing file outside the server's working "
@@ -89,23 +85,13 @@ DESTRUCTIVE = frozenset({"import-ict", "gui-install"})
 #: commands that never need the person's go-ahead
 UNGATED = frozenset({"info", "selftest", "validate", "nets", "pins", "save-lines", "check",
                      "report", "next", "explain", "schema", "gui-install",
-                     "probe",
                      # writes a NEW file only (never overwrites: EMIR-E326); reads
                      "process new", "process check"})
 
 #: the documents each command prints besides `emir.error/1` (default: the
 #: schema named after the command; None: any JSON object, e.g. a raw schema)
 OUTPUTS = {"run": ["run", "save_lines", "simulate"], "schema": None,
-           "abstract": ["abstract_summary"],
            "process new": ["process_new"], "process check": ["process_check"]}
-#: --- feature modes --- a parameter a tool requires when others are given:
-#: the mode of a run whose currents come from a simulation is the person's
-#: choice (EMIR-E520), so `mode` is required with `cc_sim` or `netlist` (a
-#: DC run, `currents`, needs none; `self_consistent` needs `netlist`).
-#: `simulate`, `save_lines` and `abstract` require it always (their parsers
-#: say so). Written as `anyOf` (mode given, or none of them), which draft-07
-#: and 2020-12 validators both read.
-DEPENDENT = {c: ("mode", ("cc_sim", "netlist")) for c in ("run", "check")}
 
 #: what each tool is for, from an agent's point of view (a command not
 #: listed is described by its parser's description)
@@ -113,19 +99,25 @@ NOTES = {
     "info": "Where the simulators, packages and settings were found. Read-only.",
     "selftest": "Offline proof that the install works (a few seconds): run it first, "
                 "before touching user data.",
-    "validate": "The analytic validation suite: closed-form cases (quick=true leaves out "
-                "the slow transient ones).",
+    "validate": "The analytic validation suite: closed-form cases, a few seconds.",
     "nets": "The nets of a DSPF and their sizes. Read-only.",
     "pins": "The instance pins on one net of a DSPF. Read-only.",
-    "save-lines": "The simulator save lines a run in the person's mode (rcc or cc-grid, "
-                  "required) needs (Spectre syntax unless sim); written to `out` (and the "
-                  "names sidecar to `names_out`) when given.",
+    "save-lines": "The simulator lines that save every branch current an rcc run reads "
+                  "(Spectre syntax unless sim); written to `out` (and the names sidecar to "
+                  "`names_out`) when given.",
     "check": "Check every input of a run before spending it (the options of emir_run); "
              "passed=false lists coded FAIL findings, each with its fix.",
-    "run": "Screen EM (avg/rms/peak per segment) and IR drop. Pass summary_out (e.g. "
-           "emir_out/summary.json) to feed emir_report. With cc_sim or netlist, mode "
-           "(rcc or cc-grid) is required and is the person's choice: ask them (emir_next "
-           "without mode lists the routes). Screening, not sign-off.",
+    "run": "Screen EM per segment and IR drop. Pass summary_out (e.g. "
+           "emir_out/summary.json) to feed emir_report. The currents: currents (DC values, "
+           "avg = rms = peak), or cc_sim (a simulation of the RC netlist with every branch "
+           "current saved, read by rcc: avg, rms and peak EM, static and dynamic IR, "
+           "exactly; slow on big blocks) with period, the block's period (ask the person; "
+           "a transient needs it). rcc is exact for the simulated record over the whole "
+           "periods you give (--period); whether the testbench has settled is yours to "
+           "establish, as for any .meas. Refused with no number: EMIR-E428 give the "
+           "period, E429 the last two periods differ (the right period, or simulate "
+           "longer), E431 simulate longer; emir_next plans the fix. Screening, not "
+           "sign-off.",
     "report": "The summary of a run to relay to the person (the `markdown` field): "
               "verdict, worst items with fixes, what was not checked.",
     "next": "What to run next, and why, for what you have: the ordered steps, each with "
@@ -137,22 +129,19 @@ NOTES = {
     "extract": "GDS -> DSPF. tool quantus (default): GDS + CDL with PVS LVS and Quantus, "
                "the plan only (what would run, what is missing) unless run=true, which "
                "starts the licensed tools. tool magic (open PDKs): magic extracts the cell "
-               "with every resistor's geometry and emir writes the DSPF and the CC netlist; "
-               "a big layout needs confirm=true.",
-    "probe": "Write a copy of a SPICE netlist with a 0 V probe in series with each device "
-             "terminal on the nets (the input is never changed), and its names sidecar.",
-    "simulate": "Run a simulator on the testbench with the save lines a run needs; the "
+               "with every resistor's geometry and emir writes the DSPF (also the RC "
+               "netlist rcc simulates); a big layout needs confirm=true.",
+    "simulate": "Run a simulator on the testbench with the save lines a run needs (every "
+                "branch current of the RC netlist); the "
                 "text result and its names sidecar feed emir_run (cc_sim). Xyce and "
                 "ngspice run; Spectre and HSPICE (licensed) are only planned unless "
                 "run=true, which needs confirm=true (the person's go-ahead).",
     "verify-sim": "Prove on this machine that a simulator's route into EMIR gives the "
-                  "right numbers (a hand-checkable testbench, rcc and cc-grid, compared "
-                  "with the analytic answer) and keep the record that runs look up. "
+                  "right numbers (hand-checkable testbenches, every branch current read by "
+                  "rcc and compared with the analytic answer) and keep the record that runs "
+                  "look up. "
                   "Do it before the first run that uses that simulator here. Spectre and "
                   "HSPICE: planned unless run=true, which needs confirm=true.",
-    "abstract": "Characterise a block once for the chip-level flow: its pin currents, "
-                "pin-to-pin conductance and own EM/IR, written to out (emir.abstract/1); "
-                "emir_run takes it as abstract FILE@INST.",
     "process new": "When no readable process data exists for the PDK (no file in pdks/, "
                    "the ICT missing or encrypted): write a NEW fill-in process file (out) "
                    "for the layers and vias a DSPF uses, every value empty with its unit "
@@ -350,19 +339,16 @@ def _big(dspf, net) -> bool:
 
 
 def _gate_run(ns) -> list:
-    sc = getattr(ns, "self_consistent", False)
-    if getattr(ns, "netlist", None) or sc:
+    if getattr(ns, "netlist", None):
         sim = getattr(ns, "sim", None) or "spectre"
-        loop = " once per pass of the self-consistent loop" if sc else ""
         if sim in ("spectre", "hspice"):
             if not getattr(ns, "run", False):
                 return []               # licensed without run: it only plans
-            return [Gate(f"it runs {sim} (a licensed tool) on the netlist{loop}, which can "
+            return [Gate(f"it runs {sim} (a licensed tool) on the netlist, which can "
                          f"take a long time", licensed_tool=sim, long_run=True)]
-        return [Gate(f"it simulates the CC testbench with {sim}{loop} (it re-simulates), "
-                     f"which can take a long time", long_run=True)] + \
-            _deck_code(getattr(ns, "netlist", None))
-    if not any(getattr(ns, k, False) for k in ("save_list", "save_branches", "split_stub")) \
+        return [Gate(f"it simulates the netlist with {sim}, which can take a long time",
+                     long_run=True)] + _deck_code(getattr(ns, "netlist", None))
+    if not getattr(ns, "save_branches", False) \
             and _big(getattr(ns, "dspf", None), getattr(ns, "net", None)):
         from .plan import THRESHOLDS
         return [Gate(f"the DSPF has more than {THRESHOLDS['big_block_nodes']} nodes "
@@ -379,14 +365,6 @@ def _size_class(dspf, net) -> str | None:
         return Facts(dspf=dspf, net=net).size()["class"]
     except Exception:                           # noqa: BLE001 - the command reports it
         return None
-
-
-def _gate_abstract(ns) -> list:
-    if _big(getattr(ns, "dspf", None), None):
-        from .plan import THRESHOLDS
-        return [Gate(f"the block DSPF has more than {THRESHOLDS['big_block_nodes']} nodes: "
-                     f"a long characterisation", long_run=True)]
-    return []
 
 
 def _deck_code(testbench) -> list:
@@ -453,20 +431,16 @@ def _gate_import_ict(ns) -> list:
 
 #: command -> fn(argparse namespace) -> [Gate]: when the command needs the
 #: person's go-ahead. A command in neither this table nor UNGATED always does.
-GATES = {"run": _gate_run, "import-ict": _gate_import_ict, "abstract": _gate_abstract,
+GATES = {"run": _gate_run, "import-ict": _gate_import_ict,
          "simulate": _gate_simulate, "extract": _gate_extract,
          "verify-sim": _gate_verify_sim}
 
 #: what the conditional gates say in the tool list
 GATE_WHEN = {
-    "run": ["netlist or self_consistent is given with run true and sim spectre (the "
-            "default) or hspice: it runs a licensed simulator, once per pass of the "
-            "self-consistent loop (without run it only plans)",
-            "self_consistent is given with sim xyce or ngspice: it re-simulates the CC "
-            "testbench once per pass, possibly for a long time",
+    "run": ["netlist is given with run true and sim spectre (the default): it runs a "
+            "licensed simulator (without run it only plans)",
             "the DSPF is ADC-top or PLL-top size (the run is long)"],
     "import-ict": ["out is not given: it rewrites the process file in place"],
-    "abstract": ["the block DSPF is ADC-top or PLL-top size (a long characterisation)"],
     "simulate": ["run is true with sim spectre or hspice: it runs a licensed simulator",
                  "the DSPF is above the small-net size (a long simulation)",
                  "the testbench or the .spiceinit beside it holds a .control block or a "
@@ -475,63 +449,12 @@ GATE_WHEN = {
                 "tool is magic and the layout is above the size where magic's extraction "
                 "can run long (plan.THRESHOLDS magic_gds_mb)"],
     "verify-sim": ["run is true with sim spectre or hspice: it runs a licensed simulator "
-                   "(six short simulations)"],
+                   "(three short simulations)"],
 }
 UNCLASSIFIED = Gate("this command is not classified by the MCP server: it may start "
                     "licensed tools or long jobs")
 
 
-# --- feature decap --- a choice that loosens the verdict is the person's: an
-# EM basis other than the default (em_basis.DEFAULT_BASIS) is theirs to choose
-def _gate_em_basis(ns) -> list:
-    from .em_basis import DEFAULT_BASIS, not_default
-    b = getattr(ns, "em_basis", None)
-    out = []
-    if b and b != DEFAULT_BASIS:
-        out.append(Gate(not_default(b).replace("--em-basis ", "em_basis ", 1)
-                        + ": the verdict's basis is the person's choice"))
-    if getattr(ns, "dynamic", False) and b != "decap-free":
-        # options that keep decap-aware EM from being computed: the verdict
-        # then falls back to decap-free, a loosening the person did not choose
-        if getattr(ns, "ground", None):
-            out.append(Gate("ground with dynamic: decap-aware EM draws the decaps' charge "
-                            "from the feed, so a reference elsewhere leaves it not computed "
-                            "and the verdict on decap-free (EMIR-W431): the person's choice"))
-        steps = getattr(ns, "dyn_steps", None)
-        if steps is not None and steps < 2000:
-            out.append(Gate(f"dyn_steps {steps} with dynamic is below the default rule's "
-                            f"least (2000): a step too coarse leaves decap-aware EM not "
-                            f"computed and the verdict on decap-free (EMIR-W434): the "
-                            f"person's choice"))
-        if getattr(ns, "period", None) is None and getattr(ns, "mode", None) != "rcc":
-            out.append(Gate("dynamic without period: decap-aware EM needs a window of whole "
-                            "periods, and the detection finds none in a window of fewer "
-                            "than about four, which leaves it not computed and the verdict "
-                            "on decap-free (EMIR-W433): pass the block's period, or the "
-                            "person's go-ahead"))
-    steps = getattr(ns, "dyn_steps", None)
-    if getattr(ns, "dynamic", False) and steps is not None and steps > 200_000:
-        out.append(Gate(f"dyn_steps {steps} is above the default rule's most (200000): a "
-                        f"long run", long_run=True))
-    return out
-
-
-_GATE_RUN_BASE = GATES["run"]
-GATES["run"] = lambda ns: _GATE_RUN_BASE(ns) + _gate_em_basis(ns)
-def _gate_when_em_basis() -> str:
-    from .em_basis import DEFAULT_BASIS
-    return (f"em_basis is not the default ({DEFAULT_BASIS}): the verdict's basis is the "
-            "person's choice (decap-free and decap-aware each read lower than worst on some "
-            "segments)")
-
-
-GATE_WHEN["run"] = list(GATE_WHEN["run"]) + [
-    _gate_when_em_basis(),
-    "dynamic with ground, with dyn_steps below 2000, or without period: decap-aware EM "
-    "may not be computed, which loosens the verdict to decap-free (EMIR-W431, EMIR-W434, "
-    "EMIR-W433)",
-    "dyn_steps above 200000 with dynamic (the default rule's most): a long run"]
-# --- end feature decap ---
 
 
 def writes(command: str, params) -> bool:
@@ -632,11 +555,6 @@ class ToolSpec:
         req = [p.name for p in self.params if p.required]
         if req:
             s["required"] = req
-        dep = DEPENDENT.get(self.command)
-        if dep and dep[0] in props:
-            need, when = dep[0], [w for w in dep[1] if w in props]
-            s["anyOf"] = [{"required": [need]},
-                          {"not": {"anyOf": [{"required": [w]} for w in when]}}]
         return s
 
     def output_schema(self) -> dict:
@@ -1035,7 +953,17 @@ def argument_error(spec: ToolSpec, arguments: dict) -> EmirError | None:
     unknown = sorted(k for k in arguments if k not in known)
     missing = [p.name for p in spec.params
                if p.required and arguments.get(p.name) in (None, "", [])]
-    if not (unknown or missing):
+    # a value outside a parameter's enum: the SDK would answer it with plain,
+    # uncoded text (an old --mode value from an agent that remembers 1.0)
+    invalid = {}
+    for p in spec.params:
+        v = arguments.get(p.name)
+        if not p.choices or v is None:
+            continue
+        bad = [x for x in (v if isinstance(v, list) else [v]) if x not in p.choices]
+        if bad:
+            invalid[p.name] = {"given": bad, "allowed": list(p.choices)}
+    if not (unknown or missing or invalid):
         return None
     parts = []
     for k in unknown:
@@ -1043,10 +971,15 @@ def argument_error(spec: ToolSpec, arguments: dict) -> EmirError | None:
         parts.append(f"no parameter {k!r}" + (f" (did you mean {close[0]!r}?)" if close else ""))
     if missing:
         parts.append("missing required " + ", ".join(missing))
+    for k, x in invalid.items():
+        parts.append(f"{k} {', '.join(map(repr, x['given']))} is not one of "
+                     f"{', '.join(map(repr, x['allowed']))}"
+                     + (" (1.1 has one method of a simulated run, rcc: give mode 'rcc' or "
+                        "leave it out)" if k == "mode" else ""))
     return EmirError("EMIR-E592", f"{spec.name}: " + "; ".join(parts) + ". Its parameters: "
                      + ", ".join(names + ([CONFIRM] if spec.confirm != "never" else [])),
                      details={"tool": spec.name, "unknown": unknown, "missing": missing,
-                              "parameters": names,
+                              "invalid": invalid, "parameters": names,
                               "required": [p.name for p in spec.params if p.required]})
 
 

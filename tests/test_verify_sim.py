@@ -18,13 +18,10 @@ from emir import plan as P
 pytestmark = []
 
 #: what a verification checks (module doc of emir/verify_sim.py): the version;
-#: per case the read, the format, the simulator named, nothing missing (4 x 6);
-#: dc and pulse rcc 16 branch currents each, dev rcc 19; dc cc 4 loads, pulse cc
-#: 4 x 3, dev cc 7 pins; the run's worst ratio, IR and verdict (3 x 6); the
-#: pulse cases' Rm1 and Rc3 ratios (6 x 2); rcc against cc-grid (6 x 3); the
-#: self-consistent loop (7: converged, pass 0 IR and ratio, falling droop
-#: change, closed-loop IR, worst ratio and Rc3 ratio)
-N_CHECKS = 1 + 24 + 16 + 16 + 19 + 4 + 12 + 7 + 18 + 12 + 18 + 7
+#: per case the read, the format, the simulator named, nothing missing (4 x 3);
+#: dc and pulse 16 branch currents each, dev 19; the run's worst ratio, IR and
+#: verdict (3 x 3); the pulse case's Rm1 and Rc3 ratios (avg, rms, peak: 6)
+N_CHECKS = 1 + 12 + 16 + 16 + 19 + 9 + 6
 
 
 def _doc(p):
@@ -179,7 +176,7 @@ def test_a_record_of_another_emir_minor_version_is_stale(tools):
     from emir.selftest import sample_paths
     dspf, proc = sample_paths()
     tools(xyce=True)
-    plan = P.build(P.Facts(dspf=dspf, process=proc, net="VDD", mode="rcc"))
+    plan = P.build(P.Facts(dspf=dspf, process=proc, net="VDD"))
     v = next(s for s in plan.steps if s["id"] == "verify-sim")
     assert "stale" in v["why"] and "1.0.0" in v["why"]
     # the same minor version, another patch: not stale
@@ -226,7 +223,7 @@ def test_info_and_next_follow_the_latest_record(tools):
     tools(ngspice=True)
     verify_sim.save_record(_record("ngspice", "ngspice-45+"))
     verify_sim.save_record(_record("ngspice", "ngspice-45+", passed=False))
-    plan = P.build(P.Facts(dspf=dspf, process=proc, net="VDD", mode="rcc"))
+    plan = P.build(P.Facts(dspf=dspf, process=proc, net="VDD"))
     v = next(s for s in plan.steps if s["id"] == "verify-sim")
     assert "FAILED" in v["why"]
     assert verify_sim.verified_route("ngspice", "nutascii") is None
@@ -268,36 +265,21 @@ def test_open_simulators_verify_for_real(tmp_path, sim):
     assert p.returncode == 0 and doc["passed"] and doc["ran"], \
         [c for c in doc["checks"] if not c["ok"]]
     assert len(doc["checks"]) == N_CHECKS and doc["code"] is None and doc["host"] is None
-    # the self-consistent loop converged on the closed-loop answer, pass 0 the open loop
-    sc = [c for c in doc["checks"] if c["name"].startswith("selfconsistent:")]
-    assert len(sc) == 7 and all(c["ok"] for c in sc)
-    # its testbench is emir's: it sets the reltol the loop asks for (no EMIR-W540)
-    assert "EMIR-W540" not in p.stderr
+    assert doc["covers"] == ["branch"] and all(c["mode"] == "rcc" for c in doc["cases"])
+    # the dev case's contacts to a bulk or a gate carry no current
+    assert any(c["name"] == "dev_rcc: Rb0 average current (positive from the feed)"
+               and c["ok"] for c in doc["checks"])
     assert doc["format"] == "nutascii" and doc["version"]
     _schema_ok(doc, "verify_sim")
     recs = verify_sim.load_records()
     assert [r["simulator"] for r in recs] == [sim] and recs[0]["passed"]
-    # a run on the verification's own cc result is now verified
-    res = os.path.join(doc["out_dir"], "results", "dc_cc-grid.raw")
+    # a run on the verification's own result is now verified
+    res = os.path.join(doc["out_dir"], "results", "dc_rcc.raw")
     r = emir("run", os.path.join(doc["out_dir"], "verify_r.dspf"), "--process", PROC,
-             "--cc-sim", res, "--mode", "cc-grid", "--format", "json")
+             "--cc-sim", res, "--period", "1e-8", "--format", "json")
     s = _doc(r)
     assert s["simulator_verification"]["status"] == "verified"
     assert any(n["code"] == "EMIR-I463" for n in s["notices"])
-
-
-@pytest.mark.parametrize("sim", ["xyce", "ngspice", "hspice", "spectre"])
-def test_the_self_consistent_case_sets_the_loops_reltol(tmp_path, sim):
-    """verify-sim warned EMIR-W540 about the testbench it had just written
-    itself: its self-consistent case now sets reltol 1e-4 in the simulator's
-    own syntax, which the loop's reader takes (and no other case changes)."""
-    from emir.selfconsist import RELTOL_MAX, reltol_of
-    files = verify_sim.build(sim, str(tmp_path))
-    sc = next(f for f in files if f["case"] == verify_sim.SC_CASE)
-    v, line = reltol_of([open(sc["testbench"]).read()], sim)
-    assert v is not None and v <= RELTOL_MAX, line
-    for f in files[:-1]:
-        assert "reltol" not in open(f["testbench"]).read()
 
 
 @pytest.mark.parametrize("sim", ["hspice", "spectre"])
@@ -307,10 +289,8 @@ def test_licensed_simulators_are_planned_without_run(tmp_path, monkeypatch, sim)
     p = _verify(tmp_path, sim)
     doc = _doc(p)
     assert p.returncode == 0 and doc["ran"] is False and doc["passed"] is None
-    assert len(doc["cases"]) == 7 and all(c["command"] for c in doc["cases"])
-    sc = doc["cases"][6]
-    assert sc["case"] == "selfconsistent" and "--self-consistent" in sc["emir_run"]
-    assert "--run" not in sc["emir_run"] and sc["mode"] == "cc-grid"
+    assert len(doc["cases"]) == 3 and all(c["command"] for c in doc["cases"])
+    assert [c["case"] for c in doc["cases"]] == ["dc", "pulse", "dev"]
     assert doc["next_steps"][0]["command"].endswith("--run --format json")
     assert "EMIR-I661" in p.stderr
     assert verify_sim.load_records() == []                   # nothing to record
@@ -344,102 +324,25 @@ def test_a_wrong_sign_fails_the_verification(tmp_path, monkeypatch):
     assert p.returncode == 70 and doc["passed"] is False and doc["code"] == "EMIR-E663"
     bad = [c["name"] for c in doc["checks"] if not c["ok"]]
     assert any("positive from the feed" in b for b in bad)
-    assert any("positive into the load" in b for b in bad)
     assert verify_sim.load_records()[-1]["passed"] is False
     assert verify_sim.status({"simulator": "hspice", "format": "tr0ascii"})["status"] == \
         "not verified"
 
 
-#: the forms the dev case's pins are saved with, per simulator (the sidecar
-#: key, upper case, and its sign): exactly what emir's cc route writes
-DEV_FORMS = {
-    "xyce": {"IS(XI0:MP0)": ("MP0:s", 1), "IB(XI0:MP0)": ("MP0:b", 1),
-             "ID(XI0:MN1)": ("MN1:d", 1), "IG(XI0:MN1)": ("MN1:g", 1),
-             "I(XI0:RL2)": ("RL2:2", -1)},
-    "ngspice": {"I(@R.XI0.RL2[I])": ("RL2:2", -1)},
-    "hspice": {"I3(XI0.MP0)": ("MP0:s", -1), "I4(XI0.MP0)": ("MP0:b", 1),
-               "I1(XI0.MN1)": ("MN1:d", 1), "I2(XI0.MN1)": ("MN1:g", 1),
-               "I1(XI0.RL2)": ("RL2:2", -1)},
-}
-
-
-def _dev_sidecar(doc):
-    return json.load(open(os.path.join(doc["out_dir"], "results", "dev_cc-grid." + (
-        "tr0" if doc["simulator"] == "hspice" else "raw") + ".names")))
-
-
-def _assert_dev_forms(doc):
-    """The dev case was saved with the cc route's forms, and every pin's
-    current was checked against its known value and direction."""
-    sim = doc["simulator"]
-    side = _dev_sidecar(doc)["map"]
-    for key, (pin, sign) in DEV_FORMS[sim].items():
-        assert side.get(key) == [pin, sign], (key, side.get(key))
-    probed = {v[0] for k, v in side.items() if "VEMIR" in k}
-    want = {"XM3:d", "XM3:g"} | ({"MP0:s", "MP0:b", "MN1:d", "MN1:g"}
-                                 if sim == "ngspice" else set())
-    assert probed == want
-    if sim == "hspice":
-        assert "I3(XI0.MP0)" in _dev_sidecar(doc)["kcl"]
-    names = {c["name"] for c in doc["checks"]}
-    for pin in verify_sim.DEV_PINS:
-        assert any(n.startswith(f"dev_cc-grid: {pin} current into the device") for n in names), pin
-    assert {"dev_rcc: Rb0 average current (positive from the feed)",
-            "dev: rcc against cc-grid, Rc3 avg"} <= names
-
-
-@pytest.mark.parametrize("sim", ["xyce", "ngspice"])
-def test_the_dev_case_reads_real_device_terminals(tmp_path, sim):
-    from emir import site
-    if not site.tool(sim)[0]:
-        pytest.skip(f"{sim} is not installed here")
-    doc = _doc(_verify(tmp_path, sim))
-    assert doc["passed"], [c for c in doc["checks"] if not c["ok"]]
-    _assert_dev_forms(doc)
-    side = _dev_sidecar(doc)
-    assert side["simulator_version"] == doc["version"] and side["sim_args"] == ""
-
-
-def test_the_licensed_dev_forms_with_stand_ins(tmp_path, monkeypatch):
+def test_the_dev_case_reads_the_rail_beside_real_devices(tmp_path, monkeypatch):
+    """The dev case: devices on the rail, their branch currents read as a run
+    reads them; the stand-ins write them in each licensed simulator's form."""
     from _sim_fakes import install
     install(tmp_path, monkeypatch)
-    doc = _doc(_verify(tmp_path, "hspice", "--run"))
-    assert doc["passed"], [c for c in doc["checks"] if not c["ok"]]
-    _assert_dev_forms(doc)
-    doc = _doc(_verify(tmp_path, "spectre", "--run"))
-    assert doc["passed"], [c for c in doc["checks"] if not c["ok"]]
-    save = open(os.path.join(doc["out_dir"], "results", "dev_cc-grid.save.scs")).read()
-    for pin in verify_sim.DEV_PINS:
-        assert f"XI0.{pin}" in save, pin
-    # Spectre's sidecar (beside the result directory): the facts, no map
-    side = json.load(open(os.path.join(doc["out_dir"], "results", "dev_cc-grid.raw.names")))
+    for sim in ("hspice", "spectre"):
+        doc = _doc(_verify(tmp_path / sim, sim, "--run"))
+        assert doc["passed"], [c for c in doc["checks"] if not c["ok"]]
+        names = {c["name"] for c in doc["checks"] if c["name"].startswith("dev_rcc: ")}
+        assert {"dev_rcc: Rb0 average current (positive from the feed)",
+                "dev_rcc: Rm1 average current (positive from the feed)"} <= names
+    side = json.load(open(os.path.join(doc["out_dir"], "results", "dev_rcc.raw.names")))
     assert side == {"map": {}, "simulator": "spectre", "sim_args": "",
                     "simulator_version": doc["version"]}
-
-
-def test_a_device_sign_error_fails_although_kcl_closes(tmp_path, monkeypatch):
-    """Every terminal of every device written with the wrong sign: each
-    device's currents still sum to zero, so KCL alone would accept them; the
-    known source currents do not."""
-    from _sim_fakes import install
-    install(tmp_path, monkeypatch)
-    monkeypatch.setenv("FAKE_DEV_SIGN", "-1")
-    p = _verify(tmp_path, "hspice", "--run")
-    doc = _doc(p)
-    assert p.returncode == 70 and doc["passed"] is False
-    bad = {c["name"].split(" (")[0] for c in doc["checks"] if not c["ok"]}
-    for pin in ("MP0:s", "MN1:d", "RL2:2", "XM3:d"):
-        assert f"dev_cc-grid: {pin} current into the device" in bad
-    assert not any(b.startswith(("dc", "pulse")) for b in bad)       # the loads are right
-    assert "EMIR-W465" not in p.stderr                                  # KCL closed
-
-
-def test_hspice_i3_out_of_the_device_is_set_by_kcl(tmp_path, monkeypatch):
-    from _sim_fakes import install
-    install(tmp_path, monkeypatch)
-    monkeypatch.setenv("FAKE_HSPICE_I3", "out")
-    doc = _doc(_verify(tmp_path, "hspice", "--run"))
-    assert doc["passed"], [c for c in doc["checks"] if not c["ok"]]
 
 
 def test_a_later_failed_verification_cancels_the_pass_for_runs(tmp_path, monkeypatch):
@@ -450,8 +353,8 @@ def test_a_later_failed_verification_cancels_the_pass_for_runs(tmp_path, monkeyp
     good = _doc(_verify(tmp_path / "a", "hspice", "--run"))
     assert good["passed"]
     run = ("run", os.path.join(good["out_dir"], "verify_r.dspf"), "--process", PROC,
-           "--cc-sim", os.path.join(good["out_dir"], "results", "dc_cc-grid.tr0"), "--mode",
-           "cc-grid", "--format", "json")
+           "--cc-sim", os.path.join(good["out_dir"], "results", "dc_rcc.tr0"), "--period",
+           "10ns", "--format", "json")
     s = _doc(emir(*run))
     assert s["simulator_verification"]["status"] == "verified"
     monkeypatch.setenv("FAKE_SIGN", "-1")
@@ -472,10 +375,10 @@ def test_sim_args_key_the_verification_and_the_result(tmp_path, monkeypatch):
     doc = _doc(_verify(tmp_path / "a", "hspice", "--run", "--sim-args", "-mt  2"))
     assert doc["passed"] and doc["sim_args"] == "-mt 2"
     assert verify_sim.load_records()[-1]["sim_args"] == "-mt 2"
-    res = os.path.join(doc["out_dir"], "results", "dc_cc-grid.tr0")
+    res = os.path.join(doc["out_dir"], "results", "dc_rcc.tr0")
     assert json.load(open(res + ".names"))["sim_args"] == "-mt 2"
     run = ("run", os.path.join(doc["out_dir"], "verify_r.dspf"), "--process", PROC,
-           "--cc-sim", res, "--mode", "cc-grid", "--format", "json")
+           "--cc-sim", res, "--period", "10ns", "--format", "json")
     assert _doc(emir(*run))["simulator_verification"]["status"] == "verified"
     # the same result, its sidecar saying it was simulated without them: no
     # record for that configuration
@@ -490,13 +393,14 @@ def test_a_result_without_a_version_is_not_verified_by_a_run(tmp_path, monkeypat
     from _sim_fakes import install
     install(tmp_path, monkeypatch)
     doc = _doc(_verify(tmp_path, "hspice", "--run"))
-    res = os.path.join(doc["out_dir"], "results", "dc_cc-grid.tr0")
+    res = os.path.join(doc["out_dir"], "results", "dc_rcc.tr0")
     side = json.load(open(res + ".names"))
     del side["simulator_version"]                  # as `emir save-lines` writes it
     with open(res + ".names", "w") as f:
         json.dump(side, f)
-    s = _doc(emir("run", os.path.join(doc["out_dir"], "verify_r.dspf"), "--process", PROC,
-                  "--cc-sim", res, "--mode", "cc-grid", "--format", "json"))
+    run = (os.path.join(doc["out_dir"], "verify_r.dspf"), "--process", PROC, "--cc-sim", res,
+           "--period", "10ns")
+    s = _doc(emir("run", *run, "--format", "json"))
     v = s["simulator_verification"]
     assert (v["status"], v["reason"]) == ("not verified", "version unknown")
     assert any(n["code"] == "EMIR-W416" for n in s["notices"])
@@ -523,7 +427,7 @@ def test_plan_verifies_spectre_with_the_person_first(tools):
     from emir.selftest import sample_paths
     dspf, proc = sample_paths()
     tools(spectre=True)
-    plan = P.build(P.Facts(dspf=dspf, process=proc, net="VDD", mode="rcc"))
+    plan = P.build(P.Facts(dspf=dspf, process=proc, net="VDD"))
     v = next(s for s in plan.steps if s["id"] == "verify-sim")
     assert v["command"] == "emir verify-sim --sim spectre --run"
     assert v["needs_human"] and v["licensed_tool"] == "spectre"
@@ -535,7 +439,7 @@ def test_plan_skips_the_verification_when_a_record_passes(tools):
     dspf, proc = sample_paths()
     tools(ngspice=True)
     verify_sim.save_record(_record("ngspice", "ngspice-45+", "nutascii"))
-    plan = P.build(P.Facts(dspf=dspf, process=proc, net="VDD", mode="rcc"))
+    plan = P.build(P.Facts(dspf=dspf, process=proc, net="VDD"))
     assert "verify-sim" not in _ids(plan)
     assert any("verified on this machine" in a for a in plan.advice)
 
@@ -544,7 +448,7 @@ def test_plan_hspice_route_is_planned_then_run_with_the_person(tools):
     from emir.selftest import sample_paths
     dspf, proc = sample_paths()
     tools()
-    plan = P.build(P.Facts(dspf=dspf, process=proc, net="VDD", sim="hspice", mode="rcc"))
+    plan = P.build(P.Facts(dspf=dspf, process=proc, net="VDD", sim="hspice", period=1e-9))
     ids = _ids(plan)
     assert ids[1:4] == ["verify-sim", "simulate-plan", "simulate"]
     sp, run = plan.steps[2], plan.steps[3]
@@ -556,25 +460,30 @@ def test_plan_hspice_route_is_planned_then_run_with_the_person(tools):
     assert any("hspice is not found" in a for a in plan.advice)
 
 
-def _ngspice_result(path, n=4):
-    """An ngspice-style nutascii result of the verification's CC netlist
-    (`Command: ngspice-45+` in its header; probe currents named
-    i(v.xi0.vemirK), mapped by its names sidecar)."""
+#: the verification rail's branches and the loads each carries (1 mA each)
+_BRANCHES = {**{f"Rm{k}": (4 if k <= 3 else 3 if k <= 6 else 2 if k <= 9 else 1)
+                for k in range(1, 13)}, **{f"Rc{k}": 1 for k in range(4)}}
+
+
+def _ngspice_result(path):
+    """An ngspice-style nutascii result of the verification's RC netlist
+    (`Command: ngspice-45+` in its header; branch currents named
+    i(@r.xi0.rm1[i]), mapped by its names sidecar)."""
     import numpy as np
     t = np.linspace(0, 40e-9, 9)
-    names = [f"i(v.xi0.vemir{k})" for k in range(n)]
+    names = {f"i(@r.xi0.{b.lower()}[i])": b for b in _BRANCHES}
     L = ["Title: * stand-in", "Date: today", "Command: ngspice-45+, Build (stand-in)",
-         "Plotname: Transient Analysis", "Flags: real", f"No. Variables: {n + 1}",
+         "Plotname: Transient Analysis", "Flags: real", f"No. Variables: {len(names) + 1}",
          f"No. Points: {len(t)}", "Variables:", "\t0\ttime\ttime"]
     L += [f"\t{k + 1}\t{x}\tcurrent" for k, x in enumerate(names)]
     L.append("Values:")
     for i, ti in enumerate(t):
         L.append(f" {i}\t{ti:.12e}")
-        L += ["\t1.000000000000e-03"] * n
+        L += [f"\t{_BRANCHES[b] * 1e-3:.12e}" for b in names.values()]
     with open(path, "w") as f:
         f.write("\n".join(L) + "\n")
     with open(path + ".names", "w") as f:
-        json.dump({"map": {x.upper(): [f"ILOAD{k}:p", 1] for k, x in enumerate(names)},
+        json.dump({"map": {x.upper(): [f"{b}:1", 1] for x, b in names.items()},
                    "simulator": "ngspice"}, f)
     return path
 
@@ -583,25 +492,25 @@ def test_plan_verifies_the_simulator_of_a_finished_result(tools, tmp_path):
     tools(xyce=True)
     from emir.verify_sim import build
     dspf = build("ngspice", str(tmp_path / "v"))[0]["dspf"]
-    res = _ngspice_result(str(tmp_path / "cc.raw"))
-    plan = P.build(P.Facts(dspf=dspf, process=PROC, cc_sim=res, mode="cc-grid"))
-    assert plan.mode["chosen"] == "cc-grid"
+    res = _ngspice_result(str(tmp_path / "rcc.raw"))
+    plan = P.build(P.Facts(dspf=dspf, process=PROC, cc_sim=res, period=1e-8))
+    assert plan.mode["chosen"] == "rcc"
     ids = _ids(plan)
     assert ids.index("verify-sim") < ids.index("check") < ids.index("run")
     v = plan.steps[ids.index("verify-sim")]
     assert v["command"] == "emir verify-sim --sim ngspice" and not v["needs_human"]
     verify_sim.save_record(_record("ngspice", "ngspice-45+ : Circuit", "nutascii"))
-    plan = P.build(P.Facts(dspf=dspf, process=PROC, cc_sim=res, mode="cc-grid"))
+    plan = P.build(P.Facts(dspf=dspf, process=PROC, cc_sim=res, period=1e-8))
     assert "verify-sim" not in _ids(plan)
     # a result that does not say who wrote it: the plan asks for --sim
     os.remove(res + ".names")
     with open(res) as f:
         text = f.read().replace("Command: ngspice-45+, Build (stand-in)\n", "")
     with open(res, "w") as f:
-        f.write(text.replace("i(v.xi0.vemir", "I(VEMIR"))
+        f.write(text.replace("i(@r.xi0.", "I(XI0:").replace("[i])", ")"))
     with open(res + ".names", "w") as f:
-        json.dump({"map": {f"I(VEMIR{k})": [f"ILOAD{k}:p", 1] for k in range(4)}}, f)
-    plan = P.build(P.Facts(dspf=dspf, process=PROC, cc_sim=res, mode="cc-grid"))
+        json.dump({"map": {f"I(XI0:{b.upper()})": [f"{b}:1", 1] for b in _BRANCHES}}, f)
+    plan = P.build(P.Facts(dspf=dspf, process=PROC, cc_sim=res, period=1e-8))
     assert "verify-sim" not in _ids(plan)
     assert any("pass --sim" in a for a in plan.advice)
 
@@ -609,7 +518,7 @@ def test_plan_verifies_the_simulator_of_a_finished_result(tools, tmp_path):
 def test_next_takes_sim(tools):
     from emir.selftest import sample_paths
     dspf, proc = sample_paths()
-    p = emir("next", "--dspf", dspf, "--process", proc, "--sim", "spectre", "--mode", "rcc",
+    p = emir("next", "--dspf", dspf, "--process", proc, "--sim", "spectre",
              "--format", "json")
     doc = _doc(p)
     assert doc["inputs"]["sim"] == "spectre"
@@ -630,17 +539,14 @@ def test_mcp_needs_confirm_for_a_licensed_simulator_run():
     assert g and g[0].licensed_tool == "spectre"
     assert _gates("verify-sim", "--sim", "spectre") == []      # plans only
     assert _gates("verify-sim", "--sim", "xyce") == []
-    g = _gates("simulate", "tb.sp", "--sim", "hspice", "--dspf", "x.dspf", "--mode", "rcc",
-               "--run")
+    g = _gates("simulate", "tb.sp", "--sim", "hspice", "--dspf", "x.dspf", "--run")
     assert any(x.licensed_tool == "hspice" for x in g)
     assert not any(x.licensed_tool for x in _gates("simulate", "tb.sp", "--sim", "hspice",
-                                                   "--dspf", "x.dspf", "--mode", "rcc"))
-    # the self-consistent loop on a licensed simulator: only with run
-    g = _gates("run", "x.dspf", "--netlist", "tb.sp", "--sim", "hspice", "--mode", "cc-grid",
-               "--self-consistent", "--vdd", "1", "--run")
-    assert any(x.licensed_tool == "hspice" for x in g)
-    assert _gates("run", "x.dspf", "--netlist", "tb.sp", "--sim", "hspice", "--mode",
-                  "cc-grid", "--self-consistent", "--vdd", "1") == []
+                                                   "--dspf", "x.dspf"))
+    # emir run --netlist runs Spectre: only with run
+    g = _gates("run", "x.dspf", "--netlist", "tb.scs", "--run")
+    assert any(x.licensed_tool == "spectre" for x in g)
+    assert _gates("run", "x.dspf", "--netlist", "tb.scs") == []
 
 
 def test_mcp_instructions_carry_the_disclaimer_and_the_verification():

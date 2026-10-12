@@ -196,8 +196,8 @@ def test_run_lvs_match_then_quantus(site):
 
 def test_second_kind_reuses_the_matched_lvs(site):
     extract(site, "--run")
-    d, _ = extract(site, "--run", kind="c_only_coupled")
-    assert d["lvs"]["reuse"] is True and d["dspf"].endswith("railblock.c_only_coupled.dspf")
+    d, _ = extract(site, "--run", kind="rc_coupled")
+    assert d["lvs"]["reuse"] is True and d["dspf"].endswith("railblock.rc_coupled.dspf")
     assert [c["tool"] for c in calls(site["log"])] == ["pvs", "qrc", "qrc"]
     assert os.path.isfile(os.path.join(site["work"], "railblock.r_only.dspf"))  # not overwritten
     d, _ = extract(site, "--run", "--rerun-lvs")
@@ -276,7 +276,7 @@ def test_shell_script_match_then_quantus(site):
     assert ccl == render_ccl(os.path.join(site["work"], "svdb"), "railblock",
                              "railblock.r_only.dspf", site["decks"]["tech_dir"], "typ", 25)
     # a second kind reuses the matched LVS
-    p = _sh(site, "c_only_coupled")
+    p = _sh(site, "rc_coupled")
     assert p.returncode == 0 and "reusing" in p.stderr
     assert [c["tool"] for c in calls(site["log"])] == ["pvs", "qrc", "qrc"]
 

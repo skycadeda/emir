@@ -3,7 +3,7 @@ analysis temperature (`Process`), and the temperature helpers it uses
 (Black's derating, the `jmax_factor` table, the TCR scaling).
 
 Every path that checks currents against limits reads its numbers here: the
-DSPF path (`emir run`, `check`, `abstract`) and the validation suite.
+DSPF path (`emir run`, `check`) and the validation suite.
 
 This is a SCREENING tool — sign-off EM/IR remains the foundry-qualified flow.
 Units: geometry um, resistance ohm, current A internally; limits converted
@@ -107,34 +107,6 @@ def black_derating(data: dict) -> dict | None:
     return {"model": "black", "ea_eV": float(ea), "n": float(n), "below_tref": below}
 
 
-def _cap_number(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
-
-
-def cap_models(raw) -> dict:
-    """`cap_models` as numbers: `{model: {key: float or [low, high]}}`. Only
-    what is a number (or a list of numbers) is kept: an entry that is not a
-    mapping, and a value that is not a number (text, true, a quoted "0.01"),
-    are left out, never converted. The input check refuses them (EMIR-E317,
-    `decap.cap_model_problems`), and so does the dynamic solve under
-    --no-check, on the file's own values (`decap.refuse_cap_models`)."""
-    out = {}
-    for k, v in (raw.items() if isinstance(raw, dict) else ()):
-        if v is not None and not isinstance(v, dict):
-            continue
-        m = {}
-        for kk, vv in (v or {}).items():
-            if vv is None or kk in ("sources", "provenance"):
-                continue
-            if isinstance(vv, (list, tuple)):
-                if all(_cap_number(x) for x in vv):
-                    m[kk] = [float(x) for x in vv]
-            elif _cap_number(vv):
-                m[kk] = float(vv)
-        out[k] = m
-    return out
-
-
 class Process:
     """PDK data at one analysis temperature.
 
@@ -152,9 +124,6 @@ class Process:
         # from `emir process new` starts with every value null).
         wf = data.get("warn_fraction")
         self.warn_fraction = float(0.8 if wf is None else wf)
-        # {dspf model name: {cj: F/m2, cjsw: F/m}} -- sizes capacitor *devices*
-        # (decap cells, MIM caps) that extract with geometry instead of a value
-        self.cap_models = cap_models(data.get("cap_models"))
         tr = data.get("temp_reference")
         self.temp_ref = absolute(25.0 if tr is None else tr, "temp_reference")
         # No default: the avg limits mean nothing without the temperature

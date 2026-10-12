@@ -55,7 +55,7 @@ if HERE not in sys.path:
 import emircmd  # noqa: E402
 
 #: commands that read the person's inputs (preflight must come before them)
-READS_INPUTS = {"check", "run", "abstract", "simulate", "probe", "extract",
+READS_INPUTS = {"check", "run", "simulate", "extract",
                 "save-lines", "nets", "pins", "next", "report", "import-ict", "process"}
 
 DISCLAIMER = re.compile(r"screening[\s,;:.\-–—]*(?:and\s+|but\s+)?not\s+(?:a\s+)?sign[\s-]?off",

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:emir:schema:extract:1",
   "title": "emir extract",
-  "description": "GDS -> DSPF. `tool` quantus: PVS LVS and Quantus; `dry_run` true: the plan only, nothing was run (`ready` says whether --run could run it; `missing` says what is not); `dry_run` false: LVS matched and Quantus wrote `dspf`. PVS and Quantus are licensed tools: an agent asks the person before --run. `tool` magic: magic (open source) extracted the cell with every resistor's layer, width, length and place (`magic.path`: a magic with the geoout patch) and emir wrote `dspf` (also the RC netlist an rcc simulation runs, `rc_netlist`) and the CC netlist a cc-grid simulation runs (`cc_netlist`); `unchecked_layers`: magic's conductors the process file gives no limit (their current is in the IR drop); `work_dir`: where magic ran (`magic/` under `out_dir`, a directory of emir's own); `floating_capacitance`: capacitor nodes on no net of the network (EMIR-W646); `diagonal_resistors`: the DSPF's resistors on diagonal shapes, whose width is magic's tile extent (EMIR-W647; `emir run` lists them as not checked). Quantus documents also hold ready, kind, cdl, tools, settings, missing, lvs, ccl, steps; magic ones process, cc_netlist, rc_netlist, magic, magicrc, files, ports, port_pins, nets, resistors, capacitors, devices, layers, unchecked_layers, nets_without_resistance, floating_capacitance, diagonal_resistors, guessed_terminals, out_dir.",
+  "description": "GDS -> DSPF. `tool` quantus: PVS LVS and Quantus; `dry_run` true: the plan only, nothing was run (`ready` says whether --run could run it; `missing` says what is not); `dry_run` false: LVS matched and Quantus wrote `dspf`. PVS and Quantus are licensed tools: an agent asks the person before --run. `tool` magic: magic (open source) extracted the cell with every resistor's layer, width, length and place (`magic.path`: a magic with the geoout patch) and emir wrote `dspf` (also the RC netlist an rcc simulation runs, `rc_netlist`); `unchecked_layers`: magic's conductors the process file gives no limit (their current is in the IR drop); `work_dir`: where magic ran (`magic/` under `out_dir`, a directory of emir's own); `floating_capacitance`: capacitor nodes on no net of the network (EMIR-W646); `diagonal_resistors`: the DSPF's resistors on diagonal shapes, whose width is magic's tile extent (EMIR-W647; `emir run` lists them as not checked). Quantus documents also hold ready, kind, cdl, tools, settings, missing, lvs, ccl, steps; magic ones process, rc_netlist, magic, magicrc, files, ports, port_pins, nets, resistors, capacitors, devices, layers, unchecked_layers, nets_without_resistance, floating_capacitance, diagonal_resistors, guessed_terminals, out_dir.",
   "type": "object",
   "properties": {
     "schema": {
@@ -32,10 +32,8 @@
     "kind": {
       "enum": [
         "r_only",
-        "c_only_coupled",
         "rc_coupled",
-        "rc_decoupled",
-        "c_only_decoupled"
+        "rc_decoupled"
       ]
     },
     "kind_use": {
@@ -303,9 +301,6 @@
       "type": "string"
     },
     "process": {
-      "type": "string"
-    },
-    "cc_netlist": {
       "type": "string"
     },
     "rc_netlist": {

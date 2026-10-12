@@ -15,7 +15,8 @@
       "type": "object"
     },
     "facts": {
-      "type": "object"
+      "type": "object",
+      "description": "what the plan learnt from the inputs (`size`, `dspf`, `result`); on the magic route (--gds, no DSPF) also `magic_route` (the magic the extraction runs, as `emir info` gives it) and `pdk_root`"
     },
     "tools": {
       "type": "object"
@@ -26,7 +27,10 @@
         "chosen": {
           "anyOf": [
             {
-              "type": "string"
+              "enum": [
+                "rcc",
+                "dc"
+              ]
             },
             {
               "type": "null"
@@ -40,7 +44,8 @@
       "required": [
         "chosen",
         "why"
-      ]
+      ],
+      "description": "Where the planned run's currents come from: rcc (a simulation of the RC netlist, every branch current read), dc (--currents), or null (not known yet)"
     },
     "missing": {
       "type": "array",
@@ -119,143 +124,27 @@
               "type": "string"
             }
           },
-          "choices": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "route": {
-                  "type": "string"
+          "tool": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "arguments": {
+                    "type": "object"
+                  }
                 },
-                "mode": {
-                  "enum": [
-                    "rcc",
-                    "cc-grid"
-                  ]
-                },
-                "self_consistent": {
-                  "type": "boolean"
-                },
-                "what": {
-                  "type": "string"
-                },
-                "cost": {
-                  "type": "string"
-                },
-                "accuracy": {
-                  "type": "string"
-                },
-                "source": {
-                  "type": "string"
-                },
-                "possible": {
-                  "type": "boolean"
-                },
-                "why_not": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "recommended": {
-                  "type": "boolean"
-                },
-                "command": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "tool": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "name": {
-                          "type": "string"
-                        },
-                        "arguments": {
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "name"
-                      ],
-                      "description": "over MCP (`emir mcp`): the typed tool call that runs this route's command, once the person chose it"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "option": {
-                  "type": "string"
-                },
-                "basis": {
-                  "enum": [
-                    "decap-free",
-                    "decap-aware",
-                    "worst"
-                  ]
-                },
-                "verdict": {
-                  "enum": [
-                    "FAIL",
-                    "WARN",
-                    "CLEAN"
-                  ]
-                },
-                "max_ratio": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "n_violations": {
-                  "type": "integer"
-                },
-                "in_use": {
-                  "type": "boolean"
-                }
+                "required": [
+                  "name"
+                ],
+                "description": "over MCP (`emir mcp`): the typed tool call that runs the step's command (null: not an emir command)"
               },
-              "required": [
-                "route",
-                "what",
-                "possible",
-                "recommended"
-              ],
-              "anyOf": [
-                {
-                  "required": [
-                    "mode",
-                    "self_consistent",
-                    "cost",
-                    "accuracy"
-                  ]
-                },
-                {
-                  "required": [
-                    "basis",
-                    "verdict",
-                    "max_ratio",
-                    "n_violations"
-                  ]
-                }
-              ],
-              "description": "A route of `choose-mode` (mode, self_consistent, cost, accuracy, and over MCP the `tool` call of its command) or an EM basis of `choose-em-basis` (basis, its verdict, worst ratio and violations)."
-            }
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -270,7 +159,7 @@
           "after",
           "placeholders"
         ],
-        "description": "One step of the plan. The `choose-mode` step (no --mode given, currents from a simulation) carries `choices`: the routes, what each costs and how accurate it is (measured, with its source), whether it can work here (`possible`, `why_not`) and the one the net's size recommends. The person chooses; its command is `emir next` again with <mode> replaced."
+        "description": "One step of the plan."
       }
     },
     "advice": {

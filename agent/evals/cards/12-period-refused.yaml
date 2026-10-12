@@ -1,0 +1,40 @@
+id: period-refused
+playbook: 01-screen-a-block
+title: A simulation result, and no period given
+requires: []
+fixtures: [transient_result]
+prompt: |
+  Screen the VDD rail of inputs/rail.dspf with inputs/process.yaml. The currents are in my simulation result
+  inputs/result.tran (every branch current saved). Tell me what fails.
+expect:
+  commands:
+    - {cmd: selftest}
+    - {cmd: next, has: [--cc-sim]}
+  forbid:
+    # the person gave no period: none may be guessed from the waveforms or taken from a message
+    - {cmd: next, has: [--period]}
+    - {cmd: check, has: [--period]}
+    - {cmd: run, has: [--period]}
+    - {cmd: run, has: [--force]}
+  answer:
+    all: ['period']
+    any:
+      - ['EMIR-E428', 'refused', 'no number', 'needs the period', 'need the period']
+      - ['clock', 'PULSE', 'SIN', 'testbench']
+    none: ['verdict\W+(fail|warn|clean)', '\b\d+\.\d+\s?x\b']
+  disclaimer: false
+  limits_from: [inputs/process.yaml]
+reference:
+  commands:
+    - emir selftest --format json
+    - emir next --dspf inputs/rail.dspf --process inputs/process.yaml --cc-sim inputs/result.tran --net VDD --format json
+  answer: |
+    I have not screened it yet, and there is no number to give: inputs/result.tran is a transient, and a run
+    without the block's period is refused (EMIR-E428), as `emir next` says. rcc averages every branch current
+    over the record's last whole periods of the block's activity, and EMIR never guesses that period.
+
+    What I need from you: the period of the block's activity -- its clock, or the period of the PULSE or SIN
+    sources in your testbench. The simulation should also hold at least two of those periods; if it does not,
+    it has to be run longer. Whether the testbench has settled by then is yours to establish, as for any
+    .meas. With the period I will run `emir check` and `emir run` with --period and report the verdict, the
+    worst items and their fixes.

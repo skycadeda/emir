@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:emir:schema:simulate:1",
   "title": "emir simulate",
-  "description": "One simulation for the DSPF flow: the deck written (`deck`, `files`), the text result (`result`: nutascii, HSPICE ASCII .tr0, or Spectre's PSF ASCII directory) and its names sidecar (`names_sidecar`: the name map, the simulator, its version when it ran, the --sim-args; for Spectre beside the result directory, with no map), which `emir run --cc-sim <result>` reads. `found` of the `signals` currents asked for are in the result; `missing` names the DSPF currents that are not. Spectre and HSPICE are licensed: without --run `ran` is false, `command` is what would run (in `cwd`), and the next step is the same command with --run, after the person's go-ahead.",
+  "description": "One simulation for the DSPF flow, the RC netlist with every branch current saved (rcc): the deck written (`deck`, `files`), the text result (`result`: nutascii, HSPICE ASCII .tr0, or Spectre's PSF ASCII directory) and its names sidecar (`names_sidecar`: the name map, the simulator, its version when it ran, the --sim-args; for Spectre beside the result directory, with no map), which `emir run --cc-sim <result>` reads. `found` of the `signals` currents asked for are in the result; `missing` names the DSPF currents that are not. Spectre and HSPICE are licensed: without --run `ran` is false, `command` is what would run (in `cwd`), and the next step is the same command with --run, after the person's go-ahead.",
   "type": "object",
   "properties": {
     "schema": {
@@ -100,12 +100,8 @@
     },
     "mode": {
       "enum": [
-        "rcc",
-        "cc-grid"
+        "rcc"
       ]
-    },
-    "mode_reason": {
-      "type": "string"
     },
     "nets": {
       "type": "array",
@@ -136,9 +132,6 @@
       "type": "integer"
     },
     "direct": {
-      "type": "integer"
-    },
-    "probed": {
       "type": "integer"
     },
     "found": {
@@ -192,66 +185,6 @@
       "items": {
         "type": "string"
       }
-    },
-    "self_consistent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "net": {
-              "type": "string"
-            },
-            "vdd": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "max_passes": {
-              "type": "integer"
-            },
-            "tol_mV": {
-              "type": "number"
-            },
-            "tol_rel": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "droop_file": {
-              "type": "string"
-            },
-            "pins": {
-              "type": "integer"
-            },
-            "nets": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "required": [
-            "net",
-            "vdd",
-            "max_passes",
-            "tol_mV",
-            "droop_file"
-          ]
-        },
-        {
-          "type": "null"
-        }
-      ]
     },
     "next_steps": {
       "type": "array",

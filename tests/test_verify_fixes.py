@@ -223,29 +223,6 @@ def test_l2_a_crashing_magic_is_named_as_the_cause(tmp_path, monkeypatch):
     assert [n["code"] for n in notes] == ["EMIR-W640"]
 
 
-# ------------------------------------------------------------ L3 probe of a block
-
-
-def test_l3_probing_a_block_suggests_no_simulation_that_would_fail(tmp_path, capsys,
-                                                                   monkeypatch):
-    from emir import site
-    ex = os.path.join(ROOT, "examples", "02_xyce")
-    real = site.tool
-    monkeypatch.setattr(site, "tool", lambda name, explicit=None: (
-        ("/opt/fake/Xyce", "$PATH") if name == "xyce" else real(name, explicit)))
-    base = ["--dspf", os.path.join(ex, "loadrail.dspf"), "--net", "VDD"]
-    d = _doc(capsys, ["probe", os.path.join(ex, "cc.sp"), "-o", tmp_path / "b" / "cc.sp",
-                      *base, "--names-out", tmp_path / "b" / "p.names"])
-    assert d["has_tran"] is False and d["next_steps"] == []
-    assert "EMIR-W463" in [n["code"] for n in d["notices"]]
-    # the testbench that includes it: the simulate step, which runs as printed
-    d = _doc(capsys, ["probe", os.path.join(ex, "tb_cc.cir"), "-o", tmp_path / "t" / "tb.cir",
-                      *base, "--names-out", tmp_path / "t" / "p.names"])
-    assert d["has_tran"] is True and "EMIR-W463" not in [n["code"] for n in d["notices"]]
-    (st,) = d["next_steps"]
-    assert shlex.split(st["command"])[:2] == ["emir", "simulate"]
-
-
 # ------------------------------------------------------------ L9 illustrative files
 
 
@@ -292,7 +269,7 @@ def test_l6_advice_cites_documents_an_install_can_open(clone, monkeypatch, tools
     from emir import repo
     if not clone:
         monkeypatch.setattr(repo, "clone_root", lambda: None)
-    play = "agent/playbooks/03-chip-level-hierarchy.md"
+    play = "agent/playbooks/01-screen-a-block.md"
     want = (os.path.join(ROOT, play) if clone
             else f"{repo.REPO_URL}/blob/main/{play}")
     assert repo.ref(play) == want
@@ -303,14 +280,11 @@ def test_l6_advice_cites_documents_an_install_can_open(clone, monkeypatch, tools
     plan = P.build(P.Facts(dspf=DSPF, net="VDD"))
     how = next(m["how"] for m in plan.missing if "process file" in m["what"])
     assert repo.ref("pdks/TEMPLATE.yaml") in how and repo.ref("pdks/sky130.yaml") in how
-    # a big block's advice points at the playbook; at a Cadence site, at the
-    # Spectre testbench templates
-    monkeypatch.setitem(P.THRESHOLDS, "big_block_nodes", 5)
+    # at a Cadence site the advice points at the Spectre testbench template
     tools_pinned(spectre=True)
     plan = P.build(P.Facts(dspf=DSPF, process=PROC, net="VDD"))
     advice = " ".join(plan.advice)
-    assert repo.ref(play) in advice
-    assert repo.ref("agent/cadence/spectre/") + "/tb_cc.scs.tmpl" in advice
+    assert repo.ref("agent/cadence/spectre/") + "/tb_rcc.scs.tmpl" in advice
     if not clone:
         assert repo.REPO_URL in advice and " agent/cadence/spectre" not in advice
 

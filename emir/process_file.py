@@ -13,13 +13,12 @@ module guides that:
 uses -- its layer tokens and `$lvl` numbers, the `dspf_layers` map filled in,
 each via's below/above stacking inferred where the DSPF shows it and marked
 `inferred ... check` -- with every value empty (null), its unit beside it and
-a `sources:` slot for the document, table or page it comes from; and
-`cap_models` entries for the capacitor and MOS-decap models the DSPF holds
-(for `--dynamic`). An empty value is a value not given: emir reports what it
+a `sources:` slot for the document, table or page it comes from. An empty
+value is a value not given: emir reports what it
 would have checked as NOT checked and never guesses one. `--interactive` asks
 a person value by value at a terminal; it refuses a pipe or a redirected
 stdin (EMIR-E327). That is a check on stdin, not on who types: the rule that
-an agent never drives it is the playbook's (agent/playbooks/04-onboard-a-pdk.md).
+an agent never drives it is the playbook's (agent/playbooks/02-process-file.md).
 
 `process check` (and `emir check --process`, which runs the same checks
 through `check.check_process`) says what is still empty (required: emir
@@ -31,7 +30,7 @@ one below it, and, with --dspf, which DSPF layers the file does not cover.
 
 Provenance: the file's `provenance:` is hand-entered, imported-ict,
 public-pdk-data or mixed (an entry may carry its own, for a mixed file); each
-layer, via and cap model, and the top level, may hold `sources: {key: "document,
+layer and via, and the top level, may hold `sources: {key: "document,
 table or page"}`. The run summary (`limits_provenance`), `emir report` and the
 HTML report say per layer where its limits came from, and a hand-entered file
 with values that name no source gets EMIR-W320 on every run.
@@ -132,32 +131,13 @@ QUANTITIES = {
         Q("imax_peak", "mA per cut", "peak limit per cut", 0.005, 200,
           "A per cut?", "uA per cut?"),
     ),
-    "cap": (
-        Q("cj", "F/m^2", "area capacitance", 1e-5, 0.1, "", "fF/um^2? (1 fF/um^2 = 1e-3 F/m^2)"),
-        Q("cjsw", "F/m", "perimeter capacitance", 1e-13, 1e-8, "",
-          "fF/um? (1 fF/um = 1e-9 F/m)"),
-    ),
-    "mos": (
-        Q("cox", "F/m^2", "gate capacitance per area: C = cox x W x L", 1e-4, 0.1, "",
-          "fF/um^2? (10 fF/um^2 = 1e-2 F/m^2)"),
-        Q("ron_sq", "ohm/square", "channel resistance per square: access R = ron_sq L/W/6",
-          1.0, 1e6),
-        # the fitted access resistance, preferred to ron_sq's closed form
-        # (`dynir.mos_decap_lumps`): R = esr_a + esr_w W + esr_l / L, W and L in um
-        Q("esr_a", "ohm", "fitted access resistance per device: R = esr_a + esr_w W + "
-          "esr_l / L (W, L in um); preferred to ron_sq", 1e-3, 500, "",
-          "mOhm? (1000 mOhm = 1 ohm)"),
-        Q("esr_w", "ohm/um", "the fit's W coefficient (signed)"),
-        Q("esr_l", "ohm um", "the fit's 1/L coefficient (signed)"),
-        Q("esr_fit_freq", "Hz", "the frequency the fit was made at", 1e6, 1e11,
-          "MHz or GHz? (1 GHz = 1e9 Hz)", ""),
-    ),
 }
 _BY_KEY = {sec: {q.key: q for q in qs} for sec, qs in QUANTITIES.items()}
 #: the via keys that describe the stack (exempt from the source rule, unless inferred)
 STACK = ("below", "above")
 #: keys of an entry that are bookkeeping, not values typed from a document
-_META = {"sources", "provenance", "estimate", "rms_peak_estimate", "ict_name", "model"}
+_META = {"sources", "provenance", "estimate", "rms_peak_estimate", "ict_name", "model",
+         "units", "multiplier"}
 #: the top-level keys whose values come from the PDK's documents
 _TOP_DATA = ("em_tref", "temp_reference", "derating", "jmax_factor")
 
@@ -167,21 +147,18 @@ def _num(v) -> bool:
 
 
 def _section(data, name: str) -> dict:
-    """A section of the file (`layers`, `vias`, `cap_models`) when it is a
+    """A section of the file (`layers`, `vias`) when it is a
     mapping, else {} (the input check says what is wrong with it)."""
     s = data.get(name) if isinstance(data, dict) else None
     return s if isinstance(s, dict) else {}
 
 
 def _entries(data: dict):
-    """`(section, name, entry, quantity section)` of every layer, via and cap model."""
+    """`(section, name, entry, quantity section)` of every layer and via."""
     for section, qsec in (("layers", "layers"), ("vias", "vias")):
         for name, d in _section(data, section).items():
             if isinstance(d, dict):
                 yield section, name, d, qsec
-    for name, d in _section(data, "cap_models").items():
-        if isinstance(d, dict):
-            yield "cap_models", name, d, ("mos" if set(_MOS_KEYS) & set(d) else "cap")
 
 
 def _quantity(qsec: str, key: str) -> Q | None:
@@ -382,14 +359,10 @@ def suspects(data: dict) -> list:
                         "range": [-55, 250], "likely": _C, "limiting": True,
                         "hand": top_hand, "confirmed": ok,
                         "blocking": not ok})
-    # a cap value EMIR-E317 refuses is not also a unit slip
-    from .decap import refused_paths
-    refused = refused_paths(_section(data, "cap_models"))
     for section, name, d, qsec in _entries(data):
         hand = entry_provenance(data, d) in HAND
         for k, v in d.items():
-            if f"{section}/{name}/{k}" not in refused:
-                judge(f"{section}/{name}/{k}", _quantity(qsec, k), v, hand)
+            judge(f"{section}/{name}/{k}", _quantity(qsec, k), v, hand)
     return out
 
 
@@ -473,10 +446,12 @@ def lint(data: dict, rep, em_temp=None) -> dict:
                 f"{x['range'][1]:g} {x['unit']} it normally takes"
                 + (f": {x['likely']}" if x["likely"] else ""))
         if x["blocking"]:
-            rep.fail("EMIR-E331", "process", text + " -- this value sets what the limits "
-                     "allow, so a slip here can pass a failing wire", f"ask the person to check {x['path']} and its unit "
-                     f"({x['unit']}) against the design manual; once they confirm it, list "
-                     f"it under `unit_confirmed:`")
+            why = (" -- this value sets what the limits allow, so a slip here can pass a "
+                   "failing wire")
+            rep.fail("EMIR-E331", "process", text + why,
+                     f"ask the person to check {x['path']} and its unit ({x['unit']}) "
+                     f"against the design manual; once they confirm it, list it under "
+                     f"`unit_confirmed:`")
             facts["bad"] = True
         else:
             rep.warn("EMIR-W321", "process", text + (" (confirmed by the person: "
@@ -486,8 +461,6 @@ def lint(data: dict, rep, em_temp=None) -> dict:
                      f"manual")
     # -- limits out of order: peak >= rms >= avg where given
     for section, name, d, qsec in _entries(data):
-        if section == "cap_models":
-            continue
         pre = "jmax" if section == "layers" else "imax"
         vals = {m: d.get(f"{pre}_{m}") for m in ("avg", "rms", "peak")}
         vals = {m: v for m, v in vals.items() if _num(v) and v > 0}
@@ -557,10 +530,9 @@ def check_widths(dspf, proc, lmap: dict, rep):
 # ------------------------------------------------------------------ what a run says
 
 
-def limits_provenance(proc, lmap_values, cap_models=False) -> dict | None:
+def limits_provenance(proc, lmap_values) -> dict | None:
     """Where the limits a run applied came from: the file's provenance, and
-    per layer, via (and, with `cap_models`, cap model: a --dynamic run) in
-    use its own provenance, the source of each value and the values that
+    per layer and via in use its own provenance, the source of each value and the values that
     name none; the temperatures' sources (and which name none); and the
     values that look like a unit slip (`suspects`). For the run summary
     (`limits_provenance`), `emir report`, the HTML report and the chart."""
@@ -586,18 +558,6 @@ def limits_provenance(proc, lmap_values, cap_models=False) -> dict | None:
             "limits": limits,
             "width_loss_um": (proc.layers[name]["width_loss"] or None
                               if kind != "via" and name in proc.layers else None)})
-    if cap_models:
-        for name, d in sorted(_section(data, "cap_models").items()):
-            if not isinstance(d, dict):
-                continue
-            src = _sources(d)
-            prov = entry_provenance(data, d)
-            values = [k for k in d if k not in _META and _given(d.get(k))]
-            entries.append({"name": name, "kind": "cap", "provenance": prov,
-                            "sources": {k: src.get(k) for k in values},
-                            "unsourced": ([k for k in values if not _named(src.get(k))]
-                                          if prov in HAND else []),
-                            "limits": [], "width_loss_um": None})
     top = _sources(data)
     der = getattr(proc, "derating", None)
     hand = file_provenance(data) in HAND
@@ -655,15 +615,14 @@ def limits_lines(lp: dict | None) -> list:
                    + (" -- confirmed by the person (unit_confirmed)" if x.get("confirmed")
                       else " -- check it against the design manual (EMIR-W321)"))
     for e in lp.get("entries") or []:
-        what = {"via": "via", "cap": "cap model"}.get(e["kind"], "layer")
+        what = "via" if e["kind"] == "via" else "layer"
         how = PROVENANCE_TEXT.get(e.get("provenance"), e.get("provenance"))
         given = [f"{k} from {s}" for k, s in (e.get("sources") or {}).items()
-                 if _named(s) and (k in (e.get("limits") or []) or e["kind"] == "cap")]
-        line = f"{what} {e['name']}: " + ("values" if e["kind"] == "cap" else "limits") \
-            + f" {how}"
+                 if _named(s) and k in (e.get("limits") or [])]
+        line = f"{what} {e['name']}: limits {how}"
         if given:
             line += " -- " + "; ".join(given)
-        if not e.get("limits") and e["kind"] != "cap":
+        if not e.get("limits"):
             line += " -- no EM limit given (not checked)"
         if e.get("unsourced"):
             line += f" -- NO SOURCE for {', '.join(e['unsourced'])}"
@@ -678,8 +637,8 @@ def limits_lines(lp: dict | None) -> list:
 
 @dataclass
 class Entry:
-    """One layer, via or cap model of the fill-in file."""
-    section: str            # layers | vias | cap_models
+    """One layer or via of the fill-in file."""
+    section: str            # layers | vias
     name: str
     qsec: str               # the QUANTITIES section of its values
     note: str = ""          # the comment on its line
@@ -702,10 +661,10 @@ def _trailing_int(s: str):
 
 def from_dspf(path: str) -> dict:
     """What a fill-in file for the DSPF at `path` holds: `{"design", "layers",
-    "vias", "caps", "mos", "dspf_layers"}` -- one entry per layer token its
-    resistors carry, wires and vias told apart by their annotation (a width,
-    or a cut count or area), each via's stacking inferred from the wires its
-    resistors join, and the capacitor and MOS-decap models."""
+    "vias", "dspf_layers"}` -- one entry per layer token its resistors carry,
+    wires and vias told apart by their annotation (a width, or a cut count or
+    area), and each via's stacking inferred from the wires its resistors
+    join."""
     from .dspf import LVL_TOKEN, parse
     d = parse(path)
     toks = d.layer_tokens()
@@ -803,40 +762,26 @@ def from_dspf(path: str) -> dict:
             else:
                 e.stack_note = f"joins only {a} in the DSPF: name both layers from the PDK"
         vias.append(e)
-    # capacitor devices (a geometry, no value) and MOS decaps, by model
-    caps = sorted({c["model"] or "default" for c in d.cap if c.get("c") is None})
-    mos = []
-    for m in d.dev:
-        ng = d.node_net.get(m["g"])
-        others = {d.node_net.get(m[k]) for k in ("d", "s", "b")}
-        if len(others) == 1:
-            no = next(iter(others))
-            if ng is not None and no is not None and ng != no and m["model"] not in mos:
-                mos.append(m["model"])
     dl = {}
     for t in toks:
         if t.startswith(LVL_TOKEN):
             dl[int(t[len(LVL_TOKEN):])] = names[t]
         else:
             dl[t] = names[t]
-    return {"design": d.design, "layers": layers, "vias": vias, "caps": caps,
-            "mos": sorted(mos), "dspf_layers": dl}
+    return {"design": d.design, "layers": layers, "vias": vias, "dspf_layers": dl}
 
 
 def from_lists(layers, vias) -> dict:
     """The same, from --layers and --vias name lists (no stacking: below and
     above are left for the person)."""
     return {"design": None, "layers": [Entry("layers", n, "layers") for n in layers],
-            "vias": [Entry("vias", n, "vias") for n in vias], "caps": [], "mos": [],
-            "dspf_layers": {}}
+            "vias": [Entry("vias", n, "vias") for n in vias], "dspf_layers": {}}
 
 
 #: the values of each entry kind, in the order the file lists them
 _LAYER_KEYS = ("sheet_res", "tc1", "tc2", "width_loss_um", "jmax_avg", "jmax_rms",
                "jmax_peak")
 _VIA_KEYS = ("below", "above", "res", "vcwidth", "imax_avg", "imax_rms", "imax_peak")
-_CAP_KEYS = ("cj", "cjsw")
-_MOS_KEYS = ("cox", "ron_sq", "esr_a", "esr_w", "esr_l", "esr_fit_freq")
 
 
 def build_model(info: dict, pdk: str | None) -> dict:
@@ -862,15 +807,6 @@ def build_model(info: dict, pdk: str | None) -> dict:
                 if v[k] is not None:
                     v["sources"][k] = e.stack_note
         data["vias"][e.name] = v
-    caps = {}
-    for m in info["caps"]:
-        caps[m] = {"cj": None, "cjsw": None, "sources": {"cj": None, "cjsw": None}}
-    for m in info["mos"]:
-        # the fit (esr_*) where the PDK characterises one, else ron_sq
-        caps[m] = {k: None for k in _MOS_KEYS}
-        caps[m]["sources"] = {k: None for k in _MOS_KEYS}
-    if caps:
-        data["cap_models"] = caps
     return data
 
 
@@ -924,9 +860,7 @@ def render(data: dict, info: dict, source: str | None) -> str:
     L = ["# emir process file -- ENTERED BY HAND (provenance: hand-entered).",
          f"# Written by `emir process new`{' from ' + os.path.basename(source) if source else ''}"
          f" on {datetime.date.today().isoformat()}: {len(info['layers'])} conductor layer(s), "
-         f"{len(info['vias'])} via(s)"
-         + (f", {len(data.get('cap_models') or {})} capacitor / decap model(s)"
-            if data.get("cap_models") else "") + ".",
+         f"{len(info['vias'])} via(s).",
          "#",
          "# Fill each null with the value your PDK's design manual prints, in the unit",
          "# shown, and write where it came from (document, table or page) in the entry's",
@@ -986,22 +920,6 @@ def render(data: dict, info: dict, source: str | None) -> str:
                 else:
                     c = _qcomment(qs.get(k))
                 L.append(_line(4, f"{k}: {_y(v)}", c))
-            L.append(_line(4, "sources:", "document, table or page of each value"))
-            for k, s in (d.get("sources") or {}).items():
-                L.append(f"      {k}: {_y(s)}")
-    if data.get("cap_models"):
-        L += ["", _line(0, "cap_models:", "--dynamic only: sizes the DSPF's capacitor "
-                                           "and MOS-decap devices")]
-        for name, d in data["cap_models"].items():
-            mos = "cox" in d
-            L.append(_line(2, f"{_k(name)}:", "a MOS decap model" if mos else
-                           ("a capacitor device with no model name" if name == "default"
-                            else "a capacitor model")))
-            qs = _BY_KEY["mos" if mos else "cap"]
-            for k, v in d.items():
-                if k == "sources":
-                    continue
-                L.append(_line(4, f"{k}: {_y(v)}", _qcomment(qs.get(k))))
             L.append(_line(4, "sources:", "document, table or page of each value"))
             for k, s in (d.get("sources") or {}).items():
                 L.append(f"      {k}: {_y(s)}")
@@ -1157,8 +1075,8 @@ def cmd_new(argv, out) -> int:
                             "manual when no readable process data exists (the ICT is missing "
                             "or encrypted). It never fills in a value.")
     ap.add_argument("--from-dspf", default=None, metavar="DSPF",
-                    help="the DSPF whose layer tokens, $lvl numbers, vias and capacitor / "
-                         "MOS-decap models the file covers")
+                    help="the DSPF whose layer tokens, $lvl numbers and vias the file "
+                         "covers")
     ap.add_argument("--pdk", default=None, metavar="NAME",
                     help="the PDK's name, written as `pdk:` (shown in reports)")
     ap.add_argument("-o", "--out", default="emir_out/process.yaml", metavar="FILE",
@@ -1215,8 +1133,7 @@ def cmd_new(argv, out) -> int:
     empty = empty_values(back)
     path = os.path.abspath(a.out)
     print(f"[emir] wrote {a.out}: {len(info['layers'])} layer(s), {len(info['vias'])} via(s)"
-          + (f", {len(data.get('cap_models') or {})} cap model(s)" if data.get("cap_models")
-             else "") + f"; {len(empty['required'])} required and "
+          f"; {len(empty['required'])} required and "
           f"{len(empty['optional'])} optional value(s) still empty")
     for e in info["vias"]:
         if e.stack_note:
@@ -1240,7 +1157,6 @@ def cmd_new(argv, out) -> int:
         vias=[{"name": e.name, "below": data["vias"][e.name]["below"],
                "above": data["vias"][e.name]["above"],
                "stacking": e.stack_note} for e in info["vias"]],
-        cap_models=sorted(data.get("cap_models") or {}),
         dspf_layers={str(k): v for k, v in (data.get("dspf_layers") or {}).items()},
         empty=empty, interactive=bool(a.interactive), values_given=filled,
         next_steps=keep_format(steps, out.fmt_args())))
@@ -1308,11 +1224,6 @@ def cmd_check(argv, out) -> int:
                 cov = coverage(data, d)
                 if proc is not None:
                     check_layer_map(d, proc, rep)
-                    # decaps its cap_models cannot size (a cox left null):
-                    # a --dynamic run would not check their straps
-                    from .decap import warn_unsized
-                    warn_unsized(d, sorted(n for n in d.nets if d.net_resistors(n)),
-                                 proc, rep)
                 elif cov["missing"]:
                     rep.warn("EMIR-W307", "layers", f"{len(cov['missing'])} DSPF layer(s) have "
                              f"no process entry and are NOT checked "

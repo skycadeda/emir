@@ -1,5 +1,5 @@
 id: mcp-connect
-playbook: 10-mcp
+playbook: 00-preflight
 title: Connect Claude Desktop and Codex to emir over MCP
 requires: []
 fixtures: []

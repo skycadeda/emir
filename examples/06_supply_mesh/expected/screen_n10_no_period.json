@@ -1,0 +1,9 @@
+{
+ "label": "06_supply_mesh, run.sh step 4: the same screen without --period. The result is a transient, so the run is refused with no number (EMIR-E428, exit 2): rcc averages over whole periods of the block's activity, and EMIR never guesses them. The error document at --summary-out says what to give.",
+ "checks": [
+  {"path": "schema", "equals": "emir.error/1"},
+  {"path": "code", "equals": "EMIR-E428"},
+  {"path": "details.period_s", "equals": null},
+  {"path": "details.run.period", "equals": null}
+ ]
+}

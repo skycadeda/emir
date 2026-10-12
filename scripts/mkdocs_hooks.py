@@ -2,7 +2,7 @@
 
 The pages under `docs/` are written to read well on GitHub too, so they link to
 repository files outside `docs/` with relative paths (`../agent/README.md`,
-`../examples/05_chip_level/`). Those targets are not documentation pages, so
+`../examples/02_xyce/`). Those targets are not documentation pages, so
 MkDocs cannot serve them. Here they become links into the repository on its
 host when `repo_url` is set in `mkdocs.yml`, and plain text naming the path
 when it is not, so `mkdocs build --strict` passes either way.

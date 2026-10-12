@@ -50,13 +50,6 @@ FAIL = "#d03b3b"
 UNCHECKED = "#6b6b6b"
 #: the outline of a violation's marker
 MARKER = "#ff3030"
-#: a block model's element (a block abstract's port-to-port conductance in a
-#: chip-level run): dotted, not on the scale -- its EM is checked in the
-#: block's own abstract run, not here
-MODEL = "#e6e6e6"
-MODEL_TEXT = "block model: EM checked in its abstract"
-#: its legend key (short: the chart's note says the rest)
-MODEL_KEY = "block model (its abstract)"
 #: the ratio the ramp starts from (its darkest colour): 1e-3x
 EM_FLOOR = 1e-3
 #: the warn fraction when the process file states none
@@ -221,11 +214,10 @@ def ir_ticks(ir_max: float) -> list:
 
 def legend(mode: str = "em", warn: float = WARN_DEFAULT, ir_max: float | None = None,
            unchecked: bool = False, lost: bool = False, markers: bool = True,
-           rings: bool = True, model: bool = False) -> dict:
+           rings: bool = True) -> dict:
     """What a chart's legend says, for any renderer: `title`, `sub`, the
     gradient `bar` (its `stops` and `ticks`, positions 0..1) and the `keys`,
-    each (kind, colour, text) with kind "swatch", "outline", "dotted" (a block
-    model's element: `model`) or "ring". Every
+    each (kind, colour, text) with kind "swatch", "outline" or "ring". Every
     colour on the map is named here; nothing is colour alone."""
     stops = [(i / (len(EM_RAMP) - 1), c) for i, c in enumerate(EM_RAMP)]
     if mode == "ir":
@@ -234,8 +226,6 @@ def legend(mode: str = "em", warn: float = WARN_DEFAULT, ir_max: float | None = 
             keys.append(("ring", RING, "each net's worst node"))
         if lost:
             keys.append(("swatch", FAIL, "IR drop not a number (a failed current)"))
-        if model:
-            keys.append(("dotted", MODEL, MODEL_KEY))
         return {"title": "IR drop", "sub": "each element by the larger drop of its two ends, "
                 "from the net's feed", "bar": {"stops": stops, "ticks": ir_ticks(ir_max or 0)},
                 "keys": keys}
@@ -246,8 +236,6 @@ def legend(mode: str = "em", warn: float = WARN_DEFAULT, ir_max: float | None = 
         keys.append(("outline", MARKER, "violation marker"))
     if unchecked:
         keys.append(("swatch", UNCHECKED, "no limit stated: not checked"))
-    if model:
-        keys.append(("dotted", MODEL, MODEL_KEY))
     return {"title": "EM ratio", "sub": "current over its limit, the governing metric "
             f"(log scale from {EM_FLOOR:g}×)", "bar": {"stops": stops, "ticks": em_ticks(warn)},
             "keys": keys}

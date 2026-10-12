@@ -15,8 +15,9 @@ name every instance pin on the net and where it lands::
 
     *|I (MP2:s MP2 s I 0 45.0000 0.0000)
 
-so the currents from a CC simulation of the same design attach to grid nodes by
-instance-pin name, with no labels and no LVS markers.
+so DC currents (`--currents`) attach to grid nodes by instance-pin name, with
+no labels and no LVS markers, and an RC simulation's branch currents check
+the network's own KCL at the nodes no pin drives (`rcc.internal_kcl`).
 
 Parsed, not simulated: this module builds the network and solves it. Nothing
 here invokes an extractor.
@@ -28,6 +29,7 @@ import re
 
 import numpy as np
 
+from . import RCC_CONTRACT
 from .errors import EmirError, notice
 
 #: a number as an annotation's value: digits required, so a word value
@@ -171,27 +173,6 @@ class Dspf:
     def layer_tokens(self) -> list:
         """Every distinct layer token on a resistor, sorted."""
         return list(self._index()["layers"])
-
-    def net_caps(self, net: str) -> list:
-        """Capacitors with at least one plate on `net`.
-
-        A cap between `net` and anything else -- ground, a quiet net, a signal
-        -- is decoupling from this net's point of view, so both are returned
-        and the caller decides. `to_ground` says whether the far plate is a
-        real AC ground (see `dynir.grounded_caps` for why that matters).
-        """
-        out = []
-        for c in self.cap:
-            a = self.node_net.get(c["n1"]) == net
-            b = self.node_net.get(c["n2"]) == net
-            if not (a or b):
-                continue
-            near, far = (c["n1"], c["n2"]) if a else (c["n2"], c["n1"])
-            if a and b:
-                continue                 # intra-net: no net charge exchange
-            out.append({**c, "node": near, "far": far,
-                        "to_ground": far in ("0", "gnd", "GND", "VSS!")})
-        return out
 
     def net_taps(self, net: str) -> list:
         """Instance pins on `net`, in tap form (see `taps.load_taps`)."""
@@ -395,10 +376,8 @@ def _capacitor(line: str) -> dict | None:
 
         CCC  N2  OUT  L=5e-06 W=5e-06 area=2.5e-11 pj=2e-05
 
-    Returning None for those (as this did) drops them silently, and a decap
-    *cell* extracts in exactly that form -- so the capacitance most relevant to
-    dynamic IR was the capacitance being discarded. They are now kept with
-    `c=None` and their geometry, for `dynir` to resolve or complain about.
+    Returning None for those drops them silently; they are kept with `c=None`
+    and their geometry, so the input check can count them.
     """
     f = line.split()
     if len(f) < 4:
@@ -418,9 +397,7 @@ def _capacitor(line: str) -> dict | None:
 def _mosfet(line: str) -> dict | None:
     """`MM8 MM8:d MM8:g MM8:s VSS nch L=2e-07 W=5e-07`.
 
-    Kept because a **MOS decap** is a transistor, not a `C` line: gate on one
-    rail, source/drain/bulk on the other. Nothing else in the flow would ever
-    see it, and it is often the largest capacitance on a power net.
+    Kept so the input check can count the devices the DSPF carries.
     """
     f = line.split()
     if len(f) < 6:
@@ -428,31 +405,6 @@ def _mosfet(line: str) -> dict | None:
     kv = {k.lower(): float(v) for k, v in _KV.findall(line)}
     return {"name": f[0], "d": f[1], "g": f[2], "s": f[3], "b": f[4],
             "model": f[5], "w": kv.get("w"), "l": kv.get("l")}
-
-
-def mos_decaps(dspf: Dspf, net: str) -> list:
-    """MOSFETs on `net` wired as capacitors: gate one side, d/s/b the other.
-
-    A transistor is a decap exactly when its gate sits on one net and all three
-    of drain, source and bulk sit on a single *different* net -- it can carry no
-    DC and presents `Cox * W * L` between them. A device with its gate on a
-    signal is an ordinary transistor and is excluded, so this does not
-    mis-count the circuit's own devices as decoupling.
-    """
-    out = []
-    for m in dspf.dev:
-        ng = dspf.node_net.get(m["g"])
-        others = {dspf.node_net.get(m[t]) for t in ("d", "s", "b")}
-        if len(others) != 1:
-            continue
-        no = others.pop()
-        if ng is None or no is None or ng == no:
-            continue
-        if net not in (ng, no):
-            continue
-        out.append({**m, "gate_net": ng, "body_net": no,
-                    "node": m["g"] if net == ng else m["d"]})
-    return out
 
 
 def _resistor(line: str) -> dict | None:
@@ -537,7 +489,7 @@ class Network:
         self.nodes = names
         self.res = res
         # a number, or {DSPF layer token: factor} (`net_scaling`): each wire by
-        # its own layer's TCR, vias and virtual resistors unscaled
+        # its own layer's TCR, vias unscaled
         self.rscale = rscale
         self.g = np.array([1.0 / (r["r"] * scale_of(rscale, r.get("layer")))
                            if r["r"] > 0 else 1e12 for r in res])
@@ -565,11 +517,6 @@ class Network:
 
     def _factor(self, ground: str):
         """Factorise once per ground node, then reuse.
-
-        This is the whole reason the grid is kept separate from the device
-        simulation: superposition needs one solve *per tap*, and self-
-        consistency needs that again *per pass*. Refactorising each time would
-        make both scale with the product instead of with the back-substitutions.
 
         Each connected piece is factorised on its own, with `ground` the
         reference of its piece and the first node the reference of any other
@@ -665,7 +612,7 @@ def build_parser(prog="emir run"):
     import argparse
 
     from . import site
-    from .output import ArgParser, add_dspf, add_format
+    from .output import ArgParser, add_dspf, add_format, seconds
 
     class _Parser(ArgParser):
         def parse_args(self, args=None, namespace=None):
@@ -692,9 +639,7 @@ def build_parser(prog="emir run"):
     add_dspf(ap, "extracted DSPF (R or RC)")
     ap.add_argument("--net", default=None,
                     help="net to analyse, or `all` (the default when the run "
-                         "is driven: every net with resistors); with --self-consistent "
-                         "and Xyce, ngspice or HSPICE several, comma-separated (--net "
-                         "VDD,VSS), closed in one loop")
+                         "is driven: every net with resistors)")
     ap.add_argument("--process", default=site.get("process")[0],
                     help="PDK EM/IR data file (emir.yaml); default from the "
                          "site file")
@@ -711,10 +656,11 @@ def build_parser(prog="emir run"):
                          'path of a file holding it; must balance (`emir schema currents`)')
     ap.add_argument("--ground", default=None, help="reference node")
     ap.add_argument("--cc-sim", default=None,
-                    help="a simulation result: PSF ASCII or nutascii (a file, or a "
-                         "Spectre -raw directory), HSPICE ASCII (.tr0, .option post=2) "
-                         "or CSDF. Device currents come from here instead of "
-                         "--currents.")
+                    help="the simulation result rcc reads: a transient of the RC-extracted "
+                         "netlist with every branch current saved (`emir save-lines`), as "
+                         "PSF ASCII or nutascii (a file, or a Spectre -raw directory), "
+                         "HSPICE ASCII (.tr0, .option post=2) or CSDF. The currents come "
+                         "from here instead of --currents.")
     ap.add_argument("--analysis", default=None,
                     help="which analysis to read from a --cc-sim directory; for a result "
                          "with several sweep tables, sweep:N picks one")
@@ -723,100 +669,32 @@ def build_parser(prog="emir run"):
                          "header nor its names sidecar says (for the on-site "
                          "verification, `emir verify-sim`); with --netlist, the simulator "
                          "that runs it (default spectre)")
-    ap.add_argument("--period", type=float, default=None,
-                    help="fundamental period in s; the window is aligned to a "
-                         "whole number of these (auto-detected if omitted)")
+    ap.add_argument("--period", type=seconds, default=None, metavar="S",
+                    help="the block's period in seconds (1e-08; on the command line also "
+                         "10n or 10ns), needed for a transient result and a --netlist run "
+                         "(EMIR-E428): every average is over the record's last whole periods "
+                         "of it, up to three. " + RCC_CONTRACT + " Refused, with no number: "
+                         "fewer than two whole periods (EMIR-E431), or the last two differ "
+                         "by more than 2 %% on a branch carrying 1 %% of its net's largest "
+                         "current (EMIR-E429)")
     ap.add_argument("--feed", default=None,
-                    help="node the net is fed at (default: the DSPF port): "
-                         "where the current that closes KCL enters. Also the "
-                         "IR reference unless --ground is given. One net only.")
-    ap.add_argument("--scalars", action="store_true",
-                    help="use per-tap scalars instead of waveforms: rms/peak "
-                         "become in-phase upper bounds rather than exact")
-    ap.add_argument("--save-list", action="store_true",
-                    help="print the Spectre `save` line for this net and exit")
+                    help="node the net is fed at (default: the DSPF port): the IR "
+                         "reference unless --ground is given. One net only.")
     ap.add_argument("--netlist", default=None,
-                    help="a netlist to SIMULATE instead of reading a finished --cc-sim "
-                         "result: Spectre's CC netlist, or (--self-consistent with --sim "
-                         "xyce, ngspice, hspice) the CC testbench. With --self-consistent "
-                         "it is simulated again on every pass. Spectre (the default) and "
-                         "HSPICE are licensed: they run only with --run")
-    from .modes import mode_arg
-    from .selfconsist import MAX_PASSES, TOL_MV, TOL_REL
-    ap.add_argument("--mode", default=None, type=mode_arg, choices=("rcc", "cc-grid"),
-                    help="how the simulated currents are used: required with --cc-sim "
-                         "or --netlist, and the person's choice (emir does not pick one; "
-                         "`emir next` lists the trade-offs). rcc: the RC netlist was "
-                         "simulated and every branch current is read directly -- exact, "
-                         "but the RC transient is slow and converges poorly on big "
-                         "blocks. cc-grid: the devices were simulated on ideal rails and "
-                         "their pin currents are superposed through the R grid -- fast, "
-                         "scales, open loop (add --self-consistent to feed the droop "
-                         "back). A DC run (--currents) needs no mode")
-    g = ap.add_argument_group(
-        "self-consistent cc-grid: re-simulate with each pin's supply at the testbench's "
-        "rail plus its own droop waveform until the droop settles")
-    g.add_argument("--self-consistent", action="store_true",
-                   help="with --mode cc-grid: simulate --netlist (pass 0, the open loop), "
-                        "solve the DSPF's grid over the whole transient (R-only, or RC when "
-                        "the DSPF has capacitance on the net, with the decaps the process "
-                        "file's cap_models size), feed each instance "
-                        "pin its own droop waveform (a PWL source in series with the "
-                        "testbench's rail) and simulate again, until the droop fed in and "
-                        "the droop the currents produce agree within --tol-rel / --tol-mV "
-                        "(after the first update each pin's device admittance, fitted from "
-                        "the last two passes, steadies the update). Spectre: the netlist "
-                        "holds the per-tap split (--split-stub); Xyce, ngspice, HSPICE: emir "
-                        "writes the split testbench itself (--sim)")
-    from .selfconsist import vdd_arg
-    g.add_argument("--vdd", type=vdd_arg, default=None, metavar="V|NET=V,...",
-                   help="the voltage of the net in the testbench, in V (0 for a ground "
-                        "net), or with several nets one per net (VDD=1.2,VSS=0). With "
-                        "--self-consistent and Xyce, ngspice or HSPICE it is checked against "
-                        "the testbench's source (EMIR-E523), and read from it when not given "
-                        "(a net left out of a per-net --vdd too); Spectre needs it given. On "
-                        "an open-loop cc-grid run, the supply its droop is compared with "
-                        "(above about 2 %% the run proposes the self-consistent route, "
-                        "EMIR-W520)")
-    g.add_argument("--droop-file", default=None,
-                   help="the file rewritten between passes: for Xyce, ngspice and HSPICE "
-                        "the include holding the split's sources, each pin's droop as an "
-                        "inline PWL (default: emir_out/selfconsist/<net>/droop.inc, "
-                        "droop.sp for HSPICE, with the split testbench and each pass's "
-                        "result beside it); for Spectre the manifest beside each pin's "
-                        ".pwl file (default droop.scs there). Here or at the default place "
-                        "emir overwrites only a file it wrote: an existing file without "
-                        "its header (the testbench, the DSPF, any file of yours) is "
-                        "refused before anything runs, EMIR-E526")
-    g.add_argument("--max-passes", type=int, default=MAX_PASSES, metavar="N",
-                   help=f"the most simulations the loop runs, pass 0 (the open loop) "
-                        f"included (default {MAX_PASSES})")
-    g.add_argument("--tol-mV", dest="tol_mV", type=float, default=TOL_MV, metavar="MV",
-                   help=f"the floor of the loop's tolerance: it has converged when, at "
-                        f"every pin and over the whole transient, the droop the pass's "
-                        f"currents produce is within max(--tol-rel x the largest droop, "
-                        f"this) of the droop it simulated, and the governing branch's avg, "
-                        f"rms and peak moved less than 0.5 points (default {TOL_MV:g} mV)")
-    g.add_argument("--tol-rel", dest="tol_rel", type=float, default=TOL_REL,
-                   metavar="FRACTION",
-                   help=f"the loop's tolerance relative to the largest droop (default "
-                        f"{TOL_REL:g}: 1 %%)")
-    g.add_argument("--run", action="store_true",
-                   help="spectre, hspice (licensed): run the simulator on --netlist; "
-                        "without it the files are written and the command printed, and "
-                        "nothing runs (ask the person first). Xyce and ngspice always run")
-    g.add_argument("--sim-timeout", type=float, default=None, metavar="S",
-                   help="stop a simulation of --netlist after this many seconds (default "
-                        "3600). With --self-consistent it is pass 0's limit, and each later "
-                        "pass may run max(20 x pass 0's time, 60 s, this): a pass past its "
-                        "limit stops the loop (pass 0 reported, EMIR-W543)")
-    ap.add_argument("--split-stub", action="store_true",
-                    help="print the per-tap rail-split fragment to add to your Spectre CC "
-                         "netlist for --self-consistent, and exit (Xyce, ngspice and "
-                         "HSPICE need none: emir writes the split)")
-    ap.add_argument("--rcc-nodes", type=int, default=2000,
-                    help="no longer used (the mode is the person's choice, --mode). "
-                         "Accepted so existing argument files still parse.")
+                    help="the testbench of the RC netlist to SIMULATE with Spectre instead of "
+                         "reading a finished --cc-sim result (Spectre is licensed: it runs "
+                         "only with --run; `emir simulate` drives HSPICE, Xyce and ngspice)")
+    ap.add_argument("--mode", default=None, choices=("rcc",),
+                    help="rcc, the one method of a simulated run (it may be left out): the RC "
+                         "netlist was simulated with every branch current saved, and every "
+                         "metric (avg, rms and peak EM, static and dynamic IR) is read from "
+                         "them, exactly. A DC run (--currents) takes no mode")
+    ap.add_argument("--run", action="store_true",
+                    help="spectre (licensed): run it on --netlist; without it the command is "
+                         "printed and nothing runs (ask the person first)")
+    ap.add_argument("--sim-timeout", type=seconds, default=None, metavar="S",
+                    help="stop the Spectre run of --netlist after this many seconds "
+                         "(default 3600)")
     ap.add_argument("--save-branches", action="store_true",
                     help="print the Spectre `save` lines an RCC run needs. "
                          "With --net all (or no --net) that covers EVERY net, "
@@ -824,9 +702,7 @@ def build_parser(prog="emir run"):
                          "is subject to it, not just the rails.")
     ap.add_argument("--save-prefix", default="",
                     help="instance path to prepend to saved names when the "
-                         'extracted subckt sits in a testbench, e.g. "XI0."; with '
-                         "--self-consistent and Xyce, ngspice or HSPICE, the block's "
-                         "instance path in the testbench (default: found in it)")
+                         'extracted subckt sits in a testbench, e.g. "XI0."')
     # --html and --viewer take a directory, always: an optional value
     # (nargs='?') swallowed the DSPF in `emir run --html x.dspf --net VDD`
     ap.add_argument("--html", default=None, metavar="DIR",
@@ -878,17 +754,6 @@ def build_parser(prog="emir run"):
     ap.add_argument("--cell", default=None,
                     help="cell the viewer should open, and the --gds cell under the chart "
                          "(default: the DSPF design name)")
-    ap.add_argument("--taps-out", default=None,
-                    help="write the ingested taps (cc-grid) as CSV: each instance pin's "
-                         "avg, rms and peak current where it enters the grid; one file per "
-                         "net -- with several nets <stem>_<net><ext>, or put {net} in the "
-                         "path")
-    from .bigblock import add_options as _bigblock_options
-    _bigblock_options(ap)
-    # --- feature hierarchy ---
-    from .hier_cli import add_run_options
-    add_run_options(ap)
-    # --- end feature hierarchy ---
     return ap
 
 
@@ -915,15 +780,11 @@ class RunResult:
         self.notices: list = []
         self.summary_path = None
         self.charts: list = []       # the --html chart PNGs (emir.chart)
-        self.stub = None            # (mode, text) for --save-list/--save-branches/--split-stub
-        # --- feature hierarchy --- (emir/hier.py: analyse_top)
-        self.hierarchy = None       # the summary's `hierarchy` section
-        self.extra_steps: list = []
-        self.budget_failed = False
+        self.stub = None            # (mode, text) for --save-branches
         self.waves = None            # the --cc-sim result, when it was read
         self.sim_verification = None  # emir verify-sim's record for its simulator
-        # --- feature modes --- a licensed --netlist without --run: what would
-        # run (the `emir.simulate/1` document's fields), and nothing ran
+        # a licensed --netlist without --run: what would run (the
+        # `emir.simulate/1` document's fields), and nothing ran
         self.planned = None
 
 
@@ -937,13 +798,8 @@ def analyse(a) -> RunResult:
     it goes and returns a `RunResult`; refusals are `EmirError`s."""
     from .errors import collecting
     with collecting() as notices:
-        # --- feature decap --- a basis that needs --dynamic without it is
-        # refused before the input check (--force does not run past it)
-        from .decap import after_analyse, refuse
-        refuse(a)
         _chart_gds(a)               # a --gds that is not there, before the run
         res = _analyse(a)
-        after_analyse(res)          # --- feature decap --- decaps without --dynamic
         res.notices = notices
         if res.solved:
             # whether this machine has verified the simulator that wrote the
@@ -965,45 +821,30 @@ def analyse(a) -> RunResult:
 
 def _analyse(a) -> RunResult:
     import sys
-    if getattr(a, "self_consistent", False) and a.net and "," in a.net:
-        # the loop's nets once each (`--net VDD,VDD` closes VDD): every path
-        # below, single-net ones too, reads them from --net
-        from .selfconsist import net_list
-        a.net = ",".join(net_list(a))
     d = parse(a.dspf)
     res = RunResult(a, d)
-    # Save lines and the rail-split fragment are meant to be redirected into a
-    # netlist, so there the summary goes to stderr and stdout stays SPICE.
-    machine = a.save_list or a.save_branches or a.split_stub
+    # Save lines are meant to be redirected into a netlist, so there the
+    # summary goes to stderr and stdout stays SPICE.
+    machine = a.save_branches
     print(d.summary(), file=sys.stderr if machine else sys.stdout)
     every = a.net in (None, "all")         # no --net means every net
-    driven = bool(a.process and (a.currents or a.cc_sim or a.netlist
-                                 or getattr(a, "abstract", None)))
+    driven = bool(a.process and (a.currents or a.cc_sim or a.netlist))
+    if a.currents and (a.cc_sim or a.netlist) and not machine:
+        # one source of currents: refused even past the input check (--force,
+        # --no-check), or the summary would name the one not used
+        raise EmirError("EMIR-E514", "--currents and a simulation ("
+                        + ("--cc-sim" if a.cc_sim else "--netlist") + ") were both given: "
+                        "give one", dspf=a.dspf, process=a.process)
     if every and not machine and not driven:
         # nothing to analyse: describe the file, and say that nothing ran
         for n in sorted(d.nets):
             print(f"  net {n:16s} {len(d.net_resistors(n)):5d} R  "
                   f"{len(d.net_taps(n)):4d} inst pins")
         _not_analysed(a)
-    if a.save_list:
-        from .ccsim import save_directives
-        res.stub = ("cc-grid", save_directives(d, None if every else a.net,
-                                          prefix=a.save_prefix))
-        print(res.stub[1])
-        return res
     if a.save_branches:
         from .rcc import save_branches
         res.stub = ("rcc", save_branches(d, None if every else a.net,
                                          prefix=a.save_prefix))
-        print(res.stub[1])
-        return res
-    if a.split_stub:
-        if every:
-            raise EmirError("EMIR-E510", "--split-stub writes one net's rail split: "
-                            "give --net", dspf=a.dspf)
-        from .selfconsist import rail_split_fragment
-        res.stub = ("split-stub", rail_split_fragment(
-            d, a.net, a.vdd, os.path.abspath(a.droop_file) if a.droop_file else None))
         print(res.stub[1])
         return res
     if not driven:
@@ -1011,16 +852,17 @@ def _analyse(a) -> RunResult:
             print(f"  tap {t['name']:24s} node {t['node']:20s} "
                   f"({t['xy'][0]:.4f}, {t['xy'][1]:.4f})")
         _not_analysed(a)
-    # --- feature modes --- the mode of a simulated run is the person's choice
-    _mode_given(a, d)
 
     if not a.no_check:
         from .check import from_args
-        rep = res.report = from_args(a)
+        rep = res.report = from_args(a, in_run=True)
+        a._report = rep
         print("\n-- input check --")
         print(rep.table(show_ok=False))
         if not rep.passed and not a.force:
-            raise refusal(rep)
+            err = refusal(rep)
+            err.details.setdefault("run", run_context(a))
+            raise err
         print()
 
     from .engine import Process
@@ -1028,70 +870,47 @@ def _analyse(a) -> RunResult:
     # finding; without one (--no-check) the run says it (EMIR-W320)
     proc = res.proc = Process.load(a.process, temp=a.em_temp, delta_t=a.delta_t,
                                    warn_provenance=res.report is None)
-    # --- feature hierarchy ---
-    if getattr(a, "abstract", None):
-        # the blocks black-boxed: their abstracts drive the top (emir/hier.py)
-        from .hier import analyse_top
-        return analyse_top(d, proc, a, res)
-    # --- feature hierarchy ---
-    # The simulation runs once, whatever the net count (the self-consistent
-    # loop runs its own passes, per net)
-    if a.netlist and not a.self_consistent:
+    # the simulation runs once, whatever the net count
+    if a.netlist:
         if (a.sim or "spectre") != "spectre":
-            raise EmirError("EMIR-E604", f"--netlist with --sim {a.sim}: without "
-                            f"--self-consistent emir run drives Spectre only; simulate with "
-                            f"`emir simulate {a.netlist} --sim {a.sim} --dspf {a.dspf} "
-                            f"--mode {a.mode}` and pass the result with --cc-sim")
+            raise EmirError("EMIR-E604", f"--netlist with --sim {a.sim}: emir run drives "
+                            f"Spectre only; simulate with `emir simulate {a.netlist} --sim "
+                            f"{a.sim} --dspf {a.dspf}` and pass the result with --cc-sim")
+        if a.period is None and not a.currents:
+            # the transient Spectre would run is refused without a period
+            # (the input check says so too): nothing is simulated
+            from .check import netlist_period_error
+            raise netlist_period_error(a.netlist, run_context(a))
         if not a.run:
             res.planned = _plan_spectre(a, d)
             return res
-        from .ccsim import run_spectre
+        from .opensim import run_spectre
         a.cc_sim = run_spectre(a.netlist, spectre=a.spectre,
                                timeout=getattr(a, "sim_timeout", None) or 3600.0)["raw"]
 
     # EM applies to every net that carries current, so `all` is the default
-    # when no net is named -- and the net loop wraps *every* mode, because
-    # putting it inside one branch is how cc-grid silently stayed rails-only.
-    driven = a.cc_sim or a.currents
-    from .selfconsist import net_list as sc_nets
+    # when no net is named
     nets = ([n for n in sorted(d.nets) if d.net_resistors(n)]
-            if a.net in (None, "all") else sc_nets(a))
-    if a.self_consistent and (a.net in (None, "all") or (
-            len(nets) > 1 and (a.sim or "spectre") == "spectre")):
-        raise EmirError(
-            "EMIR-E502",
-            "--self-consistent feeds the solved droop back to the nets it is given: name "
-            "them with --net (one net, or with Xyce, ngspice or HSPICE several, "
-            "--net VDD,VSS; Spectre's split is the person's, one net at a time)",
-            dspf=a.dspf)
-    if not driven and not a.self_consistent:
+            if a.net in (None, "all") else [a.net])
+    if not (a.cc_sim or a.currents):
         raise EmirError("EMIR-E407", "nothing to analyse: give --currents, --cc-sim "
                         "or --netlist", dspf=a.dspf, process=a.process)
-    if a.self_consistent:
-        from .selfconsist import LICENSED
-        if (a.sim or "spectre") in LICENSED and not a.run:
-            res.planned = _plan_self_consistent(a, d, nets[0])
-            return res
     w = None
-    if a.cc_sim and not a.self_consistent:
+    if a.cc_sim:
         # read the result once (the input check's read, when it ran); every
-        # net's mode choice and currents use it
+        # net's currents use it
         from . import waves
         w = checked_waves(res, a) or waves.read(a.cc_sim, analysis=a.analysis)
         res.waves = w
     multi = len(nets) > 1
+    # every net's averaging window first: a run whose window is refused on
+    # some net is refused before any number is printed
+    windows = run_windows(d, nets, w, a) if w is not None else {}
     solved = res.solved
-    if a.self_consistent:
-        # the loop runs once for every net it closes, before each net is reported
-        a._sc_results = _self_consistent_loop(a, d, proc, nets)
     for net in nets:
         if multi:
             print(f"\n=== {net} ===")
-        r = _analyse_net(d, net, proc, a, single=not multi, w=w)
-        # --- feature decap --- the net's EM basis (and the decaps it does not
-        # cover) before its page, the chart and the viewer data name them
-        from .decap import after_net
-        after_net(a, d, net, r)
+        r = _analyse_net(d, net, proc, a, single=not multi, w=w, win=windows.get(net))
         solved[net] = r
         _maybe_html(r, d, a, proc, net=net, quiet=multi)
     _charts(res, a, gds=_chart_gds(a), cell=a.cell or res.dspf.design)
@@ -1106,183 +925,15 @@ def _analyse(a) -> RunResult:
 def checked_waves(res, a):
     """The result the input check read for this run (`check.Report.waves`),
     when it is the run's --cc-sim and --analysis, else None: a run reads its
-    result once, so the reader's notices (EMIR-I465 ...) are said once."""
+    result once, so the reader's notices (EMIR-W466 ...) are said once."""
     rep = getattr(res, "report", None)
     if rep is None or getattr(rep, "waves", None) is None:
         return None
     return rep.waves if rep.waves_for == (a.cc_sim, getattr(a, "analysis", None)) else None
 
 
-# --- feature modes ---------------------------------------------------------
-
-
-def _mode_given(a, d=None):
-    """Refuse a run whose currents come from a simulation without the
-    person's mode (EMIR-E520), and the self-consistent options that cannot
-    work together, before anything is checked or run. A DC run (--currents)
-    needs no mode."""
-    # a hierarchical run (--abstract) is cc-grid by construction: its blocks
-    # come as abstracts, characterised with `emir abstract --mode cc-grid` (the
-    # person's choice made there), and the top's own --cc-sim joins them as
-    # pin currents; rcc is refused there (EMIR-E811)
-    sim_driven = (a.cc_sim or a.netlist or a.self_consistent) and \
-        not getattr(a, "abstract", None)
-    if sim_driven and not a.mode:
-        from .modes import not_chosen, plan_args
-        raise not_chosen("run", dspf=a.dspf, process=a.process, cc_sim=a.cc_sim,
-                         netlist=a.netlist, plan_args=plan_args(a),
-                         net=a.net if a.net not in (None, "all") else None)
-    if not a.self_consistent:
-        return
-    if a.mode == "rcc":
-        raise EmirError("EMIR-E505", "--self-consistent is a cc-grid correction; RCC "
-                        "already simulates the R network, so there is nothing to make "
-                        "self-consistent")
-    if a.cc_sim or a.currents:
-        given = " and ".join(o for o, v in (("--cc-sim", a.cc_sim),
-                                            ("--currents", a.currents)) if v)
-        raise EmirError("EMIR-E525", f"--self-consistent simulates --netlist on every pass "
-                        f"and reads only those results: {given} would be ignored; drop "
-                        f"{given}, or drop --self-consistent to screen that result", dspf=a.dspf)
-    if not a.netlist:
-        raise EmirError("EMIR-E504", "--self-consistent re-simulates: give --netlist (the "
-                        "CC netlist, or with --sim xyce, ngspice, hspice the CC testbench)")
-    _rail_given(a, d)
-    if a.max_passes < 1:
-        raise EmirError("EMIR-E513", "--max-passes must be at least 1", command="run")
-    if not (np.isfinite(a.tol_mV) and a.tol_mV > 0):
-        raise EmirError("EMIR-E513", "--tol-mV must be a positive number of mV",
-                        command="run")
-    if not (np.isfinite(a.tol_rel) and 0 <= a.tol_rel < 1):
-        raise EmirError("EMIR-E513", "--tol-rel must be a fraction of the droop, 0 to below 1 "
-                        "(0.01: 1 %)", command="run")
-
-
-def _rail_given(a, d):
-    """--vdd of a self-consistent run: Spectre needs it given (its netlist is
-    not read); Xyce, ngspice and HSPICE check it against the testbench's
-    source (EMIR-E523 when they differ), or take the testbench's value when
-    it is not given (EMIR-I521), or refuse when neither says (EMIR-E503).
-    The loop does not depend on it (each pin's source is in series with the
-    testbench's own rail): it is the rail the summary and the report quote."""
-    from .errors import notice
-    from .selfconsist import SPICE_SIMS, net_list, rail_check, vdd_for
-    sim = a.sim or "spectre"
-    net = a.net if a.net not in (None, "all") else None
-    nets = net_list(a) if net else []
-    if net is not None:
-        per, problem = vdd_for(a.vdd, nets)
-        if problem:
-            raise EmirError("EMIR-E541", problem, dspf=a.dspf)
-        if len(nets) == 1:
-            a.vdd = per[nets[0]]
-    if len(nets) > 1:
-        # a per-net --vdd stays as given (the input check reads it); the loop
-        # takes `vdd_by_net`
-        if sim not in SPICE_SIMS or d is None or not os.path.isfile(a.netlist):
-            return
-        a.vdd_by_net, a.rails = {}, {}
-        for n in nets:
-            rc = rail_check(a.netlist, d, n, per[n], prefix=a.save_prefix or None)
-            if rc["code"] == "EMIR-E523":
-                raise EmirError("EMIR-E523", rc["message"], path=a.netlist, dspf=a.dspf, net=n)
-            if rc["code"] == "EMIR-E503":
-                raise EmirError("EMIR-E503", rc["message"] + f"; with several nets give it as "
-                                f"--vdd {n}=<volts> (a net left out is read from the "
-                                f"testbench)", dspf=a.dspf, net=n)
-            a.vdd_by_net[n], a.rails[n] = rc["vdd"], rc["rail"]
-            notice("EMIR-I521", f"{n}: {rc['message']}")
-        return
-    if sim not in SPICE_SIMS or net is None or d is None or not os.path.isfile(a.netlist):
-        if a.vdd is None:
-            raise EmirError("EMIR-E503", "--self-consistent needs --vdd, the voltage of the "
-                            "net in the testbench (0 for a ground net)"
-                            + (": emir does not read a Spectre netlist" if sim == "spectre"
-                               else ""), dspf=a.dspf)
-        return
-    rc = rail_check(a.netlist, d, net, a.vdd, prefix=a.save_prefix or None)
-    a.rail = rc["rail"]
-    if rc["code"] == "EMIR-E523":
-        raise EmirError("EMIR-E523", rc["message"], path=a.netlist, dspf=a.dspf, net=net)
-    if rc["code"] == "EMIR-E503":
-        raise EmirError("EMIR-E503", rc["message"], dspf=a.dspf)
-    if a.vdd is None:
-        a.vdd = rc["vdd"]
-        notice("EMIR-I521", rc["message"])
-
-
-def _sc_driver(a, d, net):
-    """The self-consistent loop's simulator driver for `net` (one net, or a
-    list: several nets in one loop, Xyce, ngspice, HSPICE)."""
-    from .selfconsist import (SpectreDriver, SpiceDriver, _spectre_texts, default_dir,
-                              reltol_notice, spectre_split_problems)
-    sim = a.sim or "spectre"
-    timeout = getattr(a, "sim_timeout", None) or 3600.0
-    if sim == "spectre":
-        net = net if isinstance(net, str) else net[0]
-        out = (os.path.dirname(os.path.abspath(a.droop_file)) if a.droop_file
-               else default_dir(net))
-        droop = os.path.abspath(a.droop_file) if a.droop_file else \
-            os.path.join(out, "droop.scs")
-        pins = sorted({f"{t['inst']}:{t['pin']}" for t in d.net_taps(net)})
-        bad = spectre_split_problems(a.netlist, droop, pins)
-        if bad:
-            raise EmirError("EMIR-E524", f"{a.netlist} does not hold the per-tap rail split "
-                            f"of net {net}: " + "; ".join(bad) + ". Spectre would simulate "
-                            "the open loop on every pass", path=a.netlist, net=net,
-                            dspf=a.dspf)
-        reltol_notice(_spectre_texts(a.netlist), "spectre", f"the netlist {a.netlist}")
-        return SpectreDriver(a.netlist, droop, pins, spectre=a.spectre, timeout=timeout,
-                             out_dir=out, guard=True, net=net)
-    out = (os.path.dirname(os.path.abspath(a.droop_file)) if a.droop_file else
-           default_dir(net))
-    # `sc_types` is not an option: `emir verify-sim` sets it for its resistive
-    # loads (the split probes devices, MXQJDN, otherwise)
-    return SpiceDriver(sim, a.netlist, d, net, a.vdd, out, prefix=a.save_prefix or None,
-                       timeout=timeout, droop_path=a.droop_file,
-                       types=getattr(a, "sc_types", None))
-
-
-def _self_consistent_loop(a, d, proc, nets) -> dict:
-    """The waveform loop on the run's nets (`emir.selfconsist`,
-    `emir.tdloop`): `{net: per-net result}`, each with its summary entry
-    (`self_consistency`). The droop fed back is relative to each net's feed,
-    where the rail is nominal (the reference on a portless net)."""
-    from .rcc import net_port, reference_node
-    from .selfconsist import SPICE_SIMS, converge, converge_nets, supply_span
-    single = len(nets) == 1
-    feeds = {}
-    for net in nets:
-        gnd = reference_node(d, net, (a.ground or a.feed) if single else None)
-        feed = (reference_node(d, net, a.feed) if (single and a.feed) else net_port(d, net))
-        feeds[net] = feed or gnd
-    drv = _sc_driver(a, d, nets if not single else nets[0])
-    kw = dict(period=a.period, max_passes=a.max_passes, tol_mV=a.tol_mV,
-              tol_rel=a.tol_rel, analysis=a.analysis, waveforms=not a.scalars,
-              max_bytes=getattr(a, "max_memory", None),
-              superposition=getattr(a, "superposition", "auto"),
-              sim_timeout=getattr(a, "sim_timeout", None))
-    # a ground net alone (or nets whose rails all read 0 V): the guard is half
-    # the testbench's largest supply, not half of 0 V
-    vs = ([a.vdd] if single else list((getattr(a, "vdd_by_net", None) or {}).values()))
-    if not any(v for v in vs if v is not None) and (a.sim or "spectre") in SPICE_SIMS:
-        span = supply_span(a.netlist)
-        if span:
-            kw["guard_V"] = span / 2
-    if single:
-        out = {nets[0]: converge(a.netlist, drv.droop, d, nets[0], proc, feeds[nets[0]],
-                                 a.vdd, driver=drv, **kw)}
-        out[nets[0]]["rail"] = getattr(a, "rail", None)
-    else:
-        vdds = getattr(a, "vdd_by_net", None) or {n: None for n in nets}
-        out = converge_nets(drv, d, nets, proc, feeds, vdds, netlist=a.netlist, **kw)
-        for n in nets:
-            out[n]["rail"] = (getattr(a, "rails", None) or {}).get(n)
-    return out
-
-
-def _plan_doc(a, sim, netlist, deck, files, command, cwd, result, nets, names=None,
-              loop=None) -> dict:
+def _plan_doc(a, sim, netlist, deck, files, command, cwd, result, nets,
+              names=None) -> dict:
     """The fields of the `emir.simulate/1` document a licensed --netlist run
     without --run prints: what would run, and the next step (the same command
     with --run, after the person's go-ahead)."""
@@ -1292,22 +943,18 @@ def _plan_doc(a, sim, netlist, deck, files, command, cwd, result, nets, names=No
            f"re-run with --run (or run `{' '.join(command)}` in {cwd})")
     argv = strip_options(list(getattr(a, "argv", None) or []), {"--format": 1})
     fmt = ["--format", "json"] if getattr(a, "format", "text") == "json" else []
-    steps = ([{"why": f"ask the person first ({sim} is licensed"
-                      + (", and the loop runs it once per pass" if loop else "")
-                      + "); then run it: the same command with --run",
+    steps = ([{"why": f"ask the person first ({sim} is licensed); then run it: the same "
+                      f"command with --run",
                "command": command_line("run", argv, "--run", fmt),
-               "needs_human": True, "licensed_tool": sim,
-               **({"long_run": True} if loop else {})}] if argv else [])
-    print(f"[emir] {sim} (licensed): nothing was run"
-          + (" -- the self-consistent loop is ready" if loop else ""))
+               "needs_human": True, "licensed_tool": sim}] if argv else [])
+    print(f"[emir] {sim} (licensed): nothing was run")
     print(f"  deck    : {deck}\n  command : {' '.join(command)}\n  in      : {cwd}")
     return dict(simulator=sim, ran=False, executable=None, simulator_version=None,
                 command=list(command), cwd=cwd, testbench=os.path.abspath(netlist),
                 deck=deck, files=files, result=result, names_sidecar=names, log=None,
-                mode="cc-grid" if a.mode == "cc-grid" else a.mode, mode_reason=f"--mode {a.mode}",
-                nets=list(nets), scope=None, path=[], where="--netlist", signals=0,
-                direct=0, probed=0, found=None, missing=[], seconds=None, points=None,
-                analysis=None, notes=[], self_consistent=loop, next_steps=steps)
+                mode="rcc", nets=list(nets), scope=None, path=[], where="--netlist",
+                signals=0, direct=0, found=None, missing=[], seconds=None, points=None,
+                analysis=None, notes=[], next_steps=steps)
 
 
 def _plan_spectre(a, d) -> dict:
@@ -1315,7 +962,7 @@ def _plan_spectre(a, d) -> dict:
     from . import site
     exe, _src = site.tool("spectre", a.spectre)
     netlist = os.path.abspath(a.netlist)
-    out = os.path.splitext(netlist)[0] + ".raw"      # what ccsim.run_spectre writes
+    out = os.path.splitext(netlist)[0] + ".raw"      # what opensim.run_spectre writes
     command = [exe or "spectre", netlist, "-format", "psfascii", "-raw", out,
                "+escchars", "=log", out + ".log"]
     nets = ([n for n in sorted(d.nets) if d.net_resistors(n)]
@@ -1324,58 +971,25 @@ def _plan_spectre(a, d) -> dict:
                      os.path.dirname(netlist), out, nets)
 
 
-def _plan_self_consistent(a, d, net) -> dict:
-    """The self-consistent loop on Spectre or HSPICE without --run: the split
-    (HSPICE) and the droop file(s) at 0 V (pass 0) are written,
-    the command printed; nothing runs."""
-    from . import site
-    from .selfconsist import net_list
-    nets = net_list(a)
-    drv = _sc_driver(a, d, nets if len(nets) > 1 else net)
-    if drv.sim == "spectre":
-        drv.write(0, None)
-    exe, _src = site.tool(drv.sim, a.spectre if drv.sim == "spectre" else None)
-    deck = getattr(drv, "deck", os.path.abspath(a.netlist))
-    loop = {"net": net, "vdd": a.vdd if not isinstance(a.vdd, dict) else None,
-            "max_passes": a.max_passes, "tol_mV": a.tol_mV,
-            "tol_rel": a.tol_rel, "droop_file": drv.droop, "pins": len(drv.names),
-            "nets": nets}
-    return _plan_doc(a, drv.sim, a.netlist, deck, drv.files_written(), drv.command(exe),
-                     os.path.dirname(drv.result_path()), drv.result_path(), nets,
-                     loop=loop)
-
-
-def _droop_check(r, a, net):
-    """An open-loop cc-grid run with --vdd: a droop above about 2 % of the
-    supply is a coded warning (EMIR-W520), and the summary's next steps
-    propose the self-consistent route (`summary.next_steps`)."""
-    from .plan_bigblock import DROOP_FRACTION
-    from .selfconsist import vdd_of
-    v = vdd_of(a.vdd, net)
-    ir = r.get("ir_drop")
-    if v is None or not v or ir is None or not np.isfinite(ir):
-        return
-    frac = abs(ir) / abs(v)
-    r["droop_fraction"] = frac
-    if frac > DROOP_FRACTION:
-        from .errors import notice
-        notice("EMIR-W520", f"net {net!r}: the IR drop {ir * 1e3:.4g} mV is {frac:.1%} of "
-               f"the {v:g} V supply (above about {DROOP_FRACTION:.0%}) on an open-loop "
-               f"cc-grid run: its currents and droop read high; ask the person about the "
-               f"self-consistent run (it re-simulates)")
-
-
 def refusal(rep) -> EmirError:
     """The error a run refused by its input check raises: EMIR-E501, with every
     FAIL's code in `details.causes` and the findings in `details.findings`
     -- unless a required tool is missing, which keeps its own code (and so
-    the contract's exit status 3, not 2)."""
+    the contract's exit status 3, not 2), or the only problem is the window
+    (EMIR-E428, E429, E431: the run's own refusal, as the run raises it)."""
     from .errors import EXIT_TOOL, lookup
     causes = rep.codes("FAIL")
     details = {"causes": causes,
                "findings": [f.as_dict(**rep.args) for f in rep.sorted()
                             if f.level in ("FAIL", "WARN")]}
     tool = [c for c in causes if lookup(c).exit_code == EXIT_TOOL]
+    # a window the run would refuse is refused with its own code and details,
+    # as the run itself refuses it: the code says what to give or simulate
+    from .waveform import REFUSALS
+    err = getattr(rep, "window_error", None)
+    if not tool and causes and set(causes) <= set(REFUSALS) and err is not None:
+        err.details.pop("run", None)            # the caller adds the run's own
+        return err
     if tool:
         f = next(x for x in rep.sorted() if x.code == tool[0])
         return EmirError(tool[0], f"{f.message}; the run is refused"
@@ -1449,7 +1063,7 @@ def print_overall(solved: dict, proc, verification: dict | None = None) -> str:
     if v.get("status") in ("not verified", "partly verified", "unknown simulator"):
         print(f"  simulator route: {v['status']} on this machine"
               + (f" ({v['reason']})" if v.get("reason") in ("format not covered",
-                                                            "pin kinds not covered") else "")
+                                                            "current kinds not covered") else "")
               + (f" -- {v['command']}" if v.get("command") else ""))
     sus = []
     if proc is not None and isinstance(getattr(proc, "data", None), dict):
@@ -1459,7 +1073,8 @@ def print_overall(solved: dict, proc, verification: dict | None = None) -> str:
         print(f"  limits SUSPECT : {', '.join(x['path'] for x in sus[:4])} outside the "
               f"usual range (a unit slip? EMIR-W321)")
     print(f"\n{RESEARCH_LINE}")
-    print(f"overall verdict: {overall} -- {len(solved)} net(s): {k['FAIL']} FAIL, "
+    print(f"overall verdict: {overall}"
+          + f" -- {len(solved)} net(s): {k['FAIL']} FAIL, "
           f"{k['WARN']} WARN, {k['CLEAN']} CLEAN"
           + (f"; worst {ratio_text(worst)} on {top}" if top is not None else "")
           + (f"; the limits are SUSPECT ({len(sus)} value(s) outside the usual range: "
@@ -1499,81 +1114,54 @@ def did_you_mean(name: str, choices) -> str:
     return f" (did you mean {', '.join(repr(c) for c in near)}?)" if near else ""
 
 
-def split_pin_message(net: str, split: dict) -> str:
-    """Why a CC run refuses instance pins with several DSPF connections.
-
-    `split` is `Dspf.split_pins(net)`. Shared by the checker and the tap
-    ingest so the run and `emir check` say the same thing.
-    """
-    items = sorted(split.items())
-    shown = "; ".join(f"{k} at {', '.join(sorted(t['node'] for t in v))}"
-                      for k, v in items[:4])
-    more = f" (+{len(items) - 4} more)" if len(items) > 4 else ""
-    return (f"net {net!r}: {len(items)} instance pin(s) reach the net at "
-            f"several DSPF connections, but the simulation saves ONE terminal "
-            f"current per pin: {shown}{more}. How that current divides between "
-            f"the connections depends on the block's own grid, so it cannot be "
-            f"guessed (all of it on one connection under-reads the others). "
-            f"A black-boxed block: screen the net hierarchically -- characterise "
-            f"the block once (`emir abstract <block.dspf> --process <P> --cc-sim "
-            f"<block.raw> --mode cc-grid -o <block.abstract.json>`, every pin shape a "
-            f"*|P port), "
-            f"then `emir run <top.dspf> --net {net} --abstract "
-            f"<block.abstract.json>@<INST> --place <INST>=<dx>,<dy>,<orient>`. A "
-            f"small net: screen it in rcc mode, saving every branch current "
-            f"(`emir save-lines <dspf> --net {net} --mode rcc`), which measures how "
-            f"the current divides. `emir next` plans either route.")
-
-
 def result_holds(dspf: Dspf, net: str, w) -> dict:
-    """What a simulation result holds for one net, and so which modes can
-    screen it: `rcc` needs every branch current in the time domain; `cc-grid`
-    needs instance-pin currents, and no pin that reaches the net at several
-    DSPF connections (EMIR-E417). The mode is the person's choice (`--mode`);
-    `emir next` uses this to say which modes the result can serve, and to
-    plan only what the check accepts."""
+    """What a simulation result holds for one net: rcc needs every branch
+    current, in the time domain. `emir next` uses this to plan only what the
+    check accepts."""
     names = [r["name"] for r in dspf.net_resistors(net)]
     br = w.match([f"{n}:1" for n in names]) if names else {}
-    pins = sorted(dspf.pin_groups(net))
-    got = w.match(pins) if pins else {}
-    split = dspf.split_pins(net)
-    return {"branches": [len(br), len(names)], "pins": [len(got), len(pins)],
-            "split_pins": len(split), "time_domain": not w.is_complex,
-            "can": {"rcc": bool(names) and len(br) == len(names) and not w.is_complex,
-                    "cc-grid": bool(got) and not split}}
+    return {"branches": [len(br), len(names)], "time_domain": not w.is_complex,
+            "rcc": bool(names) and len(br) == len(names) and not w.is_complex}
 
 
-def _analyse_net(d, net, proc, a, single=True, w=None):
-    """One net, in whichever mode applies. Prints as it goes, returns `res`.
+def run_windows(d, nets, w, a) -> dict:
+    """`{net: window}`: every net's averaging window (`rcc.net_windows`), or
+    the run's refusal (EMIR-E428, E429, E431), whose context names the run's
+    inputs so its next step (`emir next`) plans the fix."""
+    from .rcc import net_windows
+    rep = getattr(a, "_report", None)
+    pre = getattr(rep, "windows", None) if rep is not None else None
+    if pre and pre["key"] == (a.cc_sim, getattr(a, "analysis", None), a.period, tuple(nets)):
+        return pre["wins"]                  # the input check took them already
+    return net_windows(d, nets, w, period=a.period, ctx=run_context(a))
 
-    `w` is the `--cc-sim` result already read by `run` (read here if None).
-    """
 
-    from .rcc import net_port, reference_node
-    # the mode is the person's (`_mode_given` refused a simulated run without
-    # one); DC currents are solved directly and need none
-    mode = a.mode if (a.cc_sim or a.netlist or a.self_consistent) else "dc"
-    why = f"--mode {mode}" if mode != "dc" else "DC --currents: the R grid is solved directly"
-    result = w if w is not None else a.cc_sim
+def run_context(a) -> dict:
+    """The run's inputs a refusal carries (`details.run`), so `emir next
+    --run-summary` can plan its fix from the error document alone."""
+    ab = lambda p: os.path.abspath(p) if p else None  # noqa: E731
+    return {"dspf": ab(a.dspf), "process": ab(a.process), "cc_sim": ab(a.cc_sim),
+            "netlist": ab(getattr(a, "netlist", None)),
+            "net": None if a.net in (None, "all") else a.net, "period": a.period,
+            "analysis": getattr(a, "analysis", None), "sim": getattr(a, "sim", None)}
+
+
+def _analyse_net(d, net, proc, a, single=True, w=None, win=None):
+    """One net: rcc from a simulation result, else DC currents. Prints as it
+    goes, returns `res`. `w` is the `--cc-sim` result already read by `run`
+    (read here if None); `win` its averaging window (`run_windows`; computed
+    here if None)."""
+
+    from .rcc import reference_node
     # the reference is always a node on *this* net -- taking the first port in
     # the DSPF would ground a signal net at some other net's pin
     gnd = reference_node(d, net, (a.ground or a.feed) if single else None)
-    # `--feed` moves the feed tap as well as the reference: the current that
-    # closes KCL enters where the user says the net is fed. (It used to stay at
-    # the DSPF port, so rms/peak on the port-to-feed path collapsed to DC.)
-    feed = (reference_node(d, net, a.feed) if (single and a.feed)
-            else net_port(d, net))
-
-    if mode == "rcc" and a.cc_sim:
+    if a.cc_sim:
         from .rcc import rcc_check
-        if a.self_consistent:
-            raise EmirError("EMIR-E505",
-                            "--self-consistent is a CC-mode correction; RCC "
-                            "already simulates the R network, so there is "
-                            "nothing to make self-consistent")
-        r = rcc_check(d, net, proc, result, gnd, analysis=a.analysis,
-                      period=a.period)
-        r["mode_reason"] = why
+        r = rcc_check(d, net, proc, w if w is not None else a.cc_sim, gnd,
+                      analysis=a.analysis, period=a.period, window_sel=win)
+        r["mode_reason"] = ("a simulation result: every branch current of the RC netlist, "
+                            "read directly")
         _print_net(r, proc, a, d, net=net)
         if r.get("dynamic"):
             dy = r["dynamic"]
@@ -1585,88 +1173,19 @@ def _analyse_net(d, net, proc, a, single=True, w=None):
               + ("  (loop-free net: vacuous)" if not r["n_offtree"] else ""))
         return r
 
-    taps = weights = cv = None
-    if a.self_consistent:
-        from .selfconsist import summary
-        # the loop ran for every net it closes (`_self_consistent_loop`)
-        cv = a._sc_results[net]
-        r, taps, weights = cv["result"], cv["taps"], cv["ingest"]["weights"]
-        r["mode"], r["self_consistent"] = "cc-grid", True
-        r["self_consistency"] = summary(cv)
-        r["unsaved_pins"] = list(cv["ingest"].get("missing") or [])
-        # the reported pass's result: the run's simulator verification and
-        # its current source name it
-        a.cc_sim = cv["raw"]
-        # decaps the testbench simulated: their pins carry their current
-        r["_loop_simulated_decaps"] = list(cv.get("simulated_decaps") or [])
-        if getattr(a, "dynamic", False):
-            from .bigblock import cc_dynamic
-            # the reported pass's currents through the RC grid; its source
-            # names that pass (`bigblock.dynamic_source`)
-            r["dynamic"] = cc_dynamic(d, net, r, feed or gnd, taps,
-                                      cv["ingest"].get("time"), proc, a)
-        # how its branches were scored: on the R-only grid, or through the RC
-        # grid (--dynamic's decap-aware EM); EMIR-W545 when the loop fed back
-        # the RC grid and scored on the R-only one
-        from .selfconsist import scoring, scoring_notice
-        r["self_consistency"]["scoring"] = scoring(r, taps)
-        scoring_notice(net, r["self_consistency"])
-    elif a.cc_sim:
-        from .ccsim import cc_taps
-        # A net with a port is fed through it and the feed tap closes KCL; a
-        # net without one is closed by its own device pins and needs no feed.
-        ing = cc_taps(d, net, result, analysis=a.analysis, period=a.period,
-                      feed=feed, waveforms=not a.scalars)
-        taps, weights = ing["taps"], ing["weights"]
-        inj = {}
-        for t in taps:
-            inj[t["node"]] = inj.get(t["node"], 0.0) + t["i_avg"]
-        r = check_net(d, net, proc, inj, gnd, taps_list=taps,
-                      tap_weights=weights, max_bytes=getattr(a, "max_memory", None),
-                      superposition=getattr(a, "superposition", "auto"))
-        r["mode"] = "cc-grid"
-        # pins the result did not save: their current was taken as zero
-        r["unsaved_pins"] = list(ing.get("missing") or [])
-        if getattr(a, "dynamic", False):
-            from .bigblock import cc_dynamic
-            r["dynamic"] = cc_dynamic(d, net, r, gnd, taps, ing.get("time"), proc, a)
-        _droop_check(r, a, net)
-    else:
-        from .jsonarg import load
-        obj, _path = load(a.currents, "--currents", "EMIR-E401", schema="currents",
-                          dspf=a.dspf, net=net)
-        try:
-            inj = {str(k): float(v) for k, v in obj.items()}
-        except (ValueError, TypeError, AttributeError) as e:
-            raise EmirError("EMIR-E401", f"--currents is not a JSON object of node: "
-                            f"amps ({e})", dspf=a.dspf, net=net) from e
-        r = check_net(d, net, proc, inj, a.ground or gnd)
-        # one label for this route everywhere (summary, HTML, viewer); the
-        # summary said "dc" while the HTML said "cc-grid"
-        r["mode"] = "dc"
-
-    if cv is not None:
-        from .selfconsist import state_text
-        state = state_text(cv)
-        print(f"  self-consistent: {state} in {len(cv['passes'])} simulation(s) "
-              f"({cv['simulator'] or 'simulator'}, droop waveforms; tolerance "
-              f"max({cv['tol_rel']:g} x the droop, {cv['tol_mV']:g} mV))")
-        for p in cv["passes"]:
-            mv = ("open loop" if p["current_change"] is None
-                  else f"{p['current_change']:.3%}")
-            print(f"    pass {p['pass']}: residual {p['residual_mV']:9.4f} mV "
-                  f"(tolerance {p['tolerance_mV']:.4g}), currents moved {mv:>9}, "
-                  f"worst {_ratio4(p['worst_ratio'])}, IR {p['ir_drop_mV']:.4f} mV, "
-                  f"fed by {p['fed_by']}")
-    r["mode_reason"] = why
-    if a.taps_out and taps:
-        path = taps_path(a.taps_out, net, single)
-        _write_taps(path, taps, tap_layers(d, proc, r["layer_map"]), net=net)
-        print(f"  taps written   : {path}")
+    from .jsonarg import load
+    obj, _path = load(a.currents, "--currents", "EMIR-E401", schema="currents",
+                      dspf=a.dspf, net=net)
+    try:
+        inj = {str(k): float(v) for k, v in obj.items()}
+    except (ValueError, TypeError, AttributeError) as e:
+        raise EmirError("EMIR-E401", f"--currents is not a JSON object of node: "
+                        f"amps ({e})", dspf=a.dspf, net=net) from e
+    r = check_net(d, net, proc, inj, a.ground or gnd)
+    # one label for this route everywhere (summary, HTML, viewer)
+    r["mode"] = "dc"
+    r["mode_reason"] = "DC --currents: the R grid is solved directly"
     _print_net(r, proc, a, d, net=net)
-    if r.get("dynamic"):
-        from .bigblock import print_dynamic
-        print_dynamic(r["dynamic"], r["ir_drop"], r.get("self_consistency"))
     return r
 
 
@@ -1688,8 +1207,7 @@ def _charts(res, a, gds=None, cell=None, what="emir run"):
     from .netreport import index_dir
     from .scene import write_charts
     res.charts = write_charts(res.solved, res.dspf, res.proc, a.html, gds=gds, cell=cell,
-                              command=getattr(a, "command", None) or "", what=what,
-                              not_checked_extra=getattr(a, "not_checked_extra", None))
+                              command=getattr(a, "command", None) or "", what=what)
     p = index_dir(a.html)
     if len(res.solved) > 1:
         print(f"\n  index          : {os.path.abspath(p)}")
@@ -1747,8 +1265,8 @@ def _print_net(r, proc, a, d, net=None):
     lm = {k: v[1] for k, v in r["layer_map"].items()}
     if not a.html or a.net != "all":
         print(f"  layer map      : {lm}")
-    label = f"R at {proc.temp:g} C"
-    print(f"  {label:<15}: {scale_text(r['r_at_temp'], r['rscale'], r.get('layer_map'))}")
+    label, rtext = r_text(r, proc)
+    print(f"  {label:<15}: {rtext}")
     print(f"  KCL residual   : {r['kcl_residual']:.2e} A")
     # On a net with no port there is no feed to measure against, so the figure
     # is the spread across the net -- which is invariant to the reference and
@@ -1783,65 +1301,6 @@ def _print_net(r, proc, a, d, net=None):
         print(f"  via cuts       : {len(vc['area'])} via(s) counted from the "
               f"cut area ($A) and the process vcwidth")
     print(f"  currents       : {r['metric_note']}")
-
-
-def tap_layers(dspf: Dspf, proc, lmap: dict) -> dict:
-    """node -> PDK **conductor** layer, from whatever the tap connects to.
-
-    `*|I` records often carry no `$lvl`, and a tap file (`--taps-out`) needs a
-    layer to place the injection on. The structure supplies it: a device pin reaches the
-    net through a contact, and a contact's `above` is the metal it lands on. So
-    take the incident resistor's layer, and if that resolves to a via, follow it
-    up to the conductor.
-    """
-    out = {}
-    for r in dspf.res:
-        hit = lmap.get(r["layer"])
-        if not hit:
-            continue
-        kind, name = hit
-        lay = proc.vias[name].get("above") if kind == "via" else name
-        for n in (r["n1"], r["n2"]):
-            out.setdefault(n, lay)
-    return out
-
-
-def taps_path(path: str, net: str, single: bool = True) -> str:
-    """Where `--taps-out` writes one net's taps: `{net}` in the path is
-    replaced by the net's name; otherwise a run over several nets writes
-    `<stem>_<net><ext>` per net (one file held only the last net's taps
-    before)."""
-    import re
-    safe = re.sub(r"[^A-Za-z0-9_.+-]", "_", net) or "net"
-    if "{net}" in path:
-        return path.replace("{net}", safe)
-    if single:
-        return path
-    stem, ext = os.path.splitext(path)
-    return f"{stem}_{safe}{ext or '.csv'}"
-
-
-def _write_taps(path, taps, layers=None, net=None):
-    """Ingested taps as a tap file (`taps.load_taps` reads it): name, x_um,
-    y_um, layer (the PDK conductor the
-    tap lands on, from the incident resistor; else the record's own `$lvl`),
-    i_avg, i_rms, i_peak (A, 12 significant digits, so the sum still balances
-    to KCL's tolerance), net. Waveforms do not survive the round trip -- the
-    scalars do, and `superpose` treats rms/peak as in-phase upper bounds."""
-    import csv
-    import io
-
-    from .output import write_text
-    layers = layers or {}
-    buf = io.StringIO()
-    w = csv.writer(buf, lineterminator="\n")
-    w.writerow(["name", "x_um", "y_um", "layer", "i_avg", "i_rms", "i_peak", "net"])
-    for t in taps:
-        lay = layers.get(t["node"]) or t.get("layer") or ""
-        w.writerow([t["name"], f"{t['xy'][0]:.4f}", f"{t['xy'][1]:.4f}", lay,
-                    f"{t['i_avg']:.12g}", f"{t['i_rms']:.12g}", f"{t['i_peak']:.12g}",
-                    net or ""])
-    write_text(path, buf.getvalue())
 
 
 # --------------------------------------------------- PDK-aware net analysis
@@ -1931,7 +1390,7 @@ def em_clusters(nw, Ie_m: dict, proc, lmap: dict, notes: dict | None = None) -> 
     """`(violations, max_ratio)` from per-metric branch currents.
 
     Deliberately shared by every path that produces branch currents -- the
-    grid solve, superposition, and reading them straight off an RCC sim. Where
+    DC grid solve and reading them straight off an RCC sim. Where
     the current came from must not change how it is judged, and one
     implementation is the only way to guarantee that.
 
@@ -1955,7 +1414,8 @@ def em_clusters(nw, Ie_m: dict, proc, lmap: dict, notes: dict | None = None) -> 
     how = {"area": [], "assumed": []}
     no_width = []
     # the time average of |I| beside the signed one, where the path computed
-    # it (waveforms): a reversing current cancels in the signed average
+    # it (rcc's simulated waveforms): a reversing current cancels in the signed
+    # average
     absavg = Ie_m.get("absavg")
     bidirectional, crowding = [], []
     for i, r in enumerate(nw.res):
@@ -1979,6 +1439,8 @@ def em_clusters(nw, Ie_m: dict, proc, lmap: dict, notes: dict | None = None) -> 
             # A wire no wider than dW is refused (EMIR-E323)
             weff = proc.wire_width(pdkname, r["w"])
         for m in METRICS:
+            if m not in Ie_m:
+                continue                # a metric the mode does not check
             if kind == "via":
                 lim = proc.vias[pdkname]["imax"].get(m)
                 if not lim:
@@ -2096,66 +1558,36 @@ def scale_text(r_at_temp, rscale, lmap=None) -> str:
             + "; vias not scaled")
 
 
+def r_text(r: dict, proc) -> tuple:
+    """`(label, text)`: the resistances a net's IR is computed with, for a
+    person. rcc's are those the simulation ran (`rcc.r_basis`); a DC
+    solve's are scaled to the analysis temperature (`scale_text`)."""
+    b = r.get("r_basis")
+    if b:
+        src = "" if b.get("stated") else ", the process file's temp_reference"
+        return "R", (f"as simulated: the DSPF's, at {b['temp_C']:g} C{src}; the IR is "
+                     f"the simulated circuit's")
+    return (f"R at {proc.temp:g} C",
+            scale_text(r["r_at_temp"], r["rscale"], r.get("layer_map")))
+
+
 def check_net(dspf: Dspf, net: str, proc, inj: dict, ground: str,
-              taps_list=None, tap_weights=None, explicit_layers=None,
-              network=None, log=print, max_bytes=None, superposition="auto") -> dict:
-    """Full EM/IR on one extracted net, per metric.
+              explicit_layers=None, log=print) -> dict:
+    """Full EM/IR on one extracted net from one DC solve.
 
-    Returns what every report consumes: per-metric ratios, a governing metric, clusters (here one per resistor)
-    and the IR spread. `inj` is {node: amps} for the average solve; pass
-    `taps_list` (tap dicts carrying a `node`) for per-metric superposition,
-    and `tap_weights` alongside waveform taps so the time reduction is a real
-    time average rather than a mean over the simulator's uneven samples
-    (`ccsim.cc_taps` returns both).
-
-    Pass `network` to reuse a `Network` (and its LU factorisation) across
-    calls -- what the self-consistency loop does, where the grid is fixed and
-    only the injection changes pass to pass.
-
-    `max_bytes` is the waveform superposition's memory budget (`--max-memory`)
-    and `superposition` its path (`--superposition`): above the budget the
-    dense transfer matrix is not built and the superposition streams in time
-    chunks (`bigblock.superpose`; same answer).
+    Returns what every report consumes: per-metric ratios, a governing
+    metric, clusters (here one per resistor) and the IR spread. `inj` is
+    {node: amps into the net}: DC currents, so each is its own avg, rms and
+    peak, and every metric is checked.
     """
     from .engine import METRICS
     lmap = map_layers(dspf, proc, explicit_layers, log=log)
     unmapped = [t for t in dspf.layer_tokens() if t not in lmap]
     r_at_temp, rscale = net_scaling(dspf, proc, lmap)
-    nw = network if network is not None else Network(dspf, net, rscale=rscale)
-    if network is not None:
-        rscale = nw.rscale
-
-    def _branch(t, amps):
-        _, Ib = nw.solve({t["node"]: amps,
-                          ground: -amps if t["node"] != ground else 0.0}, ground)
-        return Ib
-
+    nw = Network(dspf, net, rscale=rscale)
     V, Ib = nw.solve(inj, ground)
-    sup = None
-    if taps_list:
-        # All three metrics, always: the PDK's limits decide what gets a ratio,
-        # not what gets computed. Back-filling an unlimited metric from the DC
-        # solve would report the average current as if it were the rms.
-        from .taps import has_waveforms, superpose
-        if has_waveforms(taps_list):
-            from .bigblock import superpose as superpose_exact
-            Ie_m, note, sup = superpose_exact(nw, ground, _branch, taps_list, METRICS,
-                                              weights=tap_weights, max_bytes=max_bytes,
-                                              method=superposition, log=log)
-        else:
-            Ie_m, note = superpose(_branch, taps_list, len(nw.res), METRICS,
-                                   log=log)
-            # say which path ran, as the exact paths do: an agent reads the
-            # rms and peak of this one as upper bounds
-            sup = {"method": "scalar",
-                   "reason": "per-tap scalars (no waveforms): avg exact, rms and peak the "
-                             "in-phase upper bound over every alignment of the taps",
-                   "taps": len(taps_list), "points": None, "branches": len(nw.res),
-                   "nodes": len(nw.nodes), "dense_bytes": None, "budget_bytes": None,
-                   "chunk": None, "chunks": None}
-    else:
-        Ie_m = {m: np.abs(Ib) for m in METRICS}
-        note = "DC solve: avg = rms = peak = |I|"
+    Ie_m = {m: np.abs(Ib) for m in METRICS}
+    note = "DC solve: avg = rms = peak = |I|"
 
     notes = {}
     viol, max_ratio = em_clusters(nw, Ie_m, proc, lmap, notes=notes)
@@ -2179,13 +1611,13 @@ def check_net(dspf: Dspf, net: str, proc, inj: dict, ground: str,
     return {"clusters": viol, "worst": viol[0] if viol else None,
             "max_ratio": max_ratio,
             "ir_drop": float(Vm.max() - Vm.min()),
-            "V": V, "Ib": Ib, "Ie": Ie_m,
+            "V": V, "Ib": Ib, "Ie": Ie_m, "metrics": list(METRICS),
             "network": nw, "layer_map": lmap, "unmapped": unmapped,
             "r_at_temp": r_at_temp, "rscale": rscale, "metric_note": note,
             "kcl_residual": nw.kcl_residual(Ib, inj, ground),
             "via_cuts": notes["via_cuts"], "no_width": notes["no_width"],
             "bidirectional": notes["bidirectional"], "via_crowding": notes["via_crowding"],
-            "unsolved": unsolved, "superposition": sup}
+            "unsolved": unsolved}
 
 if __name__ == "__main__":
     main()

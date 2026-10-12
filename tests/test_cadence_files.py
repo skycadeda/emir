@@ -35,7 +35,7 @@ def test_the_integration_is_all_there():
                 "skill/emir_init.il", "skill/emir_main.il", "skill/emir_display.drf",
                 "quantus/emir.ccl.tmpl", "quantus/render_ccl.py",
                 "pvs/pvs_lvs_quantus.sh",
-                "spectre/tb_rcc.scs.tmpl", "spectre/tb_cc.scs.tmpl",
+                "spectre/tb_rcc.scs.tmpl",
                 "ocean/emir_run.ocn.tmpl",
                 "calibre/NOTES.md", "calibre/emir_calibre_pex.svrf.tmpl",
                 "starrc/NOTES.md", "starrc/emir_starrc.cmd.tmpl",
@@ -132,7 +132,7 @@ def test_generated_copies_check_fails_when_stale(tmp_path, monkeypatch):
 # ------------------------------------------------------------ templates
 
 
-@pytest.mark.parametrize("rel", ["spectre/tb_rcc.scs.tmpl", "spectre/tb_cc.scs.tmpl"])
+@pytest.mark.parametrize("rel", ["spectre/tb_rcc.scs.tmpl"])
 def test_spectre_templates(rel):
     text = read(rel)
     fields = {m.group("braced") for m in string.Template.pattern.finditer(text)
@@ -150,8 +150,7 @@ def test_spectre_templates(rel):
 
 def test_rcc_template_warns_about_r_only():
     assert "An R-only DSPF" in read("spectre/tb_rcc.scs.tmpl")
-    assert "--mode cc-grid" in read("spectre/tb_cc.scs.tmpl")
-    assert "same LVS" in read("spectre/tb_cc.scs.tmpl")
+    assert not os.path.exists(os.path.join(CADENCE, "spectre", "tb_cc.scs.tmpl"))
 
 
 def test_site_example_names_every_key_emir_reads():

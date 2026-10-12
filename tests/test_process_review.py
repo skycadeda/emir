@@ -189,33 +189,19 @@ def test_a_blank_source_is_no_source(tmp_path):
     assert "layers/metal1/jmax_avg" in d["unsourced"]
 
 
-def test_unknown_derating_keys_and_bad_cap_values_are_refused(tmp_path):
+def test_unknown_derating_keys_and_cap_models_are_refused(tmp_path):
     p = _edit(_black(tmp_path), **{"derating/tref_C": 105})     # a key the format lacks
     rep = Report()
     check_process(p, rep)
     assert any(f.code == "EMIR-E316" and "tref_C" in f.message for f in rep.findings)
+    # `cap_models` sized the rails' decaps for cc-grid's guard, removed in 1.1:
+    # an unknown top-level key now (EMIR-W314), never read
     data = yaml.safe_load(open(filled(tmp_path)))
-    data["cap_models"] = {"mimcap": {"cj": -2e-3}, "nfet": {"cox": 0, "ron_sq": -5}}
+    data["cap_models"] = {"nfet": {"cox": 8.6e-3}}
     q = write(tmp_path / "cap.yaml", yaml.safe_dump(data))
     rep = Report()
     check_process(q, rep)
-    # one check of cap_models since the decap merge: EMIR-E317 (the negative
-    # cj and ron_sq, and an entry whose only capacitance is 0)
-    bad = [f.message for f in rep.findings if f.code == "EMIR-E317"]
-    assert len(bad) == 3 and not rep.passed
-    assert not any(f.code == "EMIR-E308" for f in rep.findings)
-
-
-def test_a_dynamic_run_names_its_cap_models(tmp_path):
-    from emir.process_file import limits_lines, limits_provenance
-    from emir.engine import Process
-    data = yaml.safe_load(open(filled(tmp_path)))
-    data["cap_models"] = {"mimcap": {"cj": 2e-3, "sources": {"cj": "Demo DM, table 9"}}}
-    q = write(tmp_path / "cap.yaml", yaml.safe_dump(data))
-    lp = limits_provenance(Process.load(q), {("layer", "metal1")}, cap_models=True)
-    cap = next(e for e in lp["entries"] if e["kind"] == "cap")
-    assert cap["name"] == "mimcap" and cap["sources"] == {"cj": "Demo DM, table 9"}
-    assert any(ln.startswith("cap model mimcap") for ln in limits_lines(lp))
+    assert any(f.code == "EMIR-W314" and "cap_models" in f.message for f in rep.findings)
 
 
 def test_the_hints_tell_an_agent_to_ask(tmp_path):

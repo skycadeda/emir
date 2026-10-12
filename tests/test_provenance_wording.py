@@ -9,29 +9,19 @@ import yaml
 from _helpers import CUR, DSPF, PROC, ROOT, emir
 
 import emir as emir_pkg
-from emir import rcc, selfconsist
+from emir import rcc
 
 # ------------------------------------------------------------ provenance
 
 
 def test_rcc_timing_table_names_the_generated_rail():
-    """The 41/521/2057-node timings came from the CC-versus-RCC acceptance
-    gate (a generated inverter bank on a segmented rail), not an OTA."""
+    """The 41/521/2057-node timings came from a generated inverter bank on a
+    segmented rail, not an OTA."""
     doc = " ".join(rcc.__doc__.split())
     i = doc.index("| rail nodes |")
     label = doc[max(0, i - 400):i]
     assert "original development site" in label and "inverters" in label
     assert "segmented" in label and "OTA" not in label
-
-
-def test_selfconsist_error_names_the_generated_rail():
-    doc = " ".join(selfconsist.__doc__.split())
-    i = doc.index("+1.5 %")
-    label = doc[max(0, i - 300):i]
-    assert "original development site" in label and "inverters" in label
-    assert "OTA" not in label
-    # the extracted OTA's figure is a different, smaller one
-    assert "on an extracted OTA there it was +0.6 % to +1.1 %" in doc
 
 
 # ------------------------------------------------------------ screening note

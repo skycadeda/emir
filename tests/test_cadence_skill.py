@@ -258,8 +258,8 @@ def test_save_lines_go_to_a_file_with_the_testbench_prefix():
     body = procedures(MAIN)["emirDoSaveLines"]
     assert '"--out" emirMainSaveFile' in body and '"--prefix" prefix' in body
     assert '"/emir_save.scs"' in body
-    # the Mode starts at "choose": save lines refuse until the person picks one
-    assert 'when( mode == "choose"' in body and "emirChooseMode()" in body
+    # one method: the save lines are every branch current, no Mode to choose
+    assert "emirChooseMode" not in MAIN and "emirMainMode" not in MAIN
     assert "emirMainPrefix" in MAIN and "Testbench instance prefix" in MAIN
     # the menu item only opens the form; nothing runs on an empty form
     assert '?itemText "Spectre save lines..."\n                       ?callback "emirSaveLinesForm()"' in MAIN

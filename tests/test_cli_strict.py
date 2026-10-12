@@ -8,12 +8,8 @@ import os
 import subprocess
 import sys
 
-import numpy as np
 import pytest
-from _helpers import CUR, DSPF, PROC, ROOT, cc_result, device_waves, emir, time_base, \
-    two_net_dspf
-
-from emir.validate import _psf_tran
+from _helpers import CUR, DSPF, PROC, ROOT, emir, rcc_result, two_net_dspf, two_net_result
 
 # ------------------------------------------------------------ allow_abbrev
 
@@ -54,7 +50,7 @@ def test_every_parser_refuses_abbreviations():
     ["run", "x.dspf", "--taps", "f"],              # was silently --taps-out
     ["check", "x.dspf", "--json-o", "f"],
     ["nets", "x.dspf", "--he"],
-    ["save-lines", "x.dspf", "--mode", "rcc", "--pre", "XI0."],
+    ["save-lines", "x.dspf", "--pre", "XI0."],
     ["pins", "x.dspf", "--net", "VDD", "--ne", "X"],
     ["selftest", "--kee"],
     ["validate", "--qui"],
@@ -74,46 +70,37 @@ def test_leak_guard_refuses_abbreviations():
 
 
 def test_a_taps_file_is_never_overwritten(tmp_path):
-    """`--taps f` on a CC run used to mean `--taps-out f`, which wrote the
-    ingested taps over the user's file."""
+    """`--taps f` once meant `--taps-out f`, which wrote the ingested taps
+    over the user's file: an unknown option is refused, nothing is written."""
     taps = tmp_path / "taps.csv"
     taps.write_text("mine\n")
-    p = emir("run", DSPF, "--net", "VDD", "--process", PROC, "--cc-sim", cc_result(tmp_path),
-             "--mode", "cc-grid", "--period", "1e-9", "--taps", taps)
+    p = emir("run", DSPF, "--net", "VDD", "--process", PROC, "--cc-sim", rcc_result(tmp_path),
+             "--period", "1e-9", "--taps", taps)
     assert p.returncode == 2 and taps.read_text() == "mine\n"
 
 
 # ------------------------------------------------------------ verdict lines
 
 
-def _multi_result(tmp_path):
-    t = time_base()
-    sigs = device_waves(t)
-    sigs.update({"MN0:s": -1e-3 * np.ones_like(t), "MN1:s": -2e-3 * np.ones_like(t),
-                 "MN0:d": 1e-3 * np.ones_like(t), "MN1:d": -1e-3 * np.ones_like(t)})
-    return _psf_tran(str(tmp_path / "all.tran"), t, sigs)
-
-
-@pytest.mark.parametrize("case", ["one-net-dc", "all-nets-dc", "one-net-cc", "all-nets-cc"])
+@pytest.mark.parametrize("case", ["one-net-dc", "all-nets-dc", "one-net-rcc", "all-nets-rcc"])
 def test_every_analysis_run_ends_with_a_verdict(tmp_path, case):
     if case == "one-net-dc":
         args, nets = [DSPF, "--net", "VDD", "--process", PROC, "--currents", CUR], 1
     elif case == "all-nets-dc":
         args, nets = [DSPF, "--process", PROC, "--currents", CUR], 1
-    elif case == "one-net-cc":
+    elif case == "one-net-rcc":
         args, nets = [DSPF, "--net", "VDD", "--process", PROC, "--cc-sim",
-                      cc_result(tmp_path), "--mode", "cc-grid", "--period", "1e-9"], 1
+                      rcc_result(tmp_path), "--period", "1e-9"], 1
     else:
         args, nets = [two_net_dspf(tmp_path), "--process", PROC, "--cc-sim",
-                      _multi_result(tmp_path), "--mode", "cc-grid", "--period", "1e-9",
-                      "--no-check",
+                      two_net_result(tmp_path), "--period", "1e-9", "--no-check",
                       "--json", tmp_path / "s.json"], 3
     p = emir("run", *args)
     assert p.returncode == 0, p.stdout + p.stderr
     lines = p.stdout.strip().splitlines()
     assert sum(1 for ln in lines if ln.strip().startswith("verdict ")) == nets
     assert lines[-1].startswith("overall verdict: ") and f"{nets} net(s)" in lines[-1]
-    if case == "all-nets-cc":
+    if case == "all-nets-rcc":
         verdicts = [n["verdict"] for n in json.load(open(tmp_path / "s.json"))["nets"]]
         worst = "FAIL" if "FAIL" in verdicts else "WARN" if "WARN" in verdicts else "CLEAN"
         assert lines[-1].startswith(f"overall verdict: {worst} -- 3 net(s): "

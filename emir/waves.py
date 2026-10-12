@@ -2,8 +2,8 @@
 
 EM post-processing lives or dies on getting the *right numbers off the right
 window*, so this module does one thing: turn a simulator output into
-`(sweep vector, {signal: array})` without interpreting it. All the physics --
-window selection, avg/rms/peak, sign conventions -- is in `ccsim.py`.
+`(sweep vector, {signal: array})` without interpreting it. The arithmetic --
+the window, avg/rms/peak -- is in `waveform.py`.
 
 The formats, recognised by their first bytes (never by the file name):
 
@@ -15,8 +15,8 @@ The formats, recognised by their first bytes (never by the file name):
 * **HSPICE ASCII** (`.option post=2`, a `.trN` file) -- `emir.hspice`.
 * **CSDF** (Xyce `format=probe`, PSpice, WRspice, Eldo) -- `emir.csdf`.
 
-Every reader returns the same `Waves`, so the modes, hierarchy and streaming
-work the same whichever simulator wrote the currents. `meta` carries what
+Every reader returns the same `Waves`, so a run works the same whichever
+simulator wrote the currents. `meta` carries what
 the file says about itself: `format`, and `simulator` / `simulator_version`
 where the header names them (the on-site verification, `emir verify-sim`,
 is looked up by them).
@@ -25,9 +25,9 @@ is looked up by them).
 binary HSPICE). Their layouts are undocumented or version-dependent; guessing
 at them would produce plausible-looking currents that are silently wrong,
 which is the worst possible failure for a sign-off-adjacent tool. `read()`
-detects them and says what to re-run, or how to convert, instead. Since
-`ccsim.run_spectre()` drives the simulator itself, it always asks for
-psfascii.
+detects them and says what to re-run, or how to convert, instead. Where
+emir drives Spectre itself (`opensim.run_spectre()`, `emir simulate`), it
+always asks for psfascii.
 """
 from __future__ import annotations
 
@@ -102,7 +102,7 @@ class Waves:
         The lookups go through an index built once per result (`_lookup`), so
         matching every branch of a large net is linear in the names asked for;
         scanning every saved signal for each name that missed made matching
-        the pins of a big CC result quadratic.
+        the branches of a big result quadratic.
         """
         have = self.data
         low, tails = self._lookup()
@@ -243,7 +243,14 @@ def _scalar(tok: str):
 
 
 def read_nutascii(path: str) -> list:
-    """A nutascii file may hold several plots; all of them are returned."""
+    """A nutascii file may hold several plots; all of them are returned.
+
+    A plot's first variable is its scale when it is time (`kind` "tran") or
+    frequency ("fd"). ngspice's "Operating Point" plot has no scale: every
+    variable is a signal, at one point ("op"). Any other first variable is
+    a sweep over something else, a DC sweep's `v-sweep` ("sweep"): `read`
+    refuses it (EMIR-E467). Taking column 0 as time whatever it held read an
+    operating point's first voltage as the time and dropped its signal."""
     with open(path, encoding="utf-8", errors="replace") as f:
         lines = f.read().splitlines()
     plots, i, n = [], 0, len(lines)
@@ -253,7 +260,7 @@ def read_nutascii(path: str) -> list:
             continue
         title = lines[i].split(":", 1)[1].strip()
         i += 1
-        flags, nvar, npt, names, in_vars = "real", 0, 0, [], False
+        flags, nvar, npt, names, types, in_vars = "real", 0, 0, [], [], False
         while i < n and not lines[i].startswith("Values:"):
             s = lines[i].strip()
             if s.startswith("Binary:"):
@@ -272,8 +279,10 @@ def read_nutascii(path: str) -> list:
                 body = s.split(":", 1)[1].strip()
                 if body:
                     names.append(body.split()[1])
+                    types.append((body.split()[2:3] or [""])[0])
             elif in_vars and s and len(names) < nvar:
                 names.append(s.split()[1])
+                types.append((s.split()[2:3] or [""])[0])
             i += 1
         i += 1                                             # skip "Values:"
         cplx = "complex" in flags
@@ -296,9 +305,23 @@ def read_nutascii(path: str) -> list:
             for v in range(nvar):
                 vals[p, v] = _nut(toks[k], cplx)
                 k += 1
-        data = {nm: vals[:, j] for j, nm in enumerate(names[1:], start=1)}
-        plots.append(Waves(np.real(vals[:, 0]), data, name=title,
-                           kind="tran" if not cplx else "fd"))
+        scale, stype = (names[0].lower(), types[0].lower()) if names else ("", "")
+        if "time" in (scale, stype) and not cplx:
+            kind = "tran"
+        elif cplx or scale in ("frequency", "freq") or stype == "frequency":
+            kind = "fd"
+        elif title.lower().startswith("operating point"):
+            kind = "op"
+        else:
+            kind = "sweep"
+        if kind == "op":
+            x, data = np.zeros(npt), {nm: vals[:, j] for j, nm in enumerate(names)}
+        else:
+            x = np.real(vals[:, 0])
+            data = {nm: vals[:, j] for j, nm in enumerate(names[1:], start=1)}
+        w = Waves(x, data, name=title, kind=kind)
+        w.scale = None if kind == "op" else (names[0] if names else None)
+        plots.append(w)
     if not plots:
         raise EmirError("EMIR-E410", f"{path}: no Plotname: found -- not nutascii", path=path)
     return plots
@@ -333,9 +356,10 @@ def load(result, analysis: str | None = None) -> Waves:
 def read(path: str, analysis: str | None = None) -> Waves:
     """Read one analysis from a file, or from a `-raw` output directory.
 
-    With a directory, `analysis` picks the file (substring match); without it,
-    the preference order above applies -- transient first, then PSS
-    time-domain, then PSS harmonics.
+    With a directory, `analysis` picks the file (substring match, without
+    regard to case); without it, the preference order above applies --
+    transient first, then PSS time-domain, then PSS harmonics. A nutascii
+    file of several plots: `_plot`.
 
     Every way a result can be unusable is an `EmirError` with its own code
     (binary PSF, binary raw, truncated, unreadable, an empty directory); a
@@ -384,11 +408,7 @@ def _read(path: str, analysis: str | None = None) -> Waves:
         plots = read_nutascii(path)
         for p in plots:
             p.meta.update(_nut_simulator(head))
-        if analysis:
-            for p in plots:
-                if analysis in (p.name or ""):
-                    return _apply_names(p, path)
-        return _apply_names(plots[0], path)
+        return _apply_names(_plot(path, plots, analysis), path)
     if b"\x00" in head:
         raise EmirError("EMIR-E410", f"{path}: a binary file this reader does not know "
                         f"(binary PSF XL, SST2, FSDB ...): write the result as PSF ASCII "
@@ -397,6 +417,43 @@ def _read(path: str, analysis: str | None = None) -> Waves:
     raise EmirError("EMIR-E410", f"{path}: unrecognised format (expected PSF ASCII, "
                      f"nutascii, HSPICE ASCII or CSDF; binary results are not read)",
                      path=path)
+
+
+def _plot(path: str, plots: list, analysis: str | None) -> Waves:
+    """The plot of a nutascii file a run reads. `--analysis sweep:N` is the
+    file's Nth plot; another `--analysis` the one plot whose title holds it,
+    or whose kind it is (`tran`, `op`), without regard to case (EMIR-E412
+    when none does). Without one: the file's only plot, else its one
+    transient (an ngspice file that holds `.op` and `.tran` once gave the
+    operating point, and its run said CLEAN on a rail the transient FAILs).
+    Several candidates are EMIR-E465, naming them; a plot over something other
+    than time or frequency (a DC sweep) is EMIR-E467."""
+    from .hspice import select_sweep
+    shown = "; ".join(f"sweep:{k} = {p.name or '?'} [{p.kind}]"
+                      for k, p in enumerate(plots[:8], 1)) + (" ..." if len(plots) > 8 else "")
+    a = (analysis or "").strip()
+    if re.fullmatch(r"(?:sweep|table)\s*[:=]\s*\d+", a, re.I):
+        p = plots[select_sweep(path, a, [x.name or "?" for x in plots], ["plot"])]
+    else:
+        cand = ([x for x in plots if a.lower() in (x.name or "").lower() or a.lower() == x.kind]
+                if a else plots if len(plots) == 1 else
+                [x for x in plots if x.kind == "tran"])
+        if not cand:
+            raise EmirError("EMIR-E412", f"{path}: no analysis "
+                            + (f"matching {analysis!r}" if a else "over time") +
+                            f" among its {len(plots)} plot(s) ({shown}): name one with "
+                            f"--analysis", path=path)
+        if len(cand) > 1:
+            raise EmirError("EMIR-E465", f"{path} holds {len(cand)} plots "
+                            + (f"matching {analysis!r} " if a else "over time ") +
+                            f"({shown}): EM is checked on one waveform; pick one with "
+                            f"--analysis sweep:N", path=path, details={"tables": len(plots)})
+        p = cand[0]
+    if p.kind == "sweep":
+        raise EmirError("EMIR-E467", f"{path}: plot {p.name or '?'!r} is swept over "
+                        f"{getattr(p, 'scale', None) or '?'!r}, not time: EM needs a "
+                        f"transient result (or an operating point)", path=path)
+    return p
 
 
 def peek(path: str, analysis: str | None = None) -> dict:
@@ -454,10 +511,6 @@ def peek(path: str, analysis: str | None = None) -> dict:
                     meta["simulator_from"] = "names sidecar"
         if isinstance(doc.get("sim_args"), str):
             meta["sim_args"] = doc["sim_args"]
-        if isinstance(doc.get("kinds"), dict):
-            # how emir's route read each pin (a probe, a MOSFET terminal ...):
-            # what the on-site verification is matched against
-            meta["pin_kinds"] = doc["kinds"]
     return meta
 
 
@@ -496,26 +549,22 @@ def _precision_notice(w: Waves):
 
 
 def _apply_names(w: Waves, path: str) -> Waves:
-    """Rename a Xyce, ngspice or HSPICE result into Spectre's `inst:pin`
-    convention.
+    """Rename a Xyce, ngspice or HSPICE result into the DSPF's names
+    (`R:1`, Spectre's convention).
 
-    Xyce spells a terminal current `I(R1)` / `ID(XMP0:MN1)` and
-    upper-cases everything, ngspice `i(v_mp0)` or `v_mp0#branch`, HSPICE
-    `i(xi0.rm1)` / `i1(xi0.mn0)` in lower case, so a caller asking for
-    `Rm1:1` would miss. Rather than guess at the correspondence, whatever
-    built the deck records the mapping it used and drops it beside the
-    result as `<result>.names` (`emir schema names`):
-    ``{"map": {"I(V_MP0)": ["MP0:s", 1]}}``. Keys match without regard to
-    case; the stored sign carries Spectre's terminal direction for pin 2 /
-    pin n. Without a sidecar this is a no-op, so Spectre results are
-    untouched. A sidecar that is not of that form is EMIR-E424, naming the
-    sidecar (not the result).
+    Xyce spells a branch current `I(XI0:RM1)` and upper-cases everything,
+    ngspice `@r.xi0.rm1[i]`, HSPICE `i(xi0.rm1)` in lower case, so a caller
+    asking for `Rm1:1` would miss. Rather than guess at the correspondence,
+    whatever built the deck records the mapping it used and drops it beside
+    the result as `<result>.names` (`emir schema names`):
+    ``{"map": {"I(XI0:RM1)": ["Rm1:1", 1]}}``. Keys match without regard to
+    case; the stored sign turns the saved current into the DSPF's direction.
+    Without a sidecar this is a no-op, so Spectre results are untouched. A
+    sidecar that is not of that form is EMIR-E424, naming the sidecar (not
+    the result).
 
-    Two HSPICE refinements: a `kcl` entry of the sidecar sets the sign of a
-    terminal current whose direction the manuals leave open (a MOSFET's I3)
-    from the device's own saved terminal currents (`kcl_signs`); and in a
-    format-9007 result, whose names are cut to 16 characters, a name
-    matches the sidecar key it is the unique 16-character start of.
+    In a format-9007 HSPICE result, whose names are cut to 16 characters, a
+    name matches the sidecar key it is the unique 16-character start of.
     The sidecar's `simulator` / `simulator_version` fill `meta` where the
     result's header does not say them.
     """
@@ -533,10 +582,6 @@ def _apply_names(w: Waves, path: str) -> Waves:
                 w.meta["simulator_from"] = "names sidecar"
     if doc.get("sim_args") is not None:
         w.meta["sim_args"] = doc["sim_args"]
-    if doc.get("kinds"):
-        w.meta["pin_kinds"] = doc["kinds"]
-    if doc.get("kcl"):
-        kcl_signs(w, m, doc["kcl"])
     cut = w.meta.get("post_version") == "9007"
     short = {}
     if cut:
@@ -573,109 +618,30 @@ def _apply_names(w: Waves, path: str) -> Waves:
     return w
 
 
-#: a device's terminal currents must sum to within this fraction of its
-#: largest one for KCL to decide a sign
-KCL_TOL = 1e-3
-
-
-def kcl_signs(w: Waves, m: dict, kcl: dict) -> dict:
-    """Set the sign of each `kcl` entry's current in `m` (the sidecar map,
-    upper-case keys) from KCL over the device's saved terminal currents:
-    +1 when they sum to zero with it as saved (every terminal current into
-    the device), -1 when they sum to zero with it negated (saved out of the
-    device). A current that is negligible against the device's others keeps
-    the sidecar's sign; one with which neither sign closes KCL keeps it too,
-    with EMIR-W465. Returns `{key: sign or None}`; `w.meta["kcl"]` says what
-    was decided per device."""
-    from .errors import notice
-    have = {k.upper(): k for k in w.data}
-    decided, failed, report = {}, [], {}
-    for key, ent in kcl.items():
-        K = key.upper()
-        if K not in have or K not in m:
-            continue
-        dev = ent.get("device") or key
-        terms = [have.get(str(t).upper()) for t in ent.get("terms") or []]
-        if not terms or any(t is None for t in terms):
-            failed.append(f"{dev} (a terminal current is not in the result)")
-            decided[K] = None
-            continue
-        i3 = np.real(np.asarray(w.data[have[K]], dtype=complex)).astype(float)
-        rest = sum(np.real(np.asarray(w.data[t], dtype=complex)).astype(float) for t in terms)
-        scale = max([float(np.max(np.abs(i3)))] +
-                    [float(np.max(np.abs(np.real(w.data[t])))) for t in terms])
-        if scale == 0.0 or float(np.max(np.abs(i3))) <= KCL_TOL * scale:
-            report[dev] = {"sign": m[K][1], "how": "negligible: the sidecar's sign"}
-            decided[K] = m[K][1]
-            continue
-        r_in = float(np.max(np.abs(rest + i3)))
-        r_out = float(np.max(np.abs(rest - i3)))
-        sign = 1.0 if r_in <= r_out else -1.0
-        if min(r_in, r_out) > KCL_TOL * scale:
-            failed.append(f"{dev} (residual {min(r_in, r_out) / scale:.2g} of its largest "
-                          f"terminal current)")
-            report[dev] = {"sign": m[K][1], "how": "KCL does not close: the sidecar's sign"}
-            decided[K] = None
-            continue
-        m[K] = (m[K][0], sign)
-        decided[K] = sign
-        report[dev] = {"sign": sign, "how": "KCL",
-                       "residual": min(r_in, r_out) / scale}
-    w.meta["kcl"] = report
-    by = [d for d, r in report.items() if r["how"] == "KCL"]
-    if by:
-        into = [d for d in by if report[d]["sign"] > 0]
-        out_ = [d for d in by if report[d]["sign"] < 0]
-        notice("EMIR-I465", f"{w.meta.get('path') or w.name}: the source (emitter) current "
-               f"sign of {len(by)} device(s) set from KCL: "
-               + "; ".join(x for x in (
-                   f"saved into the device for {', '.join(into[:4])}"
-                   f"{' ...' if len(into) > 4 else ''}" if into else "",
-                   f"saved out of the device for {', '.join(out_[:4])}"
-                   f"{' ...' if len(out_) > 4 else ''}" if out_ else "") if x), _log)
-    if failed:
-        notice("EMIR-W465", f"{w.meta.get('path') or w.name}: the terminal currents of "
-               f"{len(failed)} device(s) do not sum to zero with either sign of the source "
-               f"current, so the documented sign (out of the source) was used: "
-               f"{', '.join(failed[:4])}{' ...' if len(failed) > 4 else ''}", _log)
-    return decided
-
-
 def _log(line):
     import sys
     print(line, file=sys.stderr)
 
 
 def load_sidecar(side: str) -> dict:
-    """A names sidecar: `{"map": {KEY: (dspf name, sign)}, "kcl": {...},
-    "simulator": ..., "simulator_version": ...}` (keys of `map` upper-cased);
+    """A names sidecar: `{"map": {KEY: (dspf name, sign)}, "simulator": ...,
+    "simulator_version": ..., "sim_args": ...}` (keys of `map` upper-cased);
     EMIR-E424 when it is not of the documented form."""
     m = load_names(side)
     with open(side, encoding="utf-8") as f:
         doc = json.load(f)
-    kcl = doc.get("kcl") or {}
-    ok = isinstance(kcl, dict) and all(
-        isinstance(v, dict) and isinstance(v.get("terms"), list)
-        and all(isinstance(t, str) for t in v["terms"]) for v in kcl.values())
-    if not ok:
-        raise EmirError("EMIR-E424", f"{side}: `kcl` is not {{NAME: {{\"terms\": [NAME, "
-                        f"...], \"device\": ...}}}}; `emir schema names` prints the format",
-                        path=side)
     sim = doc.get("simulator")
     ver = doc.get("simulator_version")
     args = doc.get("sim_args")
-    kinds = doc.get("kinds")
-    return {"map": m, "kcl": kcl,
+    return {"map": m,
             "simulator": sim if isinstance(sim, str) and sim else None,
             "simulator_version": ver if isinstance(ver, str) and ver else None,
-            "sim_args": args if isinstance(args, str) else None,
-            "kinds": ({str(k): v for k, v in kinds.items() if isinstance(v, str)}
-                      if isinstance(kinds, dict) else None)}
+            "sim_args": args if isinstance(args, str) else None}
 
 
 def load_names(side: str) -> dict:
     """The `map` of a names sidecar, keys upper-cased; EMIR-E424 when the
-    file is not ``{"map": {NAME: ["inst:pin", sign]}}``."""
+    file is not ``{"map": {NAME: ["R:1", sign]}}``."""
     def bad(why):
         return EmirError("EMIR-E424", f"{side}: {why}; `emir schema names` prints the "
                          f"format", path=side)
@@ -694,12 +660,12 @@ def load_names(side: str) -> dict:
               and v[0] and isinstance(v[1], (int, float)) and not isinstance(v[1], bool)
               and np.isfinite(v[1]))
         if not ok:
-            raise bad(f"entry {k!r}: {v!r} is not [\"inst:pin\", sign]")
+            raise bad(f"entry {k!r}: {v!r} is not [\"R:1\", sign]")
         out[str(k).upper()] = (v[0], float(v[1]))
     return out
 
 
-#: signal names in the style of a SPICE simulator, not Spectre's `inst:pin`:
+#: signal names in the style of a SPICE simulator, not the DSPF's `R:1`:
 #: `I(..)`, Xyce's `ID(..)`, HSPICE's `i1(..)` .. `i4(..)`, ngspice's `@..`
 #: and `..#branch`
 _SPICE_NAME = re.compile(r"^(?:i[a-z0-9]?\(|@)|#branch$", re.I)
@@ -716,7 +682,7 @@ def naming_hint(w: Waves) -> str:
         return ""
     side = (w.meta.get("path") or "<result>") + ".names"
     return (f" The result names its currents in SPICE style ({', '.join(spice[:3])}"
-            f"{' ...' if len(spice) > 3 else ''}), not as the DSPF's inst:pin or R:1 "
+            f"{' ...' if len(spice) > 3 else ''}), not as the DSPF's R:1 "
             f"names, and no {os.path.basename(side)} sidecar maps them: write one "
             f"beside the result (`emir schema names` prints the format)")
 
@@ -726,7 +692,7 @@ def _pick(d: str, analysis: str | None) -> str:
              if not f.startswith(".") and f != "logFile"
              and os.path.isfile(os.path.join(d, f))]
     if analysis:
-        hit = [f for f in files if analysis in f]
+        hit = [f for f in files if analysis.lower() in f.lower()]
         if not hit:
             raise EmirError("EMIR-E412", f"{d}: no result file matching {analysis!r} "
                              f"(have: {', '.join(files) or 'nothing'})", path=d)

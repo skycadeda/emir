@@ -74,7 +74,7 @@ def test_the_licence_is_mit():
 #: where "Apache" may appear: the open PDKs' data and third-party packages
 #: (CHANGELOG.md is not here: its release notes state one licence, MIT, and name
 #: Apache-2.0 only for the open PDKs' data, as every other file does)
-APACHE_OK = ("pdks/", "THIRD_PARTY_NOTICES.md", "docs/pdk-onboarding.md",
+APACHE_OK = ("pdks/", "THIRD_PARTY_NOTICES.md", "docs/process-files.md",
              ".github/ISSUE_TEMPLATE/pdk_onboarding.yml", "tests/test_pdks.py",
              "tests/test_licence_and_claims.py", "tests/test_cadence_files.py")
 
@@ -135,7 +135,7 @@ def test_results_carry_the_disclaimer(tmp_path):
 
 
 def test_saf_is_attributed_once_and_never_compared():
-    allowed = {"emir/magic.py", "docs/open-source-flow.md", "THIRD_PARTY_NOTICES.md",
+    allowed = {"emir/magic.py", "docs/process-files.md", "THIRD_PARTY_NOTICES.md",
                "NOTICE", "CHANGELOG.md", "tests/test_leak_guard.py",
                "tests/test_licence_and_claims.py"}
     for rel, text in tracked_text_files():
@@ -146,7 +146,7 @@ def test_saf_is_attributed_once_and_never_compared():
             assert not re.search(r"SAF's (own )?results|compared with SAF|against SAF", text), rel
     assert "Skycadeda Analog Framework (SAF)" in read("emir/magic.py").split('"""')[1]
     assert "Skycadeda Analog Framework (SAF)" in read("NOTICE")
-    doc = read("docs/open-source-flow.md")
+    doc = read("docs/process-files.md")
     assert len(re.findall(r"\bSAF\b", doc)) == 1
 
 

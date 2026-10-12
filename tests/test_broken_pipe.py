@@ -4,7 +4,7 @@ Agents read commands through pipes that close early: `emir run ... --format
 json 2>&1 | head -c 300`. The next log line then meets a broken pipe. The
 command must still finish, write its files (--summary-out, --out, -o) and
 exit with its own status; only the lines nobody reads are lost. Covered for
-run, layout, abstract and simulate, in two ways:
+run, the magic route and simulate, in two ways:
 
 * in a child process whose stdout and stderr are a pipe with no reader at all
   (every write fails: the strongest case, and the interpreter's final flush
@@ -147,8 +147,8 @@ def test_nets_listing_into_a_closed_pipe_exits_0(tmp_path):
 
 
 def test_extract_with_magic_keeps_its_files(tmp_path):
-    """magic's extraction finishes and writes the DSPF and the CC netlist when
-    the reader of its output is gone (a stand-in magic, tests/_helpers)."""
+    """magic's extraction finishes and writes the DSPF when the reader of its
+    output is gone (a stand-in magic, tests/_helpers)."""
     if not HAVE_KLAYOUT:
         pytest.skip(f"needs the klayout extra: {install_hint('klayout')}")
     out = tmp_path / "ext"
@@ -156,32 +156,7 @@ def test_extract_with_magic_keeps_its_files(tmp_path):
     args = ["extract", "--tool", "magic", "--gds", os.path.join(TINY, "tiny.gds"),
             "--process", SKY, "--magic", fake_magic(tmp_path), "--magicrc", rc, "--out", out]
     assert closed_pipe_run([*args, "--format", "json"]) == 0
-    assert (out / "tiny.dspf").is_file() and (out / "tiny.cc.spice").is_file()
-
-
-# ------------------------------------------------------------------ abstract
-
-
-@needs_examples
-def test_abstract_writes_its_file(tmp_path):
-    spec = importlib.util.spec_from_file_location(
-        "make_inputs", os.path.join(EXAMPLES, "05_chip_level", "make_inputs.py"))
-    mi = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mi)
-    with contextlib.redirect_stdout(io.StringIO()):
-        mi.main(str(tmp_path))
-    args = ["abstract", tmp_path / "pll.dspf", "--process", tmp_path / "process.yaml",
-            "--cc-sim", tmp_path / "pll.raw", "--mode", "cc-grid", "--period", "2.5e-9",
-            "--points", "1000",
-            "--vdd", "1.0"]
-    a1 = tmp_path / "a1.abstract.json"
-    assert closed_pipe_run([*args, "-o", a1, "--format", "json"]) == 0
-    assert schema_of(a1) == "emir.abstract/1"
-    a2 = tmp_path / "a2.abstract.json"
-    code, s = head_c([*args, "-o", a2, "--format", "json"], n=100)
-    assert s.refused >= 1 and code == 0
-    d1, d2 = (json.loads(a.read_text()) for a in (a1, a2))
-    assert d2["schema"] == "emir.abstract/1" and d2["nets"] == d1["nets"]
+    assert (out / "tiny.dspf").is_file() and not (out / "tiny.cc.spice").exists()
 
 
 # ------------------------------------------------------------------ simulate
@@ -202,11 +177,11 @@ def _chdir(path):
 @needs_examples
 @pytest.mark.skipif(SIM is None, reason="needs ngspice or Xyce")
 def test_simulate_writes_its_result(tmp_path):
-    for f in ("loadrail.dspf", "models.sp", "cc.sp", "tb_rcc.cir"):
+    for f in ("loadrail.dspf", "models.sp", "tb_rcc.cir"):
         shutil.copy(os.path.join(EXAMPLES, "02_xyce", f), tmp_path / f)
     raw = tmp_path / "sim" / "r.raw"
     args = ["simulate", "tb_rcc.cir", "--sim", SIM, "--dspf", "loadrail.dspf",
-            "--mode", "rcc", "--format", "json"]
+            "--format", "json"]
     assert closed_pipe_run([*args, "--out", raw], cwd=tmp_path) == 0
     assert raw.is_file() and (tmp_path / "sim" / "r.raw.names").is_file()
     raw2 = tmp_path / "sim2" / "r.raw"

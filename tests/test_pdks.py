@@ -153,11 +153,10 @@ def test_template_documents_every_key_the_checker_knows():
     assert set(chk._VIA_REQ) | set(chk._VIA_NUM) <= via_keys
     assert {"estimate", "rms_peak_estimate", "ict_name"} <= via_keys
     assert {"pdk", "warn_fraction", "temp_reference", "em_tref", "jmax_factor",
-            "dspf_layers", "cap_models", "ict_conductor_pattern"} <= set(d)
-    caps = set().union(*(set(x) for x in d["cap_models"].values()))
-    assert {"cj", "cjsw", "cox", "ron_sq", "esr_a", "esr_w", "esr_l",
-            "esr_w_range", "esr_l_range", "esr_fit_freq"} <= caps
-    assert {"default", "mos_default"} <= set(d["cap_models"])
+            "dspf_layers", "ict_conductor_pattern"} <= set(d)
+    # every top-level key the template shows is one the format has
+    from emir.schemas import process_schema
+    assert set(d) <= set(process_schema()["properties"])
     # the keys of a file entered by hand: a source per value, the width loss
     # and, as comments (each excludes something the template shows), the
     # provenance and Black's derating

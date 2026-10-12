@@ -1,8 +1,8 @@
 * Example 08: the NMOS sink array, its gate vb pulsed from 0 to 1.0 V (4 ns
-* period, three periods from 0.5 ns), its drain net out held at 1.8 V.
-* run.sh writes tb_rcc.cir (the DSPF itself: the RC netlist, for rcc) and
-* tb_cc.cir (the CC netlist magic's extraction wrote, for cc-grid) from this
-* file, filling in @PDK_ROOT@ and @NETLIST@ (the simulators do not expand
+* period, four periods from 0.5 ns; the run averages the record's last three
+* whole periods, 4.5 to 16.5 ns), its drain net out held at 1.8 V.
+* run.sh writes tb_rcc.cir (the DSPF itself: the RC netlist, for rcc) from
+* this file, filling in @PDK_ROOT@ and @NETLIST@ (the simulators do not expand
 * environment variables in include paths).
 * SKY130 typical models, as the PDK installs them for ngspice (Xyce reads them).
 .param mc_mm_switch=0 mc_pr_switch=0
@@ -15,8 +15,8 @@ Vout out 0 1.8
 Vvss vss 0 0
 Vvb vb 0 PULSE(0 1.0 0.5n 0.2n 0.2n 1.8n 4n)
 Xdut vb out vss sink
-* reltol 1e-4: the simulators' default 1e-3 is as large as what the
-* self-consistent loop corrects (EMIR-W540); ngspice reads this line's reltol too
+* reltol 1e-4, tighter than the simulators' default 1e-3; ngspice reads this
+* line's reltol too
 .options timeint reltol=1e-4
-.tran 0.02n 12.5n
+.tran 0.02n 16.5n
 .end

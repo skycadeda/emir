@@ -18,8 +18,6 @@ from _helpers import CUR, DSPF, PROC, ROOT, emir, write
 
 from emir import csdf, hspice, waves
 from emir.errors import EmirError, collecting
-from emir.opensim import save_set
-from emir.dspf import parse
 
 DATA = os.path.join(ROOT, "tests", "data", "hspice")
 
@@ -248,78 +246,7 @@ def test_csdf_round_trip_both_forms(tmp_path):
             np.testing.assert_allclose(got, np.array(blocks[k - 1])[:, 1:], rtol=1e-7)
 
 
-# ------------------------------------------------------------ names and signs
-
-
-def _mos_dspf(tmp_path):
-    """A rail feeding the source of a MOSFET MN0 through one contact."""
-    text = open(DSPF).read()
-    text = text.replace("MP0:s MP0 s", "MN0:s MN0 s").replace("MP0:s", "MN0:s")
-    return write(tmp_path / "mos.dspf", text)
-
-
-@pytest.mark.parametrize("convention", ["out", "into"])
-def test_hspice_source_sign_is_set_from_kcl(tmp_path, convention):
-    """HSPICE's manuals draw a MOSFET's I3 out of the source; a run was not
-    seen to confirm it. Written either way, the pin current the run reads is
-    the same: the sign comes from KCL over the device's terminals."""
-    d = parse(_mos_dspf(tmp_path))
-    ss = save_set(d, ["VDD"], "cc", "hspice", ["XI0"], inst_kinds={"MN0": "M"})
-    side = ss.sidecar()
-    assert side["map"]["I3(XI0.MN0)"] == ["MN0:s", -1]
-    assert side["kcl"]["I3(XI0.MN0)"]["terms"] == ["I1(XI0.MN0)", "I2(XI0.MN0)",
-                                                    "I4(XI0.MN0)"]
-    t = np.linspace(0, 4e-9, 41)
-    into_s = -1e-3 * (1.5 + np.sin(2 * np.pi * t / 1e-9))   # into the source (Spectre's)
-    i1, i2, i4 = -into_s * 0.999, 1e-9 + 0 * t, -into_s * 0.001 - 1e-9
-    i3 = -into_s if convention == "out" else into_s
-    names = ["TIME", "i1(xi0.mn0", "i2(xi0.mn0", "i3(xi0.mn0", "i4(xi0.mn0"]
-    rows = [[t[k], i1[k], i2[k], i3[k], i4[k]] for k in range(len(t))]
-    for k in range(4):                                     # the other loads: zero
-        if k:
-            names.append(f"i(xi0.dummy{k}")
-            for r in rows:
-                r.append(0.0)
-    p = hspice.write_tr0ascii(str(tmp_path / "cc.tr0"), names, [([], rows)])
-    with open(p + ".names", "w") as f:
-        json.dump(side, f)
-    with collecting() as notes:
-        w = waves.read(p)
-    np.testing.assert_allclose(w.data["MN0:s"], into_s, rtol=1e-6)
-    assert w.meta["kcl"]["xi0.mn0"]["how"] == "KCL"
-    assert w.meta["kcl"]["xi0.mn0"]["sign"] == (-1 if convention == "out" else 1)
-    assert any(n["code"] == "EMIR-I465" for n in notes)
-
-
-def test_hspice_kcl_that_does_not_close_keeps_the_documented_sign(tmp_path):
-    d = parse(_mos_dspf(tmp_path))
-    side = save_set(d, ["VDD"], "cc", "hspice", ["XI0"], inst_kinds={"MN0": "M"}).sidecar()
-    t = np.linspace(0, 1e-9, 5)
-    rows = [[x, 1e-3, 0.0, 2e-3, 5e-4] for x in t]          # sums to neither
-    p = hspice.write_tr0ascii(str(tmp_path / "bad.tr0"),
-                              ["TIME", "i1(xi0.mn0", "i2(xi0.mn0", "i3(xi0.mn0",
-                               "i4(xi0.mn0"], [([], rows)])
-    with open(p + ".names", "w") as f:
-        json.dump(side, f)
-    with collecting() as notes:
-        w = waves.read(p)
-    np.testing.assert_allclose(w.data["MN0:s"], -2e-3)      # the documented sign
-    assert any(n["code"] == "EMIR-W465" for n in notes)
-
-
-def test_pin_2_of_a_two_terminal_element_is_minus_i1_in_hspice(tmp_path):
-    """Pin 2's current is the negative of the current into pin 1 (`-i1`):
-    no dependence on how HSPICE draws `i2`. Both pins on the net: one
-    signal maps to one pin, so the second needs a probe."""
-    text = open(DSPF).read().replace("MP0:s MP0 s", "R9:2 R9 2").replace("MP0:s", "R9:2")
-    d = parse(write(tmp_path / "r.dspf", text))
-    ss = save_set(d, ["VDD"], "cc", "hspice", [], inst_kinds={"R9": "R"})
-    assert ss.names["I1(R9)"] == ["R9:2", -1] and not ss.unprintable
-    assert "i2(r9)" not in ss.signals and "i1(r9)" in ss.signals
-    both = text.replace("*|I (MP1:s MP1 s", "*|I (R9:1 R9 1").replace("MP1:s", "R9:1")
-    d = parse(write(tmp_path / "r2.dspf", both))
-    ss = save_set(d, ["VDD"], "cc", "hspice", [], inst_kinds={"R9": "R"})
-    assert ss.names["I1(R9)"][0] in ("R9:1", "R9:2") and len(ss.unprintable) == 1
+# ------------------------------------------------------------ names
 
 
 def test_9007_names_cut_at_16_match_the_sidecar(tmp_path):
@@ -355,39 +282,32 @@ def test_save_lines_hspice_rcc_and_its_sidecar(tmp_path):
 
 def test_hspice_route_end_to_end_through_the_run(tmp_path):
     """save-lines --sim hspice, a .tr0 written with those names (the
-    currents of the sample's DC loads), then emir run: the selftest's
-    hand-checked numbers (1.667x, 54 mV) in both modes."""
+    branch currents of the sample's DC loads), then emir run: the selftest's
+    hand-checked numbers (1.667x, 54 mV)."""
     from emir.verify_sim import DC
-    for mode in ("rcc", "cc"):
-        side = tmp_path / f"{mode}.tr0.names"
-        p = emir("save-lines", DSPF, "--mode", mode, "--sim", "hspice", "--names-out", side,
-                 "--format", "json")
-        assert p.returncode == 0, p.stderr
-        names = list(json.loads(p.stdout)["names"])
-        t = np.linspace(0, 4e-9, 9)
-        cols = []
-        for key in names:
-            pin = json.load(open(side))["map"][key]
-            if mode == "rcc":
-                amps = DC["branch_A"][pin[0].split(":")[0]]
-            else:
-                amps = 1e-3 * pin[1]                      # into the source: i3 out of it
-            cols.append(amps)
-        rows = [[x, *cols] for x in t]
-        res = hspice.write_tr0ascii(str(tmp_path / f"{mode}.tr0"),
-                                    ["TIME"] + [k.lower() for k in names], [([], rows)])
-        r = emir("run", DSPF, "--process", PROC, "--cc-sim", res, "--mode",
-                 "rcc" if mode == "rcc" else "cc-grid", "--sim", "hspice", "--format", "json")
-        assert r.returncode == 0, r.stderr
-        s = json.loads(r.stdout)
-        net = s["nets"][0]
-        assert abs(net["max_ratio"]["all"] - 4 / 2.4) < 1e-6
-        assert abs(net["ir_drop_mV"] - 54.0) < 1e-6
-        v = s["simulator_verification"]
-        assert (v["status"], v["reason"]) == ("not verified", "version unknown")
-        assert v["simulator"] == "hspice"
-        # save-lines' sidecar does not know the version: never matched (W416)
-        assert any(n["code"] == "EMIR-W416" for n in s["notices"])
+    side = tmp_path / "rcc.tr0.names"
+    p = emir("save-lines", DSPF, "--sim", "hspice", "--names-out", side, "--format", "json")
+    assert p.returncode == 0, p.stderr
+    names = list(json.loads(p.stdout)["names"])
+    t = np.linspace(0, 4e-9, 9)
+    cols = [DC["branch_A"][json.load(open(side))["map"][key][0].split(":")[0]]
+            for key in names]
+    rows = [[x, *cols] for x in t]
+    res = hspice.write_tr0ascii(str(tmp_path / "rcc.tr0"),
+                                ["TIME"] + [k.lower() for k in names], [([], rows)])
+    r = emir("run", DSPF, "--process", PROC, "--cc-sim", res, "--sim", "hspice",
+             "--period", "1ns", "--format", "json")
+    assert r.returncode == 0, r.stderr
+    s = json.loads(r.stdout)
+    net = s["nets"][0]
+    assert net["mode"] == "rcc"
+    assert abs(net["max_ratio"]["all"] - 4 / 2.4) < 1e-6
+    assert abs(net["ir_drop_mV"] - 54.0) < 1e-6
+    v = s["simulator_verification"]
+    assert (v["status"], v["reason"]) == ("not verified", "version unknown")
+    assert v["simulator"] == "hspice"
+    # save-lines' sidecar does not know the version: never matched (W416)
+    assert any(n["code"] == "EMIR-W416" for n in s["notices"])
 
 
 # ------------------------------------------------------------ simulate --sim hspice|spectre
@@ -423,17 +343,14 @@ def test_simulate_licensed_run_without_the_simulator_exits_3(tmp_path, monkeypat
     assert p.returncode == 3 and json.loads(p.stdout)["code"] == "EMIR-E662"
 
 
-def test_simulate_spectre_needs_a_prefix_and_takes_no_probes(tmp_path):
+def test_simulate_spectre_needs_a_prefix(tmp_path):
     f = _verify_bench(tmp_path, "spectre")[0]
     base = ["simulate", f["testbench"], "--sim", "spectre", "--dspf", f["dspf"],
             "--format", "json"]
     p = emir(*base)
-    assert p.returncode == 2 and json.loads(p.stdout)["code"] == "EMIR-E520"   # no --mode
-    base += ["--mode", "rcc"]
-    p = emir(*base)
     assert p.returncode == 2 and json.loads(p.stdout)["code"] == "EMIR-E507"
-    p = emir(*base, "--prefix", "XI0.", "--probe")
-    assert p.returncode == 2 and json.loads(p.stdout)["code"] == "EMIR-E513"
+    p = emir(*base, "--prefix", "XI0.", "--probe")      # gone in 1.1
+    assert p.returncode == 2 and json.loads(p.stdout)["code"] == "EMIR-E507"
     p = emir(*base, "--prefix", "XI0.", "--mode", "rcc", "--out", tmp_path / "s.raw")
     assert p.returncode == 0, p.stderr
     doc = json.loads(p.stdout)
@@ -467,7 +384,7 @@ def test_simulate_run_with_a_stand_in_reads_the_result(tmp_path, monkeypatch, si
     assert doc["ran"] and not doc["missing"] and doc["found"] == 16
     assert doc["simulator_version"].startswith("fake" + sim)
     r = emir("run", f["dspf"], "--process", PROC, "--cc-sim", out, "--mode", "rcc",
-             "--format", "json")
+             "--period", "10ns", "--format", "json")
     assert r.returncode == 0, r.stderr
     s = json.loads(r.stdout)
     assert abs(s["nets"][0]["ir_drop_mV"] - 54.0) < 1e-6

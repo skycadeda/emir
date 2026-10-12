@@ -29,8 +29,6 @@ OUT = "emir_out/process.yaml"
 def _by_hand(f: Facts, plan: Plan):
     if f.get("process") or not f.get("dspf") or not f.dspf_info["ok"]:
         return
-    if f.get("abstracts"):
-        return                       # a chip-level plan: the blocks' process file
     plan.add("process-new", command_line("process", "new", "--from-dspf", f.get("dspf"),
                                          "-o", OUT, f.fmt()),
              "only when no readable process file exists for the PDK -- not in pdks/ (ls "

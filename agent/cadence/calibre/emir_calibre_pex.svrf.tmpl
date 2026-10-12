@@ -7,8 +7,8 @@
 // EMIR's DSPF reader, and check every statement against your release.
 //
 // One run per kind, from ONE LVS database:
-//   R      -> ${CELL}.r_only.dspf   the EM/IR grid `emir run` screens
-//   C+CC   -> ${CELL}.c_only_coupled.dspf   the netlist simulated for cc-grid
+//   R      -> ${CELL}.r_only.dspf       the grid `emir run` screens with DC currents
+//   RCC    -> ${CELL}.rc_coupled.dspf   the RC netlist rcc simulates and screens
 
 PEX NETLIST "${CELL}.r_only.dspf" DSPF SOURCENAMES
 PEX REDUCE ANALOG NO

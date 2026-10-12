@@ -26,7 +26,7 @@ foundry-qualified flow remains the sign-off.
 
 Each of the three PDK files says `provenance: public-pdk-data`, and every report
 says so per layer. A file typed by hand from a design manual (when no readable
-data exists: [Entering EM data by hand](../docs/pdk-onboarding.md#entering-em-data-by-hand))
+data exists: [Entering EM data by hand](../docs/process-files.md#entering-em-data-by-hand))
 says `provenance: hand-entered` and names a source per value under `sources:`.
 
 Every value in the three PDK files names its source on its own line, as

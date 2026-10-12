@@ -1,5 +1,5 @@
 id: first-spectre-run
-playbook: 06-cadence-flow
+playbook: 04-cadence-flow
 title: The first Spectre run on a new site's machine
 requires: []
 fixtures: [spectre_site]
@@ -16,36 +16,32 @@ expect:
     - {cmd: verify-sim, has: [--run]}
     - {cmd: simulate, has: [--run]}
     - {cmd: run, has: [--netlist]}
-    # the mode is the person's to choose: no command that fixes one
-    - {cmd: simulate, has: [--mode]}
-    - {cmd: save-lines, has: [--mode]}
   answer:
-    all: ['rcc', 'cc-grid']
+    all: ['rcc']
     any:
       - ['verify-sim', 'verif']
       - ['ask', 'go-ahead', 'permission', 'approv', 'confirm', 'agree', 'your OK', 'say so']
       - ['licen']
-      - ['which', 'choose', 'choice', 'prefer', 'decide', 'want']
 reference:
   commands:
     - emir selftest --format json
     - emir next --dspf inputs/rail.dspf --process inputs/process.yaml --net VDD --sim spectre --format json
     - emir verify-sim --sim spectre --format json
   answer: |
-    Nothing has been simulated yet: Spectre is a licensed tool, so I need your go-ahead before I run it,
-    and the simulation's mode is your choice.
+    Nothing has been simulated yet: Spectre is a licensed tool, so I need your go-ahead before I run it.
 
     This is the first Spectre run on this machine, so the plan (`emir next`) starts with the on-site
     verification of Spectre's route into emir: `emir verify-sim --sim spectre --run` simulates small
-    testbenches whose currents are known by hand (six short runs, then the self-consistent loop) and
+    testbenches whose currents are known by hand (three short runs, 79 checks) and
     checks every current, ratio and IR drop emir reads back. I ran it without `--run`: the decks are
     written and the Spectre commands printed, nothing ran. Until it passes here, every result from
     Spectre would carry "simulator route not verified on this machine" (EMIR-W464).
 
-    Then the mode. Your testbench includes the RC extraction itself, so either works: rcc saves and reads
-    every branch current (exact; `emir next` recommends it for this 17-node rail, where it runs in
-    seconds), cc-grid saves the device pin currents and superposes them through the R grid (faster on big
-    blocks, open loop). Which do you want?
+    Then the simulation, rcc: your testbench includes the RC extraction itself, so Spectre saves every
+    branch current of VDD and emir reads them all (every metric: avg, rms and peak EM, static and dynamic
+    IR; on this 17-node rail it runs in seconds).
 
-    With your answers I write the deck (`emir simulate inputs/tb.scs --sim spectre --prefix XI0. --mode
-    <your mode>`), run Spectre with `--run`, check and screen VDD and report what fails, with the fixes.
+    With your go-ahead and the block's period (its clock, or the period of your testbench's PULSE or SIN
+    sources: rcc averages over the record's last whole periods of it, and a run without it is refused,
+    EMIR-E428), I write the deck (`emir simulate inputs/tb.scs --sim spectre --prefix XI0.`), run
+    Spectre with `--run`, check and screen VDD and report what fails, with the fixes.

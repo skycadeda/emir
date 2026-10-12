@@ -1,5 +1,5 @@
 id: ict-encrypted
-playbook: 04-onboard-a-pdk
+playbook: 02-process-file
 title: The ICT is encrypted and no other EM data is at hand
 requires: []
 fixtures: [encrypted_ict]

@@ -6,21 +6,21 @@ code, so the tool and the docs cannot drift.
     emir next --dspf blk.dspf --process pdk.yaml --cc-sim sim.raw --net VDD
     emir next ... --viewer --html --format json
 
-It looks at what the agent passes (paths, a mode, a net, wishes) and what it
-can learn cheaply from them (the DSPF's size, what a simulation result
-saved, which tools `emir info` finds), and prints an ordered plan: the
-commands to run with the reason for each, what is missing and how to get
-it, which mode applies, and which steps need the person's go-ahead
-(`needs_human`: a licensed tool, or a long run). It changes nothing and
-runs nothing but cheap reads.
+It looks at what the agent passes (paths, a net, wishes) and what it can
+learn cheaply from them (the DSPF's size, what a simulation result saved,
+which tools `emir info` finds), and prints an ordered plan: the commands to
+run with the reason for each, what is missing and how to get it, where the
+currents come from (`mode`: rcc, every branch current of a simulation of the
+RC netlist; or dc, the person's DC currents), and which steps need the
+person's go-ahead (`needs_human`: a licensed tool, or a long run). It changes
+nothing and runs nothing but cheap reads.
 
 Every step either runs as printed (`status` todo, once the steps named in
 its `after` have succeeded) or says why not (`status` waiting: its
 `placeholders`, such as ``<result.raw>``, stand for a file an earlier step
-produces). It plans only what the input check accepts: a mode the result
-cannot serve (rcc without every branch current, cc-grid on a pin that
-reaches the net at several connections) is replaced by the simulation that
-serves it, and a result whose current names are in SPICE style (Xyce,
+produces). It plans only what the input check accepts: a result that does
+not hold every branch current of a net is replaced by the simulation that
+does, and a result whose current names are in SPICE style (HSPICE, Xyce,
 ngspice) first needs its `<result>.names` sidecar (`emir schema names`).
 
 How it is built
@@ -32,17 +32,17 @@ How it is built
   ``@rule(order)``; they run in `order` (gaps of 10 leave room), and one may
   `plan.stop()` the rest (no DSPF: nothing more to plan).
 
-**Adding rules from a feature** (hierarchy, the open-source flow ...):
-put them in a module named ``emir/plan_<feature>.py``; every such module is
-imported when a plan is built, and its ``@rule`` functions join the tree::
+**Adding rules from a feature** (the open-source flow, Cadence ...): put them
+in a module named ``emir/plan_<feature>.py``; every such module is imported
+when a plan is built, and its ``@rule`` functions join the tree::
 
-    # emir/plan_hierarchy.py
+    # emir/plan_myflow.py
     from .plan import rule
 
-    @rule(45, "hierarchy")
-    def _hierarchy(f, plan):
-        if f.inputs.get("abstracts"):
-            plan.add("abstract", "emir abstract ...", "why ...")
+    @rule(45, "myflow")
+    def _myflow(f, plan):
+        if f.inputs.get("something"):
+            plan.add("my-step", "emir x ...", "why ...")
 
 A feature's options of `emir next` live in its module too: ``add_arguments(ap)``
 adds them to the parser and ``inputs(a) -> dict`` turns the parsed values into
@@ -50,16 +50,14 @@ adds them to the parser and ``inputs(a) -> dict`` turns the parsed values into
 
 Thresholds (`THRESHOLDS`, printed in every plan):
 
-* ``small_net_nodes`` 500 -- a policy, not a measured crossover: below it both
-  routes run in seconds and ``rcc`` is exact, so a small net with every branch
-  current saved is screened with ``rcc``. (At the original development site,
-  on a generated inverter bank tapping a segmented rail, RCC and CC + grid
-  took equal time at 41 nodes, and CC + grid was 1.75 times faster at 521:
-  `emir/rcc.py`.)
+* ``small_net_nodes`` 500 -- a policy, not a measured crossover: the largest
+  net of a "small" block, whose RC simulation runs in seconds.
 * ``big_block_nodes`` 50 000 -- a heuristic, not a measurement: around
-  ADC-top or PLL-top size an RCC transient converges poorly and slowly, so
-  the advice is CC simulation (a C-only extraction) with an R-only
-  extraction for the grid.
+  ADC-top or PLL-top size an RC transient with every branch current saved
+  is expected to run long and may converge poorly, so the simulation there is planned as a
+  long run (the person's go-ahead first).
+* ``probe_result_mb`` 200 -- a result larger than this is not read by the
+  plan; the check reads it at run time.
 * ``magic_gds_mb`` 20 -- a heuristic, not a measurement: magic extracted
   example 08's layout (31 kB) in 0.2 s; a layout of tens of MB is a big
   block, whose extraction with every resistor kept can run long, so over
@@ -74,6 +72,7 @@ import pkgutil
 import re
 from dataclasses import dataclass, field
 
+from . import RCC_CONTRACT
 from .errors import EmirError
 from .output import command_line
 from .repo import pdk_files
@@ -81,14 +80,20 @@ from .repo import pdk_files
 THRESHOLDS = {"small_net_nodes": 500, "big_block_nodes": 50_000,
               "probe_result_mb": 200, "magic_gds_mb": 20}
 
+#: the plan's `mode` when the currents come from a simulation: rcc, the one
+#: method (DC currents are mode dc)
+RCC = {"chosen": "rcc", "why": "currents from a simulation of the RC netlist: rcc reads "
+       "every branch current and checks every metric (avg, rms and peak EM, static and "
+       "dynamic IR), exactly"}
+
 
 # ------------------------------------------------------------------ facts
 
 
 def net_names(net) -> list:
-    """The nets of a --net as `emir run` takes it (`selfconsist.net_list`):
-    a comma list (several nets closed in one self-consistent loop), a net
-    named twice once, the order kept; [] for none."""
+    """The nets of a --net, read as a comma list (a net named twice once, the
+    order kept; [] for none): `emir run` takes one net or `all`, so the plan
+    asks which when several are given."""
     if not net:
         return []
     return list(dict.fromkeys(n for n in (x.strip() for x in str(net).split(",")) if n))
@@ -102,6 +107,8 @@ class Facts:
                  mode=None, net=None, viewer=False, html=False, lib=None, cell=None,
                  have_cadence=None, have_xyce=None, have_ngspice=None, json=False,
                  **extra):
+        # `mode` is accepted (rcc, the one method; `emir next --mode rcc`) and
+        # changes nothing: the currents' source decides, rcc or dc
         self.inputs = {"dspf": dspf, "process": process, "cc_sim": cc_sim,
                        "netlist": netlist, "currents": currents, "mode": mode or None,
                        "net": net, "viewer": bool(viewer), "html": bool(html),
@@ -165,10 +172,7 @@ class Facts:
                         if not res:
                             continue
                         nets[n] = {"nodes": len({x for r in res for x in (r["n1"], r["n2"])}),
-                                   "pins": len(d.pin_groups(n)), "port": bool(d.net_ports(n)),
-                                   # pins with several DSPF connections: cc-grid
-                                   # refuses them (EMIR-E417), rcc measures them
-                                   "split": len(d.split_pins(n))}
+                                   "pins": len(d.pin_groups(n)), "port": bool(d.net_ports(n))}
                     info = {"ok": True, "error": None, "design": d.design,
                             "n_nets": len(d.nets), "n_nodes": len(d.node_xy),
                             "n_resistors": len(d.res), "nets": nets, "_dspf": d}
@@ -198,11 +202,6 @@ class Facts:
             self._cache["currents"] = info
         return self._cache["currents"]
 
-    def split_nets(self) -> list:
-        """The target nets with an instance pin at several DSPF connections."""
-        info = self.dspf_info
-        return [n for n in self.target_nets() if info["nets"][n].get("split")]
-
     def one_net(self) -> str | None:
         """The one net a single-net option (`--currents`) drives: --net, or
         the DSPF's only net with resistors (as `emir run` takes it)."""
@@ -218,7 +217,6 @@ class Facts:
             return []
         net = self.get("net")
         if net and net != "all":
-            # one net, or several closed in one self-consistent loop (--net VDD,VSS)
             return [n for n in net_names(net) if n in info["nets"]]
         return list(info["nets"])
 
@@ -245,10 +243,11 @@ class Facts:
     @property
     def result_info(self) -> dict:
         """What the `--cc-sim` result holds, per target net: `{"ok", "error",
-        "kind", "holds": {net: ...}}` (`dspf.result_holds`: which modes can
-        screen it), and `hint` when its current names are SPICE style with no
-        sidecar to map them. A result larger than `probe_result_mb` is not read
-        (`"probed": False`): the check reads it at run time."""
+        "kind", "holds": {net: ...}}` (`dspf.result_holds`: whether it holds
+        every branch current rcc reads), and `hint` when its current names are
+        SPICE style with no sidecar to map them. A result larger than
+        `probe_result_mb` is not read (`"probed": False`): the check reads it
+        at run time."""
         if "result" not in self._cache:
             p = self.get("cc_sim")
             info = {"ok": False, "error": None, "probed": False, "kind": None,
@@ -272,18 +271,50 @@ class Facts:
                         info["error"] = f"{e.code}: {e.message}"
                         info["code"] = e.code
                     else:
+                        self._cache["waves"] = w
                         d = self.dspf_info["_dspf"]
                         nets = self.target_nets()
                         info.update(ok=True, probed=True, kind=w.kind,
                                     holds={n: result_holds(d, n, w) for n in nets})
-                        if not any(h["branches"][0] or h["pins"][0]
-                                   for h in info["holds"].values()):
+                        if not any(h["branches"][0] for h in info["holds"].values()):
                             info["hint"] = waves.naming_hint(w).strip() or None
                 else:
                     info.update(ok=True, note="the DSPF is not readable, so the result "
                                               "was not matched to its nets")
             self._cache["result"] = info
         return self._cache["result"]
+
+    @property
+    def window_info(self) -> dict:
+        """`{net: {"ok", "code", "message", "details", "window"}}`: whether the
+        `--cc-sim` result gives each target net its window with the given
+        --period, as the run takes it (`rcc.net_windows`); {} when the result
+        was not read here or does not hold every branch current of the nets."""
+        if "window" not in self._cache:
+            out = {}
+            info = self.result_info if self.get("cc_sim") else {}
+            nets = self.target_nets()
+            if info.get("probed") and nets and all(info["holds"][n]["rcc"] for n in nets):
+                from .rcc import net_windows
+                d = self.dspf_info["_dspf"]
+                w = self._cache["waves"]
+                try:
+                    wins = net_windows(d, nets, w, period=self.get("period"),
+                                       log=lambda *a, **k: None)
+                except EmirError as e:
+                    refused = {x["net"]: x for x in e.details.get("nets") or []}
+                    for n in nets:
+                        x = refused.get(n) if refused else {"code": e.code,
+                                                             "message": e.message}
+                        out[n] = {"ok": x is None, "window": None,
+                                  **({"code": x["code"], "message": x["message"],
+                                      "details": {k: v for k, v in e.details.items()
+                                                  if k not in ("run", "nets")}}
+                                     if x else {"code": None})}
+                else:
+                    out = {n: {"ok": True, "code": None, "window": wins[n]} for n in nets}
+            self._cache["window"] = out
+        return self._cache["window"]
 
     def as_dict(self) -> dict:
         out = {"size": self.size()}
@@ -296,6 +327,8 @@ class Facts:
             out["dspf"]["nets_shown"] = len(keep)
         if self.get("cc_sim"):
             out["result"] = self.result_info
+        # what a rule probed for the plan (the magic route: the magic it runs)
+        out.update(self._cache.get("extra_facts") or {})
         return out
 
 
@@ -427,39 +460,43 @@ def _drive_args(f: Facts) -> list:
     return []
 
 
-def run_args(f: Facts, drive: list | None = None, mode: str | None = None) -> list:
-    """`<dspf> --process P [--net N] <drive> [--mode M]` from the inputs."""
+def run_args(f: Facts, drive: list | None = None) -> list:
+    """`<dspf> --process P [--net N] <drive> [--period S]` from the inputs."""
     a = [f.get("dspf"), "--process", f.get("process")]
     if f.get("net") and f.get("net") != "all":
         a += ["--net", f.get("net")]
     a += _drive_args(f) if drive is None else drive
-    # the block's period aligns the window of a simulation result (without it
-    # the run detects one and warns, EMIR-W413); DC currents have no window
+    # the block's period sets the window of a simulation result (without it
+    # the plan asks for it: a transient's run is refused, EMIR-E428); DC
+    # currents have no window
     if f.get("period") and "--currents" not in a:
         a += ["--period", repr(float(f.get("period")))]
-    m = mode or f.get("mode")
-    if m:
-        a += ["--mode", m]
     return a
 
 
-def _simulate_step(f: Facts, plan: Plan, kind: str, after=("save-lines",)):
-    """The simulation the person runs (or allows): the simulator's own command,
-    with ASCII output (binary PSF and raw are not read). `emir save-lines`
-    prints Spectre syntax; with Xyce or ngspice the same currents are saved
-    in that simulator's syntax and a `<result>.names` sidecar maps their
-    names onto the DSPF's (a step of its own)."""
+def _simulate_step(f: Facts, plan: Plan, after=("save-lines",), length: str | None = None):
+    """The simulation the person runs (or allows): the RC netlist with every
+    branch current saved, in the simulator's own command, with ASCII output
+    (binary PSF and raw are not read). `emir save-lines` prints Spectre
+    syntax; with HSPICE, Xyce or ngspice the same currents are saved in that
+    simulator's syntax and a `<result>.names` sidecar maps their names onto
+    the DSPF's (a step of its own)."""
     t = f.tools
-    what = ("the RC-extracted netlist (every branch current saved)" if kind == "rcc"
-            else "the CC netlist (devices only, the instance-pin currents saved)")
+    what = "the RC-extracted netlist (every branch current saved)"
+    span = length or "over whole periods of the block's activity"
+    saves = ("with the save lines above" if any(s["id"].startswith("save-lines")
+                                                for s in plan.steps)
+             else "saving every branch current (`emir save-lines` prints the lines)")
+    if f.size()["class"] == "big":
+        what += (", a block of ADC-top or PLL-top size: the RC transient is expected to run "
+                 "long and may converge poorly")
     # at a Cadence site the DSPF and the testbench come from Cadence tools, so
     # Spectre (licensed: the person's go-ahead first); else an open simulator.
     # --sim names the simulator the person uses (HSPICE: plan_opensim.py)
     want = f.get("sim")
     if want == "spectre" or (not want and (t["spectre"]["found"] or t["have_cadence"])):
         plan.add("simulate", "spectre <testbench.scs> -format psfascii -raw <result.raw>",
-                 f"simulate {what} with the save lines above, over whole periods of "
-                 f"the block's activity; write ASCII (PSF ASCII)",
+                 f"simulate {what} {saves}, {span}; write ASCII (PSF ASCII)",
                  licensed_tool="spectre", long_run=True, after=after)
         plan.result = "<result.raw>"
         if not t["spectre"]["found"]:
@@ -468,16 +505,14 @@ def _simulate_step(f: Facts, plan: Plan, kind: str, after=("save-lines",)):
         return
     if want == "hspice" or (not want and t["hspice"]["found"]):
         sim, cmd = "HSPICE", "hspice -i <testbench.sp> -o <result>"
-        how = ("`.option probe post=2 post_version=2001` and `.probe tran` of i(R) for "
-               "each branch, or of a 0 V source in series with each instance pin")
+        how = "`.option probe post=2 post_version=2001` and `.probe tran` of i(R) for each branch"
     elif want == "xyce" or (not want and t["have_xyce"]):
         sim, cmd = "Xyce", "Xyce -r <result.raw> -a <testbench.cir>"
-        how = ("`.print tran format=raw` of I(R) for each branch, or of a 0 V source "
-               "in series with each instance pin")
+        how = "`.print tran format=raw` of I(R) for each branch"
     elif want == "ngspice" or (not want and t["have_ngspice"]):
         sim, cmd = "ngspice", "ngspice -b <testbench.cir>"
-        how = ("`.options filetype=ascii` and `.save` of i(V) for a 0 V source in "
-               "series with each instance pin (or each branch), written to <result.raw>")
+        how = ("`.options filetype=ascii` and `.save` of @r[i] for each branch, written to "
+               "<result.raw>")
     else:
         plan.need("a circuit simulator",
                   "the currents come from a transient simulation of the extracted block",
@@ -485,15 +520,16 @@ def _simulate_step(f: Facts, plan: Plan, kind: str, after=("save-lines",)):
                   "HSPICE (--sim); `emir info` shows what is found")
         plan.blocked = True
         return
+    lines = ("The save lines above are Spectre syntax: in the" if saves.startswith("with")
+             else "In the")
     plan.add("simulate", cmd,
-             f"simulate {what} over whole periods of the block's activity, in ASCII. "
-             f"The save lines above are Spectre syntax: in the {sim} deck save the same "
-             f"currents ({how})", long_run=True, after=after,
+             f"simulate {what} {span}, in ASCII. {lines} {sim} deck save every branch "
+             f"current ({how})", long_run=True, after=after,
              licensed_tool="hspice" if sim == "HSPICE" else None)
     plan.add("names-sidecar", command_line("schema", "names"),
-             f"{sim} names currents I(...) / i(...), not the DSPF's inst:pin (cc-grid) or "
-             f"R:1 (rcc) names: write <result.raw>.names beside the result, mapping each "
-             f"saved name to the DSPF name and sign; this prints the format",
+             f"{sim} names currents I(...) / @...[i], not the DSPF's R:1 names: write "
+             f"<result.raw>.names beside the result, mapping each saved name to the DSPF "
+             f"name and sign; this prints the format",
              after=["simulate"])
     plan.result = "<result.raw>"
 
@@ -523,9 +559,10 @@ def _dspf(f: Facts, plan: Plan):
         plan.need("an extracted DSPF of the block",
                   "EM and IR are computed on the extracted resistor network; DSPF "
                   "carries the widths, cut counts and coordinates the checks need",
-                  "extract with R (R-only for a CC run, R+C for an RCC run) and node, "
-                  "geometry ($W $L) and via ($N or $A) annotation: Quantus at a Cadence "
-                  "site (licensed: ask the person), or the open-source flow")
+                  "extract with R and C (the RC netlist rcc simulates; R alone serves DC "
+                  "currents) and node, geometry ($W $L) and via ($N or $A) annotation: "
+                  "Quantus at a Cadence site (licensed: ask the person), or the open-source "
+                  "flow")
         plan.stop()
         return
     if not info["ok"]:
@@ -535,13 +572,10 @@ def _dspf(f: Facts, plan: Plan):
         return
     net = f.get("net")
     names = net_names(net)
-    if len(names) > 1 and not (f.get("self_consistent") or f.get("run_summary")):
+    if len(names) > 1 and not f.get("run_summary"):
         plan.need("one net (or every net: --net all)",
-                  f"--net {net}: several nets in one --net are closed in one self-consistent "
-                  f"loop (--mode cc-grid --self-consistent, with Xyce, ngspice or HSPICE); "
-                  f"any other run screens one net, or every net",
-                  "ask the person which net, or whether they want the nets closed in one "
-                  "self-consistent loop (then plan again with --self-consistent)")
+                  f"--net {net}: a run screens one net, or every net",
+                  "ask the person which net, or screen every net (--net all)")
         plan.stop()
         return
     bad = [n for n in names if n != "all" and n not in info["nets"]]
@@ -617,32 +651,38 @@ def _process(f: Facts, plan: Plan):
 def _size(f: Facts, plan: Plan):
     s = f.size()
     if s["class"] == "big":
-        plan.note("ADC-top / PLL-top size: RCC transients converge poorly and slowly at "
-                  "this size. Simulate the block with a C-only (coupled) extraction or the "
-                  "schematic (CC), extract R-only for the grid DSPF, and screen in "
-                  "cc-grid mode")
+        plan.note("ADC-top / PLL-top size: an RC transient with every branch current saved "
+                  "is expected to run long at this size and may converge poorly, and its "
+                  "result holds one current per resistor per time step; the simulation is "
+                  "planned as a long run (ask the person first). Screening one net at a time "
+                  "(--net) keeps the result smaller")
 
 
 @rule(50, "currents")
 def _currents(f: Facts, plan: Plan):
-    """Where the currents come from, and so the mode -- the person's choice
-    (`--mode`): with no mode and currents from a simulation, the plan is the
-    choice itself (`choose-mode`), and nothing that simulates or runs is
-    planned. Given a mode, only what the check accepts for these inputs."""
-    if f.get("abstracts"):
-        return                      # --- feature hierarchy --- (plan_hierarchy.py)
-    req = f.get("mode")
+    """Where the currents come from: DC values (--currents, mode dc) or a
+    simulation of the RC netlist with every branch current saved (mode rcc,
+    the one method of a simulated run). Plans only what the check accepts
+    for these inputs."""
     nets = f.target_nets()
-    split = f.split_nets()
+    if f.get("currents") and (f.get("cc_sim") or f.get("netlist")):
+        plan.need("one source of currents",
+                  "--currents (DC values) and a simulation ("
+                  + ("--cc-sim" if f.get("cc_sim") else "--netlist") + ") were both given; "
+                  "a run takes its currents from one (EMIR-E514)",
+                  "ask the person which: the simulation for rcc (every metric), or the DC "
+                  "currents for a screen; then plan again with that one")
+        plan.blocked = True
+        return
     if f.get("currents"):
         if not _currents_ok(f, plan):
             return
         plan.mode = {"chosen": "dc", "why": "DC currents given with --currents: the R grid "
-                     "is solved directly (avg = rms = peak); no mode to choose"}
+                     "is solved directly (avg = rms = peak)"}
         if f.one_net() is None:
             plan.need("--net", "--currents drives exactly one net, and the DSPF has "
                       f"{len(nets)} nets with resistors", "give --net")
-        if req == "rcc":
+        if f.get("mode") == "rcc":
             plan.need("no --mode rcc", "rcc reads branch currents from a simulation "
                       "(EMIR-E506); DC currents are solved directly",
                       "drop --mode rcc (or give a simulation result with --cc-sim)")
@@ -659,315 +699,43 @@ def _currents(f: Facts, plan: Plan):
         plan.stop()
         return
     if f.get("cc_sim") and f.result_info.get("probed") and f.result_info.get("hint"):
-        _names_sidecar(f, plan, req)
+        _names_sidecar(f, plan)
         return
-    if f.get("netlist") and not f.get("cc_sim") and not f.get("self_consistent") \
-            and not f.tools["spectre"]["found"]:
-        plan.need("Spectre, for --netlist",
-                  "--netlist runs Spectre; none was found (`emir info`)",
-                  "run the simulation with the simulator you have (save lines from "
-                  "`emir save-lines`) and pass its ASCII result with --cc-sim")
+    if f.get("netlist") and not f.get("cc_sim") and not f.tools["spectre"]["found"]:
+        from .opensim import is_spectre
+        if is_spectre(f.get("netlist")):
+            plan.need("Spectre, for the Spectre testbench --netlist",
+                      f"{f.get('netlist')} is in Spectre's language, and Spectre was not "
+                      f"found on this machine ($SPECTRE_BIN, the site file's spectre:, "
+                      f"$PATH; `emir info`)",
+                      "point $SPECTRE_BIN (or the site file) at Spectre where it is "
+                      "installed; or run the testbench where Spectre is, with the save "
+                      "lines from `emir save-lines`, and pass its PSF ASCII result with "
+                      "--cc-sim")
+        else:
+            plan.need("Spectre, for --netlist",
+                      "--netlist runs Spectre; none was found (`emir info`)",
+                      "run the simulation with the simulator you have (save lines from "
+                      "`emir save-lines`) and pass its ASCII result with --cc-sim")
         plan.stop()
         return
-    if req is None:
-        choose_mode(f, plan)
-        return
-    if f.get("self_consistent"):
-        _self_consistent(f, plan, req, split)
-        return
+    plan.mode = dict(RCC)
     if f.get("cc_sim"):
-        _from_result(f, plan, req, nets, split)
+        _from_result(f, plan, nets)
         return
     if f.get("netlist"):
-        if split and req == "cc-grid":
-            _split_block(plan, split)
-            return
-        plan.mode = {"chosen": req, "why": f"--mode {req} given (the person's choice)"}
         return
-    # nothing yet: the simulation the chosen mode needs
-    if req == "cc-grid" and split:
-        _split_block(plan, split)
-        return
-    kind = "rcc" if req == "rcc" else "cc"
-    plan.mode = {"chosen": req, "why": f"--mode {req} given (the person's choice)"}
-    plan.need("a simulation result", "the currents come from a transient simulation "
-              "that saved what the mode needs",
+    # nothing yet: the simulation rcc reads
+    plan.need("a simulation result", "the currents come from a transient simulation of "
+              "the RC netlist that saved every branch current",
               "add the save lines below to the testbench, simulate, then pass the "
               "result with --cc-sim (or DC currents with --currents)")
     net = f.get("net")
     one = ["--net", net] if net and net != "all" and "," not in net else []
-    plan.add("save-lines", command_line("save-lines", f.get("dspf"), *one, "--mode", req,
-                                        f.fmt()),
-        f"the save lines a {req} run needs, for the testbench (Spectre syntax)")
-    _simulate_step(f, plan, kind)
-
-
-def choose_mode(f: Facts, plan: Plan):
-    """No --mode, currents from a simulation: the first step is the person's
-    choice. It lists the three routes (`modes.ROUTES`: what each simulates,
-    costs and how accurate it is, measured, with the source), says which can
-    work with what the person has and why not, and which the net's size
-    recommends; the command is `emir next` again with the choice. Nothing
-    that simulates or runs is planned until then (`plan.blocked`)."""
-    from .modes import per_net, routes
-    nets = f.target_nets()
-    pn = per_net(f.dspf_info["_dspf"], nets)
-    holds = f.result_info.get("holds", {}) if f.get("cc_sim") else {}
-    bad = {"rcc": {}, "cc-grid": {}}
-    for n in nets:
-        if pn[n]["only"] == "rcc":
-            bad["cc-grid"][n] = pn[n]["only_why"]
-        h = holds.get(n)
-        if h is not None:
-            if not h["can"]["rcc"]:
-                bad["rcc"][n] = (f"the result holds {h['branches'][0]} of the net's "
-                                 f"{h['branches'][1]} branch currents"
-                                 + ("" if h["time_domain"] else " and is harmonic")
-                                 + ": rcc needs them all (re-simulate the RC netlist "
-                                   "with every branch current saved)")
-            if not h["can"]["cc-grid"] and n not in bad["cc-grid"]:
-                bad["cc-grid"][n] = (f"the result holds {h['pins'][0]} of the net's "
-                                     f"{h['pins'][1]} instance-pin currents")
-    tb = f.get("netlist") or f._cache.get("opensim_tb")
-    if tb and not f.get("cc_sim") and f._cache.get("opensim_tb"):
-        # the testbench an open simulator would run: what it can give
-        from .plan_opensim import _tb_facts
-        tbf = _tb_facts(f, tb, f.dspf_info["_dspf"])
-        if not tbf["ok"]:
-            plan.need("a readable testbench", f"--netlist {tb}: {tbf['error']}",
-                      "fix it (`emir explain " + tbf["code"] + "`)")
-        elif not tbf["tran"]:
-            plan.need("a transient analysis in the testbench",
-                      f"{tb} has no .tran (EMIR-E462): EM needs the currents over time",
-                      "add a .tran over whole periods of the block's activity")
-        elif not tbf["rc"]:
-            for n in nets:
-                bad["rcc"].setdefault(n, f"the testbench {tb} does not hold every resistor "
-                                         f"of the net (a CC netlist): rcc needs the RC "
-                                         f"netlist simulated")
-    size = f.size()
-    rec = "rcc" if size["class"] == "small" else "cc-grid"
-    rec_why = (pn[nets[0]]["why"] if len(nets) == 1 else size["why"])
-    if bad[rec] and not bad["cc-grid" if rec == "rcc" else "rcc"]:
-        other = "cc-grid" if rec == "rcc" else "rcc"
-        rec, rec_why = other, f"only {other} can work here ({_first(bad[rec])})"
-    base = ["--dspf", f.get("dspf")]
-    # no process file yet, and the plan writes one by hand (plan_process.py):
-    # the choice comes after it is checked, and plans with it
-    by_hand = plan.has("process-new") and not f.get("process")
-    if by_hand:
-        from .plan_process import OUT
-        base += ["--process", OUT]
-    for opt, key in (("--process", "process"), ("--cc-sim", "cc_sim"),
-                     ("--net", "net"), ("--sim", "sim")):
-        if f.get(key):
-            base += [opt, f.get(key)]
-    # the testbench the person gave (an open-simulator plan keeps it aside as
-    # `opensim_tb`): every route's plan needs it again
-    if tb:
-        base += ["--netlist", tb]
-    if f.get("period"):
-        base += ["--period", repr(float(f.get("period")))]
-    if f.get("vdd") is not None:
-        base += ["--vdd", repr(float(f.get("vdd")))]
-    choices = []
-    from .magic import made_by_emir
-    # a DSPF the magic route wrote: each route also says what it measured on
-    # such a layout (example 08), its signal nets included
-    magic = bool(f.get("dspf")) and made_by_emir(f.get("dspf"))
-    for r in routes(magic=magic):
-        why_not = bad[r["mode"]]
-        extra = ["--self-consistent"] if r["self_consistent"] else []
-        choices.append({**r, "possible": not why_not,
-                        "why_not": ("; ".join(f"{n}: {w}" for n, w in
-                                              list(why_not.items())[:4]) or None),
-                        "recommended": r["mode"] == rec and not r["self_consistent"],
-                        "command": command_line("next", base, "--mode", r["mode"], extra,
-                                                f.fmt())})
-    only = [c["mode"] for c in choices if c["possible"] and not c["self_consistent"]]
-    why = ("the currents come from a simulation, and how they are used is the person's "
-           "choice: emir does not pick one. Show the person the routes in `choices` (what "
-           "each simulates, what it costs and how accurate it is, measured, with its "
-           f"source), say that the net's size recommends {rec} ({rec_why}), ask, and run "
-           "this command with <mode> replaced by their choice (the `command` of the route "
-           "they pick)")
-    if len(only) == 1:
-        o = next(c for c in choices if c["mode"] != only[0] and not c["self_consistent"])
-        why += (f". Only {only[0]} can work with what they have: {o['why_not']} -- tell "
-                f"them so; it is still theirs to confirm")
-    if len(nets) > 1 and bad["cc-grid"] and len(bad["cc-grid"]) < len(nets):
-        why += (f". The nets differ: {', '.join(list(bad['cc-grid'])[:4])} can be screened "
-                f"in rcc only; one run has one mode, so screen those with --net, one run "
-                f"each")
-    plan.add("choose-mode", command_line("next", base, "--mode", "<mode>", f.fmt()), why,
-             needs_human=True)
-    st = plan.steps.pop()
-    st["choices"] = choices
-    if by_hand:
-        # the process file first (its values typed and checked), then the choice
-        st["after"] = ["process-check"]
-        st["why"] += (". The process file is entered by hand first (process-new, "
-                      "process-check): ask for the mode once it passes")
-        plan.steps.insert(next(k for k, x in enumerate(plan.steps)
-                               if x["id"] == "process-check") + 1, st)
-    else:
-        plan.steps.insert(0, st)
-    for k, x in enumerate(plan.steps, 1):
-        x["n"] = k
-    plan.mode = {"chosen": None, "why": "not chosen: the person chooses rcc, cc-grid or "
-                 f"cc-grid self-consistent (the choose-mode step); {rec} is recommended "
-                 f"({rec_why})"}
-    plan.blocked = True
-    t = f.tools
-    if not f.get("cc_sim") and not (t["spectre"]["found"] or t["have_cadence"] or
-                                    t["hspice"]["found"] or t["have_xyce"] or
-                                    t["have_ngspice"] or f.get("sim")):
-        plan.need("a circuit simulator",
-                  "whichever mode the person chooses, the currents come from a transient "
-                  "simulation of the extracted block",
-                  "install Xyce or ngspice (open source), or use the site's Spectre or "
-                  "HSPICE (--sim); `emir info` shows what is found")
-
-
-def _first(d: dict) -> str:
-    n, w = next(iter(d.items()))
-    return f"{n}: {w}"
-
-
-def _self_consistent(f: Facts, plan: Plan, req: str, split: list):
-    """--mode cc-grid --self-consistent: the loop re-simulates the CC
-    testbench (--netlist) with each pin fed its own droop waveform, in series
-    with the testbench's rail."""
-    if req != "cc-grid":
-        plan.need("--mode cc-grid", "--self-consistent corrects the cc-grid open loop; rcc "
-                  "simulates the R network already (EMIR-E505)",
-                  "ask the person: --mode cc-grid --self-consistent, or --mode rcc alone")
-        plan.blocked = True
-        return
-    if split:
-        _split_block(plan, split)
-        return
-    plan.mode = {"chosen": "cc-grid", "why": "--mode cc-grid --self-consistent given (the "
-                 "person's choice): the CC testbench is simulated once per pass, each pin "
-                 "fed its own droop waveform in series with the testbench's rail, until the "
-                 "droop the currents produce is the droop they were fed"}
-    sim = f.get("sim") or ("spectre" if (f.tools["spectre"]["found"] or
-                                         f.tools["have_cadence"]) else
-                           "xyce" if f.tools["have_xyce"] else
-                           "ngspice" if f.tools["have_ngspice"] else None)
-    given = f.get("net")
-    several = bool(given) and "," in given and sim in ("xyce", "ngspice", "hspice")
-    net = given if several else f.one_net()
-    if net is None:
-        plan.need("--net", "the self-consistent loop feeds the droop of the nets it is given "
-                  "back (EMIR-E502): one net, or with Xyce, ngspice or HSPICE several "
-                  "(--net VDD,VSS)",
-                  "give --net with the rail(s) to close")
-        plan.blocked = True
-    tb = f.get("netlist") or f._cache.get("opensim_tb")
-    vdd = f.get("vdd")
-    if several:
-        # each rail is read from the testbench by the run (EMIR-E503 when one
-        # cannot be read); one --vdd cannot name several nets (EMIR-E541)
-        plan.note(f"--net {net}: the nets are closed in one loop, each one's rail read from "
-                  f"the testbench by the run (no --vdd)")
-        vdd = "testbench"
-    if vdd is None and tb and net and sim in ("xyce", "ngspice", "hspice"):
-        # the rail the testbench drives the net with, when it can be read
-        from .selfconsist import testbench_rail
-        d = (f.dspf_info or {}).get("_dspf")
-        rail = testbench_rail(tb, d, net) if d is not None and os.path.isfile(tb) else \
-            {"volts": None}
-        if rail["volts"] is not None:
-            vdd = rail["volts"]
-            f._cache["sc_vdd"] = vdd
-            plan.note(f"--vdd {vdd:g} V: the voltage of {net} in the testbench "
-                      f"({rail['why']}); the run reads it the same way and refuses a --vdd "
-                      f"that differs (EMIR-E523)")
-    if vdd is None:
-        plan.need("the voltage of this net in the testbench (--vdd; 0 for a ground net)",
-                  "the run reports each pin's supply as that rail plus its own droop "
-                  "(EMIR-E503)" + (("; emir does not read a Spectre netlist" if sim == "spectre"
-                                    else "; it could not be read from the testbench")
-                                   if tb else ""),
-                  "ask the person for the net's voltage in the testbench (0 V for a ground "
-                  "net)")
-        plan.blocked = True
-    if sim is None:
-        plan.need("a circuit simulator", "the loop re-simulates the CC testbench",
-                  "install Xyce or ngspice (open source), or use the site's Spectre or "
-                  "HSPICE (--sim)")
-        plan.blocked = True
-    if not tb:
-        plan.need("the CC testbench (--netlist)",
-                  "the loop simulates it again on every pass: the CC netlist (devices on "
-                  "ideal rails, a C-only extraction or the schematic) with its stimulus, "
-                  "models and a .tran"
-                  + ("; for Spectre it must hold the per-tap split (`emir run <dspf> --net "
-                     "N --split-stub --vdd V` prints it)" if sim == "spectre" else
-                     "; emir writes the per-tap split itself"),
-                  "ask the person for it, then plan again with --netlist")
-        plan.blocked = True
-    if plan.blocked:
-        return
-    f._cache["sc"] = {"sim": sim, "testbench": tb, "net": net, "vdd": vdd}
-    if sim == "spectre":
-        plan.add("split-stub", command_line("run", f.get("dspf"), "--net", net,
-                                            "--split-stub", f.fmt()),
-                 "the per-tap rail split the Spectre CC netlist must hold once (each "
-                 "instance pin its own node, fed from the rail through its own `vsource "
-                 "type=pwl file=`, reading the droop waveform the loop rewrites every pass; "
-                 "UNVERIFIED until checked where Spectre runs): the person adds it by hand "
-                 "(emir never edits their netlist) and reconnects each pin as its comments "
-                 "list; pass 0 (every droop 0 V) reproduces the open-loop answer. The check "
-                 "and the run refuse a netlist without it (EMIR-E524)", needs_human=True,
-                 ask="the person adds the printed split to their CC netlist (emir never "
-                     "edits it)")
-
-
-@rule(52, "self-consistent")
-def _self_consistent_run(f: Facts, plan: Plan):
-    """The check, the loop and the report of a self-consistent plan."""
-    sc = f._cache.pop("sc", None)
-    if sc is None or plan.blocked or not f.get("process"):
-        return
-    sim, tb, net = sc["sim"], sc["testbench"], sc["net"]
-    licensed = sim in ("spectre", "hspice")
-    vdd = [] if sc["vdd"] == "testbench" else ["--vdd", repr(float(sc["vdd"]))]
-    args = [f.get("dspf"), "--process", f.get("process"), "--net", net, "--mode", "cc-grid",
-            "--self-consistent", "--netlist", tb, *vdd,
-            *(["--sim", sim] if sim != "spectre" or f.get("sim") else []),
-            *(["--period", repr(float(f.get("period")))] if f.get("period") else [])]
-    if f.get("max_passes"):
-        args += ["--max-passes", str(int(f.get("max_passes")))]
-    if f.get("tol_mV"):
-        args += ["--tol-mV", repr(float(f.get("tol_mV")))]
-    after = ["split-stub"] if plan.has("split-stub") else []
-    plan.add("check", command_line("check", args, f.fmt()),
-             "check every input before the loop spends a simulation", after=after)
-    extra = ["--summary-out", "emir_out/summary.json"]
-    if f.get("html"):
-        extra += ["--html", "emir_out/html"] + _chart_layout(f)
-    plan.add("run", command_line("run", args, extra, *(["--run"] if licensed else []),
-                                 f.fmt()),
-             f"the self-consistent loop: pass 0 is the open-loop cc-grid result; each pass "
-             f"after it feeds every pin its own droop waveform (in series with the "
-             f"testbench's rail) and simulates the CC testbench again with {sim}, until the "
-             f"droop the currents produce is within max(1 % of the droop, 0.2 mV) of the "
-             f"droop fed, or until the answer settles: the governing branch, every reported "
-             f"item and every device still on two passes, the residual under 5 % of the "
-             f"droop and not growing (on the synthetic meshes: 4 or 5 simulations at 0.4 % "
-             f"droop by the first rule, 6 to 10 at 4 % to 8 %, most by the second; the "
-             f"summary keeps every pass and `stop_rule` says which). It re-simulates: ask "
-             f"the person"
-             + (f" ({sim} is licensed)" if licensed else ""),
-             licensed_tool=sim if licensed else None, long_run=True, after=after + ["check"])
-    plan.add("report", command_line("report", "--from", "emir_out/summary.json"),
-             "the summary to relay to the person: verdict, the passes and whether the "
-             "loop converged, worst items with fixes; it says screening, not sign-off",
-             after=["run"])
-    plan.result = None
-    f._cache["sc_planned"] = True
+    plan.add("save-lines", command_line("save-lines", f.get("dspf"), *one, f.fmt()),
+             "the lines that save every branch current, for the testbench (Spectre "
+             "syntax)")
+    _simulate_step(f, plan)
 
 
 def _currents_ok(f: Facts, plan: Plan) -> bool:
@@ -985,93 +753,117 @@ def _currents_ok(f: Facts, plan: Plan) -> bool:
     return False
 
 
-def _split_block(plan: Plan, split: list):
-    plan.need("--mode rcc for " + ", ".join(split[:6]),
-              "an instance pin reaches these nets at several DSPF connections, and "
-              "cc-grid cannot divide one saved terminal current between them "
-              "(EMIR-E417)", "ask the person: these nets can be screened in rcc mode "
-                             "(every branch current saved), or hierarchically")
-    plan.blocked = True
-
-
-def _from_result(f: Facts, plan: Plan, req: str, nets: list, split: list):
-    """A finished result and the person's mode: which nets it can screen in
-    that mode, and what to re-simulate (or map) for the rest."""
+def _from_result(f: Facts, plan: Plan, nets: list):
+    """A finished result: which nets it holds every branch current of, and
+    what to re-simulate (or map) for the rest."""
     info = f.result_info
     if not info["probed"]:
-        plan.mode = {"chosen": req, "why": f"--mode {req} given (the person's choice); "
-                     + info.get("note", "the result is read at run time")}
+        plan.mode = {"chosen": "rcc", "why": RCC["why"] + "; " +
+                     info.get("note", "the result is read at run time")}
         return
     holds = info["holds"]
-    lacking = {}
-    for n in nets:
-        if holds[n]["can"][req]:
-            continue
-        if req == "cc-grid" and n in split:
-            lacking[n] = None                  # nothing cc-grid can do: E417
-        else:
-            lacking[n] = req
-    if any(k is None for k in lacking.values()):
-        _split_block(plan, [n for n, k in lacking.items() if k is None])
-        return
+    lacking = [n for n in nets if not holds[n]["rcc"]]
     if lacking:
-        _lacking(f, plan, req, lacking, holds)
-    plan.mode = {"chosen": req, "why": f"--mode {req} given (the person's choice)"}
+        _lacking(f, plan, lacking, holds)
 
 
-def _names_sidecar(f: Facts, plan: Plan, req):
+def _names_sidecar(f: Facts, plan: Plan):
     """SPICE-style names, none of which match: the currents may all be there,
-    under the simulator's names -- map them first (whatever the mode), do not
-    re-simulate."""
+    under the simulator's names -- map them first, do not re-simulate."""
     info = f.result_info
     plan.need(f"a names sidecar for {f.get('cc_sim')}", info["hint"],
               "write it, then run `emir next` again with the same --cc-sim")
     plan.add("names-sidecar", command_line("schema", "names"),
-             f"write {f.get('cc_sim')}.names, mapping each saved current to the "
-             f"DSPF's inst:pin (cc-grid) or R:1 (rcc) name and its sign; this prints "
-             f"the format")
-    plan.mode = {"chosen": req, "why": (f"--mode {req} given; " if req else
-                                        "not chosen yet (the person's choice); ")
-                 + "the result's names are mapped onto the DSPF's by the sidecar first"}
+             f"write {f.get('cc_sim')}.names, mapping each saved current to the DSPF's "
+             f"R:1 name and its sign; this prints the format")
+    plan.mode = {"chosen": "rcc", "why": RCC["why"] + "; the result's names are mapped "
+                 "onto the DSPF's by the sidecar first"}
     plan.blocked = True
 
 
-def _lacking(f: Facts, plan: Plan, req: str, lacking: dict, holds: dict):
-    """Nets the result cannot screen in the mode asked for: the save lines
-    and the simulation that would, and what the result can do as it is."""
-    names = list(lacking)
+def _lacking(f: Facts, plan: Plan, lacking: list, holds: dict):
+    """Nets the result does not hold every branch current of: the save lines
+    and the simulation that would."""
     why = []
-    for n in names[:6]:
+    for n in lacking[:6]:
         h = holds[n]
-        why.append(f"{n}: {h['branches'][0]} of {h['branches'][1]} branch currents, "
-                   f"{h['pins'][0]} of {h['pins'][1]} instance-pin currents"
-                   + (f", {h['split_pins']} pin(s) at several connections"
-                      if h["split_pins"] else ""))
-    plan.need("the currents of " + ", ".join(names[:6]),
-              f"the result cannot screen them in mode {req}: " + "; ".join(why),
-              "add the save lines below and re-simulate")
-    for n in names[:3]:
+        why.append(f"{n}: {h['branches'][0]} of {h['branches'][1]} branch currents"
+                   + ("" if h["time_domain"] else ", and the result is harmonic"))
+    plan.need("the branch currents of " + ", ".join(lacking[:6]),
+              "the result cannot screen them: " + "; ".join(why),
+              "simulate the RC netlist (the DSPF) with every branch current saved: add the "
+              "save lines below and re-simulate")
+    for n in lacking[:3]:
         plan.add(f"save-lines:{n}", command_line(
-            "save-lines", f.get("dspf"), "--net", n, "--mode", lacking[n], f.fmt()),
+            "save-lines", f.get("dspf"), "--net", n, f.fmt()),
             f"the save lines net {n} needs (Spectre syntax)")
-    _simulate_step(f, plan, "rcc" if req == "rcc" else "cc",
-                   after=[f"save-lines:{n}" for n in names[:3]])
-    other = "cc-grid" if req == "rcc" else "rcc"
-    able = [n for n in names if holds[n]["can"][other]]
-    if able:
-        plan.note(f"the result as it is can screen {', '.join(able[:6])} in {other} mode: "
-                  f"ask the person whether to use --mode {other} instead of re-simulating "
-                  f"(their choice, with its trade-offs: `emir next` without --mode lists "
-                  f"them)")
+    _simulate_step(f, plan, after=[f"save-lines:{n}" for n in lacking[:3]])
+
+
+@rule(54, "window")
+def _window(f: Facts, plan: Plan):
+    """rcc averages over the record's last whole periods of --period: a
+    result read here is taken as the run takes it (`Facts.window_info`), and a
+    refusal plans its fix instead of a run that would be refused -- the
+    longer simulation (EMIR-E431; E429 when the block is still starting up) or
+    the block's period from the person (E428, E429)."""
+    if plan.mode.get("chosen") != "rcc" or plan.blocked or not f.get("cc_sim"):
+        return
+    refused = [(n, x) for n, x in f.window_info.items() if not x["ok"]]
+    if not refused:
+        return
+    net, x = refused[0]
+    code, det = x["code"], x.get("details") or {}
+    if code == "EMIR-E428":
+        # no run is planned until the person gives the period (planning one
+        # would only repeat the refusal)
+        plan.need("the block's period (--period, in seconds)",
+                  f"the run would be refused ({code}): {x['message']}",
+                  PERIOD_HOW + "; then plan again with it")
+        plan.blocked = True
+        return
+    if code not in ("EMIR-E429", "EMIR-E431"):
+        plan.need("a simulation result rcc can screen", f"{code}: {x['message']}",
+                  f"`emir explain {code}`")
+        plan.blocked = True
+        return
+    per, stop = det.get("period_s"), det.get("stop_time_s")
+    if code == "EMIR-E431" and det.get("periods_in_record") == 0:
+        # a period longer than the whole record: more likely a wrong --period
+        # than a simulation twice as long
+        plan.need("the block's period (--period, in seconds)",
+                  f"--period {per:.6g} s is longer than the whole record ({code})",
+                  "ask the person whether that is the block's period before planning a "
+                  "simulation of two of it; never guess it from the waveforms")
+        plan.blocked = True
+        return
+    if code == "EMIR-E429":
+        plan.need("the block's period, confirmed by the person (--period, in seconds)",
+                  f"the run would be refused ({code}): {x['message']}",
+                  f"ask the person whether --period {per:.6g} s is the block's period: if "
+                  f"not, plan again with the right one (no simulation needed); if it is, the "
+                  f"block is still starting up at the end of the record, and the "
+                  f"simulation below runs it longer. Never guess a period")
+        length = (f"at least twice as long (a .tran to {stop:.6g} s or later)" if stop
+                  else "longer")
+    else:
+        n = det.get("periods_needed")
+        length = (f"over at least {n} periods of {per:.6g} s (a .tran to {stop:.6g} s or "
+                  f"later)" if n and per and stop else "over more periods")
+        plan.need(f"a longer simulation ({code})", x["message"],
+                  f"the person simulates the same testbench {length} (EMIR never edits "
+                  f"it), then screen the new result with the same --period")
+    # the open simulators' rule turns this into `emir simulate` (it writes the
+    # names sidecar itself)
+    f._cache["longer_sim"] = {"length": length, "stop": stop}
+    _simulate_step(f, plan, after=(), length=length)
 
 
 @rule(60, "analyse")
 def _analyse(f: Facts, plan: Plan):
     """check -> run -> report, once everything they need is there."""
-    if not (f.get("dspf") and f.get("process")) or plan.blocked or f.get("abstracts"):
+    if not (f.get("dspf") and f.get("process")) or plan.blocked:
         return
-    if f._cache.get("sc_planned"):
-        return                      # the self-consistent loop's own steps (rule 52)
     if any(m["what"].startswith(("a valid process", "a readable")) for m in plan.missing):
         return
     # after a simulation the plan asks for, the run reads its result
@@ -1099,8 +891,9 @@ def _analyse(f: Facts, plan: Plan):
     netlist = bool(f.get("netlist")) and not plan.result
     if netlist:
         extra += ["--run"]          # Spectre is licensed: --run, after the go-ahead
+    what = "screen EM (avg/rms/peak per segment) and IR (static, and dynamic from rcc)"
     plan.add("run", command_line("run", args, extra, f.fmt()),
-             "screen EM (avg/rms/peak per segment) and IR; the summary file feeds the "
+             f"{what}; the summary file feeds the "
              "report (a refused run leaves its error there instead)"
              + ("; --netlist runs Spectre first" if netlist else ""),
              licensed_tool="spectre" if netlist else None, long_run=big or netlist,
@@ -1108,6 +901,37 @@ def _analyse(f: Facts, plan: Plan):
     plan.add("report", command_line("report", "--from", "emir_out/summary.json"),
              "the summary to relay to the person: verdict, worst items with fixes, what "
              "was not checked; it says screening, not sign-off", after=["run"])
+
+
+#: how to give --period (the plan's `how`, as EMIR-E428's hint)
+PERIOD_HOW = ("ask the person for the period of the block's activity (its clock, or the "
+              "period of the testbench's PULSE or SIN sources) and pass it with --period; "
+              "never guess it from the waveforms. A record held at DC: any --period with two "
+              "or more whole ones in the record gives the same numbers")
+
+
+@rule(57, "period")
+def _period(f: Facts, plan: Plan):
+    """A transient result is averaged over the record's last whole periods of
+    the block's activity: the period is the person's to give (without it the
+    run is refused, with no number: EMIR-E428). An operating point needs
+    none. A simulation the plan runs is a transient (`emir simulate` needs a
+    .tran, EMIR-E462; a --netlist run is refused without --period): no check
+    or run is planned on it until the person gives the period (they were, and
+    were certain to be refused)."""
+    if plan.mode.get("chosen") != "rcc" or plan.blocked or f.get("period"):
+        return
+    wins = f.window_info if f.get("cc_sim") else {}
+    if wins and all(x["ok"] and x["window"] is None for x in wins.values()):
+        return                          # an operating point: no window, no period
+    plan.need("the block's period (--period, in seconds)",
+              "rcc averages every branch current over the record's last whole periods of "
+              "the block's activity; a transient without --period is refused with no "
+              "number (EMIR-E428)" + ("" if f.get("cc_sim") else
+                                      ", and the simulation planned here is a transient"),
+              PERIOD_HOW + ("" if f.get("cc_sim") else "; then plan again with it"))
+    if not f.get("cc_sim"):
+        plan.blocked = True
 
 
 def _chart_layout(f, cell: bool = True) -> list:
@@ -1167,25 +991,17 @@ def main(argv=None, sink=None) -> int:
     ap.add_argument("--currents", default=None, metavar="JSON|FILE",
                     help="DC currents {node: amps}, inline JSON or the path of a file "
                          "holding it (read here as `emir run` reads it)")
-    from .modes import mode_arg
-    ap.add_argument("--mode", default=None, type=mode_arg, choices=("rcc", "cc-grid"),
-                    help="the person's choice of mode, once they have made it (without it, "
-                         "and with currents from a simulation, the plan asks for it in its "
-                         "choose-mode step -- first, or after process-check when the "
-                         "limits are typed by hand: the routes with their measured cost and "
-                         "accuracy)")
-    ap.add_argument("--self-consistent", action="store_true",
-                    help="with --mode cc-grid: the person chose the self-consistent route "
-                         "(the CC testbench, --netlist, simulated once per pass with each "
-                         "pin's supply at the testbench's rail plus its own droop)")
-    ap.add_argument("--vdd", type=float, default=None, metavar="V",
-                    help="the voltage of the net in the testbench, in V, for "
-                         "--self-consistent (0 for a ground net; read from a Xyce, ngspice "
-                         "or HSPICE testbench when not given)")
+    ap.add_argument("--mode", default=None, choices=("rcc",),
+                    help="rcc, the one method of a simulated run (accepted; it may be left "
+                         "out)")
     ap.add_argument("--net", default=None)
-    ap.add_argument("--period", type=float, default=None, metavar="S",
-                    help="the block's period (s): the planned check and run align their "
-                         "window to it (a simulation result's; DC currents have none)")
+    from .output import seconds
+    ap.add_argument("--period", type=seconds, default=None, metavar="S",
+                    help="the block's period in seconds (1e-08; on the command line also "
+                         "10n or 10ns): the planned check and run average over the "
+                         "record's last whole periods of it, and the plan checks that the "
+                         "result gives that window (a transient needs it; DC currents and "
+                         "an operating point have none). " + RCC_CONTRACT)
     ap.add_argument("--viewer", action="store_true",
                     help="the person wants the results on the layout")
     ap.add_argument("--html", action="store_true", help="the person wants HTML reports")
@@ -1213,7 +1029,6 @@ def main(argv=None, sink=None) -> int:
     sink = sink or Out(a.format)
     f = Facts(dspf=a.dspf, process=a.process, cc_sim=a.cc_sim, netlist=a.netlist,
               currents=a.currents, mode=a.mode, net=a.net, period=a.period,
-              self_consistent=a.self_consistent, vdd=a.vdd,
               viewer=a.viewer, html=a.html,
               lib=a.lib, cell=a.cell, have_cadence=a.have_cadence, have_xyce=a.have_xyce,
               have_ngspice=a.have_ngspice, json=sink.json, **extra)
@@ -1248,13 +1063,6 @@ def render(plan: Plan) -> str:
             wait = (f"  [WAITING: replace {', '.join(s['placeholders'])}]"
                     if s["status"] == "waiting" else "")
             L.append(f"  {s['n']}. {s['command']}{flag}{wait}\n       {s['why']}")
-            for c in s.get("choices") or []:
-                tag = (" (recommended)" if c["recommended"] else "") + \
-                    ("" if c["possible"] else f" -- cannot work here: {c['why_not']}")
-                L.append(f"       * {c['route']}{tag}\n           what: {c['what']}\n"
-                         f"           cost: {c['cost']}\n"
-                         f"           accuracy: {c['accuracy']}\n"
-                         f"           then: {c['command']}")
     if plan.advice:
         L.append("\nadvice:")
         L += [f"  - {x}" for x in plan.advice]

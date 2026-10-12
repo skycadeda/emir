@@ -21,15 +21,15 @@ EMIR="python3 -m emir" sh examples/09_cadence_flow/run.sh /tmp/ex09   # a new or
    `$PATH`), each with where to set it. EMIR assumes no corner and no
    temperature.
 2. **`emir extract --site out/site.yaml`** for `--kind r_only` and
-   `--kind c_only_coupled` (`out/plan_*.json`): the two extractions of the
-   big-block flow, from one LVS, into `railblock.r_only.dspf` and
-   `railblock.c_only_coupled.dspf`. Each plan holds the PVS command line, the
+   `--kind rc_coupled` (`out/plan_*.json`): two extractions from one LVS, the
+   resistor grid (for DC currents) and the RC netlist rcc simulates, into
+   `railblock.r_only.dspf` and `railblock.rc_coupled.dspf`. Each plan holds the PVS command line, the
    gate, the Quantus command and the full command file (52 command lines, every
    load-bearing setting in it). The decks in `out/pdk/` are empty stand-ins; on
    a real site the site file names the PDK's.
-3. **`emir save-lines --mode rcc --prefix XDUT. --out out/tb/emir_save.scs`**
-   on the bundled sample: the person's mode, rcc (VDD has 17 nodes, so `emir next`
-   recommends it), saves every branch current: one line of 16 `XDUT.R...:1` signals.
+3. **`emir save-lines --prefix XDUT. --out out/tb/emir_save.scs`** on the
+   bundled sample: every branch current rcc reads, one line of 16 `XDUT.R...:1`
+   signals.
 4. **The RCC testbench template** (`agent/cadence/spectre/tb_rcc.scs.tmpl`)
    filled for the sample: `out/tb/tb_rcc.scs`. Its models line is a placeholder.
 5. `summarize.py` writes `out/summary.json`, the machine-independent digest
@@ -40,8 +40,8 @@ EMIR="python3 -m emir" sh examples/09_cadence_flow/run.sh /tmp/ex09   # a new or
 Point a site file at the real decks (`agent/cadence/site/emir_site.cadence.yaml.example`),
 check the plan, and -- once the person agrees to run the licensed tools -- add
 `--run`. Then simulate the testbench in Spectre with `-format psfascii` and run
-`emir run ... --cc-sim <result> --mode rcc` (small block) or `--mode cc-grid`
-(big block, with the R-only DSPF). `agent/cadence/README.md` has the whole flow.
+`emir run ... --cc-sim <result>` on the RC DSPF. `agent/cadence/README.md` has the
+whole flow.
 
 Status: this example runs no Cadence tool. The extraction commands and the command
 file are UNVERIFIED until checked on site: the local agent verifies them where PVS

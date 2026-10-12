@@ -5,7 +5,7 @@ synthetic: [`make_results.py`](make_results.py) wrote them with EMIR's own write
 (`emir.hspice.write_tr0ascii`), which follows the documented HSPICE ASCII layout
 (`.option post=2 post_version=2001`), and their CSDF twins (`emir.csdf.write_csdf`).
 The example shows what EMIR does with such files: the save lines an HSPICE deck needs,
-the names sidecar, the reader, rcc and cc-grid, and the "not verified on this machine"
+the names sidecar, the reader, rcc, and the "not verified on this machine"
 line a run carries until `emir verify-sim --sim hspice --run` has passed where HSPICE
 runs ([Simulators](../../docs/simulators.md)). The CSDF twins stay unverified even then:
 `emir verify-sim` covers HSPICE's `.tr0` output only, so a run on a `.csd` file says
@@ -30,21 +30,16 @@ sqrt((4.9 + 0.2 / 3) / 10) = 1.409492 mA.
 | file | what it holds |
 |---|---|
 | `inputs/rcc.tr0`, `inputs/rcc.csd` | every branch current, named `i(xi0.rm1` .. `i(xi0.rc3` (HSPICE leaves out the closing parenthesis): Rm1..Rm3 carry four loads, Rm4..Rm6 three, Rm7..Rm9 two, Rm10..Rm12 and Rc0..Rc3 one |
-| `inputs/cc.tr0`, `inputs/cc.csd` | each load's terminal currents `i1`..`i4(xi0.mpk`: into the drain -I, gate and bulk 0, and the source current i3 written **out** of the device (-I), as HSPICE's manuals draw it |
-
-Whether a real HSPICE run reports i3 out of the device was not confirmed, so EMIR saves
-all four terminals and sets i3's sign from KCL when it reads the file (EMIR-I465): here
-it finds i1 + i2 - i3 + i4 = 0 and reads each MPk:s current as +I, into the load.
 
 ## What it runs
 
-1. `emir save-lines rail.dspf --mode rcc --sim hspice --prefix XI0. --names-out
-   out/rcc.tr0.names --out out/rcc.hspice.inc` (and `--mode cc-grid`): the lines to add to an
-   HSPICE deck (`.option probe post=2 post_version=2001`, `.probe tran ...`) and the
-   names sidecar. The sidecar is copied beside the CSDF twins too.
-2. `emir run ... --cc-sim out/rcc.tr0 --mode rcc` and `--cc-sim out/cc.tr0 --mode
-   cc-grid` (and the same on the `.csd` files), with `--period 1e-8`.
-3. `compare.py` digests the four run summaries and compares them with
+1. `emir save-lines rail.dspf --sim hspice --prefix XI0. --names-out
+   out/rcc.tr0.names --out out/rcc.hspice.inc`: the lines to add to an HSPICE deck
+   (`.option probe post=2 post_version=2001`, `.probe tran ...` of every branch current)
+   and the names sidecar. The sidecar is copied beside the CSDF twin too.
+2. `emir run ... --cc-sim out/rcc.tr0` (and the same on the `.csd` file), with
+   `--period 1e-8`.
+3. `compare.py` digests the two run summaries and compares them with
    `expected/summary.json` (relative tolerance 1e-4).
 
 ## The numbers, by hand
@@ -63,9 +58,8 @@ peak, on 0.75 um; Cont 0.75 mA avg, 1.5 mA rms, 2.4 mA peak per cut):
 | VDD | IR drop (avg) | 3 x 1 ohm x (4 + 3 + 2 + 1) mA + 24 ohm x 1 mA = 54.0 mV | 54.000 mV |
 
 The rms ratios read 3e-5 above the exact value: the time-weighted trapezoid rule on the
-file's points over the 0.1 ns edges (a simulator's own points would do the same). rcc and
-cc-grid agree, and so do the `.tr0` files and their CSDF twins. Every run's verdict is
-FAIL (Rm1..Rm3 avg, Rc3 avg), and its `simulator_verification` is `not verified`: the
+file's points over the 0.1 ns edges (a simulator's own points would do the same). The
+`.tr0` file and its CSDF twin agree. Every run's verdict is FAIL (Rm1..Rm3 avg, Rc3 avg), and its `simulator_verification` is `not verified`: the
 files' header names no simulator (it says they are synthetic), the names sidecar says
 `hspice`, and no `emir verify-sim` record exists in the example's own state directory
 (`out/state`).

@@ -76,7 +76,7 @@ def main(argv=None, sink=None) -> int:
 
     step("1. core imports (numpy / scipy / yaml only)")
     try:
-        import emir.dspf, emir.engine, emir.rcc, emir.ccsim, emir.dynir, emir.layoutview  # noqa
+        import emir.dspf, emir.engine, emir.rcc, emir.waveform, emir.layoutview  # noqa
         heavy = [m for m in ("matplotlib", "klayout") if m in sys.modules]
         result(not heavy, f"core path is clean{'' if not heavy else ' (pulled in ' + ', '.join(heavy) + ')'}")
     except Exception as e:                       # noqa: BLE001

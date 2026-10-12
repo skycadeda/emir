@@ -2,11 +2,11 @@
 // Copyright (c) 2026 Vijay Gupta and contributors
 // Part of EMIR, the open-source EM/IR screening tool. Not a Cadence-supplied file.
 //
-// EMIR Spectre testbench, RCC (--mode rcc): the RC-extracted block itself is
-// simulated and every parasitic resistor's current is saved. Exact; for small
-// blocks. Measured at the original development site on a generated test block
-// (inverters on a segmented rail): RCC 1.92 s vs CC + grid 1.97 s at 41 rail
-// nodes, 3.83 s vs 2.19 s at 521, 9.53 s vs 2.61 s at 2057 (emir/rcc.py).
+// EMIR Spectre testbench, rcc: the RC-extracted block itself is simulated and
+// every parasitic resistor's current is saved; every metric is read from them,
+// exactly. Measured at the original development site on a generated test block
+// (inverters on a segmented rail): RCC 1.92 s at 41 rail nodes, 3.83 s at 521,
+// 9.53 s at 2057 (emir/rcc.py).
 //
 // Status: UNVERIFIED until checked on site. The route this template follows (a
 // SPICE-syntax netlist included from a Spectre-language testbench, the block
@@ -16,10 +16,10 @@
 // runs it. The template itself is filled by hand.
 //
 // Fill the dollar-brace fields (by hand, with `envsubst`, or Python string.Template), then:
-//   emir save-lines ${DSPF} --mode rcc --prefix XDUT. --out emir_save.scs
+//   emir save-lines ${DSPF} --prefix XDUT. --out emir_save.scs
 //   spectre tb_rcc.scs -format psfascii -raw tb_rcc.raw =log tb_rcc.log
-//   emir check ${DSPF} --process <process.yaml> --cc-sim tb_rcc.raw --mode rcc
-//   emir run   ${DSPF} --process <process.yaml> --cc-sim tb_rcc.raw --mode rcc \
+//   emir check ${DSPF} --process <process.yaml> --cc-sim tb_rcc.raw --period <T>
+//   emir run   ${DSPF} --process <process.yaml> --cc-sim tb_rcc.raw --period <T> \
 //        --summary-out emir_out/summary.json --html emir_out/html
 //
 // ${DSPF} must be an RC extraction (Quantus kind rc_coupled). An R-only DSPF
@@ -35,14 +35,19 @@ include "${DSPF}"
 XDUT (${PORTS}) ${CELL}
 
 // The operating mode under test: supplies, bias, inputs, clocks, loads.
-// One EMIR run per distinct mode (start-up, steady state, standby, the worst
-// vector), not one long simulation.
+// One EMIR run per distinct periodic mode (steady state, standby, the worst
+// vector), not one long simulation; a start-up is not periodic, and rcc's
+// window of whole periods does not screen it.
 parameters vdd_v=${VDD}
 VSUP (${VDD_NET} 0) vsource dc=vdd_v
 // ...
 
-// A tran long enough to settle, then whole periods of the activity: EMIR
-// windows on whole periods (--period) and reports the window sensitivity.
+// A tran long enough to settle, then whole periods of the activity, two at
+// least: EMIR averages the last whole periods of --period <T>, up to three.
+// rcc is exact for the simulated record over the whole periods you give
+// (--period); whether the testbench has settled is yours to establish, as for
+// any .meas. (EMIR-E429 refuses a run whose last two periods differ, E431 one
+// under two periods.)
 // Seen during development: even a 280-resistor RCC netlist needed a gmin
 // homotopy and printed a pivoting notice at DC. If DC does not converge, try
 // (UNVERIFIED as a general fix):

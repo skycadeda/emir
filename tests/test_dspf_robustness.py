@@ -99,20 +99,21 @@ def test_is_complex_scans_the_signals_once(monkeypatch):
 
 
 def _complex_checks(tmp_path, n, monkeypatch):
-    """np.iscomplexobj calls during a CC run over every net of an n-net DSPF."""
+    """np.iscomplexobj calls during an rcc run over every net of an n-net DSPF."""
     import contextlib
     import io
     sub = tmp_path / f"n{n}"
     sub.mkdir()
     d = many_nets_dspf(sub, n)
     t = np.linspace(0, 4e-9, 41)
-    res = _psf_tran(str(sub / "cc.tran"), t,
-                    {f"M{k}:d": 1e-4 * (1 + 0.5 * np.sin(2 * np.pi * t / 1e-9)) for k in range(n)})
+    i = 1e-4 * (1 + 0.5 * np.sin(2 * np.pi * t / 1e-9))
+    res = _psf_tran(str(sub / "rcc.tran"), t,
+                    {f"R{k}{x}:1": i for k in range(n) for x in "ab"})
     calls = []
     real = np.iscomplexobj
     monkeypatch.setattr(waves.np, "iscomplexobj", lambda v: calls.append(1) or real(v))
-    a = build_parser().parse_args([d, "--process", PROC, "--cc-sim", res, "--mode", "cc-grid",
-                                   "--period", "1e-9", "--no-check"])
+    argv = [d, "--process", PROC, "--cc-sim", res, "--period", "1e-9", "--no-check"]
+    a = build_parser().parse_args(argv)
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         assert len(run(a)) == n
     monkeypatch.setattr(waves.np, "iscomplexobj", real)

@@ -220,11 +220,25 @@ procedure( emirHintFor(v metric)
 ;; Factored out here, emirSelfTest() can format all of them before shipping.
 procedure( emirStr(x)  if( stringp(x) x  if( x sprintf(nil "%L" x) "" )))
 
+;; the metrics the viewer data says some net checked (emirMetrics, written by
+;; emir; data from before it: all three)
+procedure( emirMetricChoices()
+  if( and(boundp('emirMetrics) emirMetrics) emirMetrics list("avg" "rms" "peak")))
+
 procedure( emirRowText(v n metric)
-  sprintf(nil "%3d %-5s %-7s %-7s %-4s %7.3fx %9.4f  %s"
-    n emirStr(emirVNet(v)) emirStr(emirVName(v)) emirStr(emirVLayer(v))
-    emirStr(emirVKind(v)) float(emirVRat(v metric))
-    float(emirVCurM(v metric)) emirStr(emirHintFor(v metric))))
+  ;; a metric the run did not compute is nil in the data: said in words,
+  ;; never shown as a number
+  if( numberp(emirVRat(v metric))
+    then sprintf(nil "%3d %-5s %-7s %-7s %-4s %7.3fx %9.4f  %s"
+      n emirStr(emirVNet(v)) emirStr(emirVName(v)) emirStr(emirVLayer(v))
+      emirStr(emirVKind(v)) float(emirVRat(v metric))
+      float(emirVCurM(v metric)) emirStr(emirHintFor(v metric)))
+    else sprintf(nil "%3d %-5s %-7s %-7s %-4s  %s %s"
+      n emirStr(emirVNet(v)) emirStr(emirVName(v)) emirStr(emirVLayer(v))
+      emirStr(emirVKind(v)) emirStr(metric) emirNotChecked) ))
+
+;; what a nil metric means: the run did not compute it
+emirNotChecked = "not checked"
 
 ;; Same widths as the row formats, so the header sits over its columns. It is
 ;; a separate field rather than row 0 of the list, which would scroll away and
@@ -243,25 +257,38 @@ procedure( emirCountText(shown metric irThr)
       then sprintf(nil "%d IR segments of %d   |   worst %.3f mV   |   >= %.2f mV"
              length(shown) length(emirIR)
              float(if(shown emirRMv(car(shown)) 0.0)) float(irThr))
-      else sprintf(nil "%d shown of %d   |   %d FAIL  %d WARN   |   metric %s"
+      else sprintf(nil "%d shown of %d   |   %d FAIL  %d WARN   |   metric %s%s"
              length(shown) length(emirViol)
-             length(setof(x shown emirVRat(x metric) >= 1.0))
-             length(setof(x shown and(emirVRat(x metric) >= 0.8
+             length(setof(x shown and(numberp(emirVRat(x metric))
+                                      emirVRat(x metric) >= 1.0)))
+             length(setof(x shown and(numberp(emirVRat(x metric))
+                                      emirVRat(x metric) >= 0.8
                                       emirVRat(x metric) < 1.0)))
-             emirStr(metric)) )
+             emirStr(metric)
+             if( exists(x emirViol !numberp(emirVRat(x metric)))
+                 sprintf(nil "   |   %d segment(s) %s"
+                         length(setof(x emirViol !numberp(emirVRat(x metric))))
+                         emirNotChecked)
+                 "")) )
     if( length(shown) > emirMaxRows
         sprintf(nil "   |   list: first %d" emirMaxRows) "") ))
 
 procedure( emirDetailText(v metric)
   let( (unit)
     unit = if( emirVKind(v) == "via" "mA/cut" "mA/um" )
-    sprintf(nil
-      "%s %s  %s %s   %s %.3fx   %.4f %s   I=%.4f mA   (worst: %s %.3fx)\n%s"
-      emirStr(emirVNet(v)) emirStr(emirVName(v)) emirStr(emirVLayer(v))
-      emirStr(emirVKind(v)) emirStr(metric) float(emirVRat(v metric))
-      float(emirVValM(v metric)) unit float(emirVCurM(v metric))
-      emirStr(emirVMetric(v)) float(emirVRatio(v))
-      emirStr(emirHintFor(v metric)))))
+    if( numberp(emirVRat(v metric))
+      then sprintf(nil
+        "%s %s  %s %s   %s %.3fx   %.4f %s   I=%.4f mA   (worst: %s %.3fx)\n%s"
+        emirStr(emirVNet(v)) emirStr(emirVName(v)) emirStr(emirVLayer(v))
+        emirStr(emirVKind(v)) emirStr(metric) float(emirVRat(v metric))
+        float(emirVValM(v metric)) unit float(emirVCurM(v metric))
+        emirStr(emirVMetric(v)) float(emirVRatio(v))
+        emirStr(emirHintFor(v metric)))
+      else sprintf(nil "%s %s  %s %s   %s: %s   (worst: %s %.3fx)\n%s"
+        emirStr(emirVNet(v)) emirStr(emirVName(v)) emirStr(emirVLayer(v))
+        emirStr(emirVKind(v)) emirStr(metric) emirNotChecked
+        emirStr(emirVMetric(v)) float(emirVRatio(v))
+        emirStr(emirHintFor(v emirVMetric(v)))) )))
 
 ;; ---------------- IR record accessors ----------------
 ;; (net mv band x0 y0 x1 y1 name)
@@ -643,7 +670,8 @@ procedure( emirRedraw()
     ;; ---- EM: one hilight set per ramp step, only segments at or above the threshold
     when( showEM
       foreach( v emirViol
-        when( and( netT[emirVNet(v)] emirVRat(v metric) >= emThr )
+        when( and( netT[emirVNet(v)] numberp(emirVRat(v metric))
+                   emirVRat(v metric) >= emThr )
           emirShown = cons(v emirShown)
           hs = emirBandSet(sets emirBandStep(emirVBand(v)) cv)
           when( hs geAddHilightRectangle(hs emirVBox(v)) ) ))
@@ -816,7 +844,8 @@ procedure( emirExplorer1()
 
     metF = hiCreateCyclicField(
       ?name 'emirMetric ?prompt "EM metric"
-      ?choices list("avg" "rms" "peak") ?value "avg"
+      ;; only the metrics the run checked
+      ?choices emirMetricChoices() ?value car(emirMetricChoices())
       ?callback "emirRedraw()")
 
     ;; The scale field is integer-only (?precision just sets displayed decimals,

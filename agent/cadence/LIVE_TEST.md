@@ -73,7 +73,7 @@ Then, in order, waiting where noted:
 | `emirT6b()` | PASS: the form, the sets and the ring are gone. LOOK: pan and zoom both the layout and the schematic; no ring reappears and the CIW shows no error |
 | `emirT7()` | after two reloads, a newly opened layout window has exactly ONE `EMIR` menu. Also open the cell in Layout XL (and EXL on IC23.1) and note whether it gets the menu |
 | `emirT8()` | output directory `/tmp/emir manual/run` (with a space): "Inputs OK."; then press Run and Open HTML in the form: both work |
-| `emirT9()`, then `emirT9a()`, then `emirT9b()` | with Mode at "choose", Save lines refuses with a dialog that names rcc and cc-grid; with Mode rcc a dialog names `<out>/emir_save.scs`; PASS: the file starts `save XDUT.` |
+| `emirT9()`, then `emirT9b()` | a dialog names `<out>/emir_save.scs`; PASS: the file starts `save XDUT.` |
 
 The expected 10 and 16 come from the bundled sample (`tests/test_cadence_viewer.py`
 computes them from a run of the same sample and currents).

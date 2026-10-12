@@ -25,10 +25,14 @@ def test_case(name, fn, tmp_path):
     assert ok, msg or f"{name}: result differs from the closed form"
 
 
-def test_suite_has_thirteen_core_cases():
-    """Sixteen until the three GDS mesh cases left with `emir mesh`."""
-    assert len(V.CASES) == 13
-    assert {c[2] for c in V.CASES} == {"core"}
+def test_suite_has_six_core_cases():
+    """Sixteen until the three GDS mesh cases left with `emir mesh`; thirteen
+    until the six cases of the removed self-consistent loop, cc-grid dynamic
+    IR and decap-aware EM left with them; seven until the PSS and CC ingest
+    cases left with cc-grid (1.1) and an rcc ingest case took their place.
+    None is slow."""
+    assert len(V.CASES) == 6
+    assert {c[2] for c in V.CASES} == {"core"} and not any(c[3] for c in V.CASES)
 
 
 def test_cli_quick(tmp_path):
@@ -37,19 +41,13 @@ def test_cli_quick(tmp_path):
                         "--out", str(tmp_path / "v")], cwd=ROOT,
                        capture_output=True, text=True)
     assert p.returncode == 0, p.stdout + p.stderr
-    assert "VALIDATION CASES PASS" in p.stdout
-    assert "--quick" in p.stdout                     # the slow cases are named as skipped
+    assert "ALL 6 VALIDATION CASES PASS" in p.stdout     # none is slow: --quick runs all
     assert (tmp_path / "v").is_dir()
 
 
 def test_the_preflight_playbook_says_what_quick_runs():
-    """Playbook 00 said `emir validate --quick` runs "all 16" cases with the
-    dev extra; --quick leaves out the slow transient ones."""
-    fast = sum(1 for c in V.CASES if not c[3])
-    slow = len(V.CASES) - fast
+    """Playbook 00 says how many cases `emir validate --quick` runs."""
     with open(os.path.join(ROOT, "agent", "playbooks", "00-preflight.md"),
               encoding="utf-8") as f:
         text = " ".join(f.read().split())
-    assert (f"the {fast} fast analytic validation cases of the {len(V.CASES)} (it leaves "
-            f"out the {slow} slow transient ones, which `emir validate` runs)") in text
-    assert f"(all {len(V.CASES)} with" not in text
+    assert f"the {len(V.CASES)} analytic validation cases (none is slow" in text

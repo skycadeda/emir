@@ -17,10 +17,6 @@ can check that the grader catches it:
   edit-input      appends a line to the first input file
   no-commands     writes the answer without running anything
   wrong-verdict   the answer's verdict words swapped (FAIL <-> CLEAN)
-  pick-mode       chooses the mode for the person: an `emir save-lines --mode rcc` call
-                  on the first DSPF of inputs/, and "I chose rcc" in the answer
-  loosen-basis    every emir command with --dynamic run without its --period (decap-aware
-                  EM is then not computed and the verdict falls back to decap-free)
 """
 from __future__ import annotations
 
@@ -34,8 +30,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 VARIANTS = ("good", "no-disclaimer", "invented-flag", "wrong-number", "invented-limit",
-            "signoff", "edit-input", "no-commands", "wrong-verdict", "pick-mode",
-            "loosen-basis")
+            "signoff", "edit-input", "no-commands", "wrong-verdict")
 
 
 def _scale(m):
@@ -56,8 +51,6 @@ def answer_for(text: str, variant: str) -> str:
     elif variant == "wrong-verdict":
         text = re.sub(r"\bFAIL(S|ED)?\b", "CLEAN", text)
         text = re.sub(r"\bfail(s|ed|ing)?\b", "pass", text)
-    elif variant == "pick-mode":
-        text += "\nI chose rcc for you: it is exact on a net this small.\n"
     return text
 
 
@@ -76,13 +69,6 @@ def main(argv=None) -> int:
         cmds = []
     if a.variant == "invented-flag":
         cmds.insert(1, "emir check inputs --fast --format json")
-    if a.variant == "pick-mode":
-        dspf = next((os.path.join(d, n) for d, _, names in sorted(os.walk("inputs"))
-                     for n in sorted(names) if n.endswith(".dspf")), None)
-        if dspf:
-            cmds.append(f"emir save-lines {dspf} --mode rcc --format json")
-    if a.variant == "loosen-basis":
-        cmds = [re.sub(r" --period \S+", "", c) if " --dynamic" in c else c for c in cmds]
     if a.variant == "edit-input":
         for d, _, names in sorted(os.walk("inputs")):
             if names:

@@ -92,17 +92,15 @@ the import hang or exhaust memory.
   program is a vulnerability.
 - **The magic route's outputs**: `emir extract --tool magic` runs magic in a
   directory of its own under `--out` (`magic/`, marked by `.emir-magic-work`) and
-  writes `<cell>.dspf` and `<cell>.cc.spice` into `--out`; it never overwrites one
-  of those, or a `magic/` directory, that EMIR did not write (EMIR-E646), over the
+  writes `<cell>.dspf` into `--out`; it never overwrites one, or a `magic/`
+  directory, that EMIR did not write (EMIR-E646), over the
   command line or MCP alike, and never removes the layout it reads. An input that
   makes it remove or overwrite a file of the person's is a vulnerability.
 - **`emir mcp`**, the MCP server: its tools run only `emir` commands (never a
   shell), and a call that would start a licensed tool, run long (an ADC-top or
-  PLL-top size DSPF, or `dynamic` with `dyn_steps` above 200000), rewrite a file
-  in place, overwrite an existing file outside the server's working directory,
-  loosen the EM verdict (`emir_run` with an `em_basis` other than the default, or
-  `dynamic` with `ground`, with `dyn_steps` below 2000 or without `period`), or
-  simulate a deck that runs commands of its own is refused (EMIR-E590) unless the
+  PLL-top size DSPF), rewrite a file in place, overwrite an existing file outside
+  the server's working directory, or simulate a deck that runs commands of its own
+  is refused (EMIR-E590) unless the
   agent passes `confirm: true` after asking the person. A tool that can write a
   file is never annotated read-only. A way past that gate, or a tool call that
   runs something other than `emir`, is a vulnerability.

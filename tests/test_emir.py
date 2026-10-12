@@ -84,14 +84,6 @@ def test_unmapped_layer_is_warned(tmp_path):
     assert warns and "NOT checked" in warns[0] and "cont" in warns[0].lower()
 
 
-def test_self_consistent_option_rules():
-    rep = check_inputs(DSPF, process=PROC, nets=None, currents=CUR, self_consistent=True)
-    fails = [m for lvl, m in _levels(rep, "options") if lvl == "FAIL"]
-    assert any("--self-consistent needs --net" in m for m in fails)
-    assert any("--vdd" in m for m in fails)
-    assert any("--netlist" in m for m in fails)
-
-
 def test_sim_result_missing_and_binary(tmp_path):
     rep = check_inputs(DSPF, process=PROC, nets=["VDD"], cc_sim=str(tmp_path / "none.raw"))
     assert any("not found" in m for lvl, m in _levels(rep, "files") if lvl == "FAIL")
@@ -190,10 +182,8 @@ def test_cli_argfile(tmp_path):
 def test_cli_nets_pins_savelines():
     assert "VDD" in _emir("nets", DSPF).stdout
     assert "MP0:s" in _emir("pins", DSPF, "--net", "VDD").stdout
-    out = _emir("save-lines", DSPF, "--net", "VDD", "--mode", "rcc").stdout
-    assert out.startswith("save") and "Rm1:1" in out
-    out = _emir("save-lines", DSPF, "--net", "VDD", "--mode", "cc-grid").stdout
-    assert "MP0:s" in out
+    out = _emir("save-lines", DSPF, "--net", "VDD").stdout
+    assert out.startswith("save") and "Rm1:1" in out and "MP0:s" not in out
 
 
 def test_cli_info_and_version():

@@ -4,8 +4,8 @@ It starts the server over stdio (as Claude Code, Codex or Cursor would),
 lists the tools, proves the install with emir_selftest, asks emir_next for a
 plan on the bundled sample, makes each planned tool call in order (stopping
 at the first failure), and shows the go-ahead rule: a run that would start
-Spectre (run=true, in the person's mode) is refused (EMIR-E590) because the
-call carries no confirm=true.
+Spectre (run=true; rcc, the one method of a simulated run) is refused
+(EMIR-E590) because the call carries no confirm=true.
 
 It writes, into the output directory:
   transcript.json   every call: tool, arguments, result schema, isError,
@@ -122,8 +122,8 @@ async def session(out_dir: str) -> list:
             if doc.get("schema") == "emir.report/1":
                 with open(os.path.join(out_dir, "report.md"), "w", encoding="utf-8") as f:
                     f.write(doc["markdown"])
-        # 3. the go-ahead rule: a run that would start Spectre (run=true, in
-        #    the mode the person chose, here rcc), without confirm=true, is
+        # 3. the go-ahead rule: a run that would start Spectre (run=true; rcc,
+        #    the one method of a simulated run), without confirm=true, is
         #    refused before anything runs
         await call("emir_run", {"dspf": dspf, "process": proc, "netlist": "tb.scs",
                                 "mode": "rcc", "run": True})

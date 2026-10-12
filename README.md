@@ -7,38 +7,21 @@ your agent at this repository; it reads [AGENTS.md](AGENTS.md).
 > accuracy. It is your responsibility to test and verify its results for your process,
 > tools and design before relying on them.**
 
-EMIR screens extracted analog layout for **electromigration (EM) and IR drop**.
-It reads the resistor network of every net (a DSPF; on an open PDK, magic extracts one from the GDS) and the
-currents that flow in it (a Spectre, HSPICE, Xyce or ngspice simulation, or DC values), checks
-every wire segment and via against your process file's avg, rms and peak limits, and
-says what to change: widen this wire to that width, add that many cuts. It handles a
-small block directly, an ADC or PLL top through a C-only simulation and an R-only grid
-(measured here on synthetic grids of up to 92,001 nodes; no real top has been screened
-with this repository yet), and a chip hierarchically.
+EMIR reads the resistor network of every net (a DSPF; on SKY130, magic extracts one from
+the GDS), the currents that flow in it (a Spectre, HSPICE, Xyce or ngspice simulation, or
+DC values) and your PDK's limits, checks every wire segment and via against its avg, rms
+and peak limits, computes the IR drop on each supply, and says what to change: widen this
+wire to that width, add that many cuts.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/hero_light.png">
-  <img alt="EMIR banner: an EM chart of a synthetic power mesh screened through cc-grid, four straps at the feed failing and the two that leave it labelled with their fixes, beside the flow agent, emir next, emir run, emir report." src="docs/images/hero.png">
+  <img alt="EMIR banner: an EM chart of a synthetic power mesh screened with rcc, four straps at the feed failing and the two that leave it labelled with their fixes, beside the flow agent, emir next, emir run, emir report." src="docs/images/hero.png">
 </picture>
 
 **Screening, not sign-off.** EMIR finds EM and IR problems early and tells you where to
-look; foundry-qualified EM/IR analysis remains the sign-off flow. Every report it writes
-says so. A simulator's route into EMIR is proven on the machine that uses it, by
-`emir verify-sim`: testbenches with hand-checkable answers (ideal current loads, and
-real MOSFETs, a resistor and a subcircuit-wrapped device whose terminal currents and
-directions are known), read through the same save lines, probes and reader as a run.
-It covers that simulator version, output format and `--sim-args`, and the device
-forms it exercises ([what it covers](docs/simulators.md#on-site-verification)); until
-the latest verification there has passed, every run from that simulator says it is not
-verified.
-
-## Three ways in
-
-| | how | start here |
-|---|---|---|
-| **An AI agent** | Point Claude Code, Codex, Cursor or any agent at this repository: it reads [`AGENTS.md`](AGENTS.md), asks `emir next` what to run, branches on stable error codes and relays `emir report` to you. Clients without a shell use the MCP server, `emir mcp`. | [`AGENTS.md`](AGENTS.md), [`agent/README.md`](agent/README.md) |
-| **The command line** | `emir selftest`, `emir next`, `emir check`, `emir run`, `emir report`; every command also speaks JSON (`--format json`). | [Getting started](docs/getting-started.md) |
-| **Virtuoso** | An EMIR menu, a Screening form and an Explorer that ranks the worst segments and highlights them on the layout, read-only (UNVERIFIED until checked on site: the on-site checks in `agent/cadence/`). | [Cadence flow](docs/cadence.md) |
+look; foundry-qualified EM/IR analysis remains the sign-off flow. A simulator's route into
+EMIR is proven on the machine that uses it (`emir verify-sim`): until it passes there,
+every run from that simulator says it is not verified.
 
 ## Quickstart
 
@@ -49,8 +32,7 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -e .
 ```
 
-Then prove the install, screen the bundled sample, and read the report (the three
-commands run in about a second once installed):
+Then prove the install, screen the bundled sample, and read the report (a few seconds):
 
 <!-- quickstart: tests/test_docs.py runs this block as written -->
 ```sh
@@ -70,102 +52,56 @@ number can be checked by hand. Its verdict is FAIL on purpose:
 - VDD: 54.000 mV (from the feed)
 ```
 
-Open `emir_out/html/index.html` for the per-net map. Then run `emir next` with your own
-files: it prints the commands to run, in order, with a reason for each.
+Then run `emir next` with your own files: it prints the commands to run, in order, with a
+reason for each. An agent does the same through [AGENTS.md](AGENTS.md), or over MCP
+(`emir mcp`); in Virtuoso, an EMIR menu and an Explorer highlight the worst segments
+(UNVERIFIED until checked on site: [Cadence](docs/cadence.md)).
 
-## What it does
+## How the currents are used
 
-| feature | commands | docs |
+| currents | what is simulated | checks |
 |---|---|---|
-| EM on every wire segment (mA/um) and via (mA/cut), avg, rms and peak; IR drop per supply; a fix for each failing item | `emir run` | [Concepts](docs/concepts.md) |
-| an input checker that names every gap in the DSPF, process file and simulation result, with a code and the command that fixes it | `emir check`, `emir explain` | [Concepts](docs/concepts.md#the-input-checker) |
-| a planner: what to run next, and why, from what you have | `emir next` | [Driving EMIR from an agent](docs/agents.md) |
-| the summary to relay to a person, and a self-contained HTML report | `emir report`, `--html` | [Concepts](docs/concepts.md#what-a-run-produces) |
-| exact branch currents from an RC simulation (rcc), or device currents superposed through the R-only grid (cc-grid): the person's choice, with the measured trade-offs shown | `emir run --mode rcc\|cc-grid`, `emir next` | [Methods and modes](docs/method-modes.md) |
-| the self-consistent CC loop: each device pin fed its own droop waveform and the CC testbench simulated again until the droop and the currents agree, on Xyce and ngspice (Spectre and HSPICE UNVERIFIED); one rail, or VDD and VSS together | `emir run --mode cc-grid --self-consistent` | [Methods and modes](docs/method-modes.md#closing-the-loop-self-consistency) |
-| ADC and PLL tops: C-only simulation and R-only extraction, streamed superposition in bounded memory, dynamic IR | `emir run --mode cc-grid --dynamic` | [Big blocks](docs/big-blocks.md) |
-| chip level, hierarchically: block abstracts (pin currents and conductance), the top with blocks black-boxed, IR budgets, back-annotation | `emir abstract`, `emir run --abstract` | [Chip level](docs/chip-level.md) |
-| HSPICE, Xyce and ngspice: save lines, 0 V probes, the simulator run and the name map (Spectre and HSPICE are planned, and run with the person's go-ahead; UNVERIFIED until checked on site: `emir verify-sim --run`) | `emir simulate`, `emir probe`, `emir save-lines --sim` | [Simulators](docs/simulators.md), [Open-source flow](docs/open-source-flow.md) |
-| the on-site verification of a simulator: its route into EMIR (branch currents, MOSFET terminals, a two-terminal element's pin 2, 0 V probes) checked on your machine against hand-checkable answers, recorded per version, format and `--sim-args`, and named in every run's summary | `emir verify-sim` | [Simulators](docs/simulators.md#on-site-verification) |
-| a GDS on an open PDK, no extraction yet: magic (built with the public `geoout` patch) extracts the DSPF | `emir extract --tool magic` | [Open-source flow](docs/open-source-flow.md) |
-| PVS LVS and Quantus extraction plans, Spectre save lines, the Virtuoso menu and Explorer (UNVERIFIED until checked on site: `emir verify-sim --run`, or the on-site checks in `agent/cadence/`) | `emir extract`, `emir gui-install` | [Cadence flow](docs/cadence.md) |
-| results on the layout in KLayout (a marker database) and Virtuoso (highlights) | `--viewer` | [Open-source flow](docs/open-source-flow.md#looking-at-the-results-in-klayout) |
-| process files for SKY130, GF180MCU and IHP SG13G2 from their public data, a template, an ICT importer | `pdks/`, `emir import-ict` | [Onboarding a PDK](docs/pdk-onboarding.md) |
-| EM data entered by hand when no readable file exists (the ICT missing or encrypted): a fill-in file for the layers a DSPF uses, a check of what is still empty, unsourced or a likely unit slip, the manuals' width-loss and Black's-equation forms, and reports that say per layer the limits were typed by hand and from which document | `emir process new`, `emir process check` | [Entering EM data by hand](docs/pdk-onboarding.md#entering-em-data-by-hand) |
-| EMIR as MCP tools for agent clients | `emir mcp` | [Driving EMIR from an agent](docs/agents.md#emir-as-mcp-tools-emir-mcp) |
-| proof: an offline self-test, 13 closed-form validation cases, examples with golden results | `emir selftest`, `emir validate` | [Validation](docs/validation.md) |
+| a simulation (rcc) | the RC netlist, every branch current saved, over two or more periods of the activity (`--period`) | every metric: avg, rms, peak EM, static and dynamic IR, exactly, over the record's last whole periods |
+| DC (`--currents`) | nothing | avg = rms = peak, and the IR drop: a screen |
+
+`--mode rcc` is accepted and may be left out. Big blocks need the RC simulation in this
+release, and on an ADC or PLL top it is expected to run long: a faster route is planned.
+[Method and accuracy](docs/method.md) has the method and the evidence.
 
 ## Examples
 
 Each runs offline from a clone (with the virtual environment active) with
 `bash examples/<name>/run.sh`, and compares its results with golden files. There is no
-`01`: the quickstart above, on the bundled sample, is the first step
-([examples/README.md](examples/README.md)).
+`01`: the quickstart above is the first step ([examples/README.md](examples/README.md)).
 
 | example | shows | needs |
 |---|---|---|
-| [`02_xyce`](examples/02_xyce/) | the open-simulator flow, rcc and cc-grid, on a rail worked out by hand | Xyce |
+| [`02_xyce`](examples/02_xyce/) | the open-simulator flow, rcc, on a rail worked out by hand | Xyce |
 | [`03_ngspice`](examples/03_ngspice/) | the same circuit through ngspice | ngspice |
-| [`05_chip_level`](examples/05_chip_level/) | chip-level EM/IR, hierarchically: abstracts, budgets, back-annotation; equal to the flat run | nothing more |
-| [`06_big_block`](examples/06_big_block/) | streamed against dense superposition; RCC against CC + cc-grid on a size sweep, the self-consistent loop pass by pass, and the mesh screened with invented limits (a few straps fail, with their fixes) | Xyce for the sweep |
-| [`08_open_layout`](examples/08_open_layout/) | a SKY130 layout on the magic route: magic's network, rcc branch by branch against the simulator, cc-grid open and self-consistent against rcc | the `klayout` extra, a SKY130 PDK, a magic built with the `geoout` patch, Xyce or ngspice |
+| [`06_supply_mesh`](examples/06_supply_mesh/) | a synthetic supply mesh screened with rcc, with invented limits that make a few straps fail | Xyce |
+| [`08_open_layout`](examples/08_open_layout/) | a SKY130 layout on the magic route: magic's network, rcc branch by branch against the simulator | the `klayout` extra, a SKY130 PDK, a magic built with the `geoout` patch, Xyce or ngspice |
 | [`09_cadence_flow`](examples/09_cadence_flow/) | what a Cadence site runs, offline: the extraction plan, save lines, the testbench | nothing more |
 | [`10_mcp_agent`](examples/10_mcp_agent/) | a scripted MCP client following `emir_next` on the sample | the `mcp` extra |
-| [`11_hspice_offline`](examples/11_hspice_offline/) | the HSPICE route on synthetic HSPICE ASCII and CSDF results (HSPICE itself is not run): save lines, names sidecars, rcc and cc-grid, the "not verified on this machine" line | nothing more |
-| [`12_self_consistent`](examples/12_self_consistent/) | cc-grid open loop (9 % droop, EMIR-W520), then `--self-consistent` (the droop fed back, pass by pass), against the RCC reference and the closed loop worked out by hand | Xyce or ngspice |
-| [`13_decap_aware`](examples/13_decap_aware/) | decap-aware EM with `--dynamic`: each EM basis on a small decap mesh, the person's choice in `emir next`; RCC against decap-free and decap-aware on Xyce, decap straps and two resistive rails included; the self-consistent loop with decaps fed back, left out or simulated | Xyce for the comparison |
-
-## Choosing the mode
-
-When the currents come from a simulation, how they are used is **your choice**, and EMIR
-never makes it: `emir run`, `check`, `simulate`, `save-lines` and `abstract` take `--mode`
-and refuse to guess (`EMIR-E520`). `emir next` without `--mode` shows the three routes,
-with what each costs and how accurate it is (measured on the synthetic meshes of
-[`examples/06_big_block`](examples/06_big_block/), Xyce), and recommends one from the
-block's size:
-
-| route | what is simulated | cost | accuracy against rcc |
-|---|---|---|---|
-| `--mode rcc` | the RC netlist, every branch current saved | 2.0x the CC route at 132 nodes, 32.4x at 4 932; converges poorly and slowly on ADC and PLL tops | exact: the reference |
-| `--mode cc-grid` | the devices on ideal rails, their pin currents superposed through the R-only grid | one short CC simulation whatever the grid's size | open loop: avg and IR within 0.4 % at up to 0.6 % droop, +1.3 % at 4.1 % (256 inverters, 5 156 nodes); rms and peak read high |
-| `--mode cc-grid --self-consistent` | cc-grid, then the CC testbench again with each pin fed its own droop waveform, until the droop and the currents agree | 4 or 5 CC simulations at 0.35-0.55 % droop, 6 to 10 at 4.1-7.9 %; on these small grids more than RCC (a big-block saving is extrapolated, not measured) | the governing branch +0.01 / +0.34 / +0.78 % (avg / rms / peak) at 4.1 % droop (128 inverters, 384 nodes), where the open loop read +1.0 / +34 / +70 %; what remains is the grid's own capacitance; accurate, not conservative |
-
-rcc is recommended for small nets, cc-grid for big blocks; where only one can work (a pin
-reaching the net at several places: rcc; a result that saved only pin currents: cc-grid)
-`emir next` says so. A run with DC `--currents` has no mode. The numbers and their sources:
-[Methods and modes](docs/method-modes.md#choosing).
+| [`11_hspice_offline`](examples/11_hspice_offline/) | the HSPICE route on synthetic HSPICE ASCII and CSDF results (HSPICE itself is not run) | nothing more |
 
 ## Documentation
 
-The documentation is in [`docs/`](docs/) (it reads on GitHub as it is, and builds with
-MkDocs: `pip install -e '.[docs]' && mkdocs serve`).
+In [`docs/`](docs/) (it reads on GitHub as it is, and builds with MkDocs:
+`pip install -e '.[docs]' && mkdocs serve`): [Getting started](docs/getting-started.md),
+[Method and accuracy](docs/method.md), [Simulators](docs/simulators.md),
+[Process files and extraction](docs/process-files.md), [Cadence](docs/cadence.md) and the
+generated [Reference](docs/cli-reference.md). For agents: [AGENTS.md](AGENTS.md),
+[agent/](agent/README.md) (playbooks, MCP, evals, the [contract](agent/CONTRACT.md) and the
+[error codes](agent/errors.md)). Changes: [CHANGELOG.md](CHANGELOG.md).
 
-- [Getting started](docs/getting-started.md): install from a clone, the offline bundle or the wheel; the self-test; the first run
-- [Concepts](docs/concepts.md): what EMIR checks, avg/rms/peak, temperature, IR, the input checker, fix hints
-- [Methods and modes](docs/method-modes.md): rcc and cc-grid (your choice), superposition, the self-consistent loop, measured accuracy
-- [Big blocks](docs/big-blocks.md): ADC and PLL tops by CC simulation and R-only extraction
-- [Chip level](docs/chip-level.md): the hierarchical procedure, end to end
-- [Simulators](docs/simulators.md): Spectre, HSPICE, Xyce and ngspice, what each supports, and the on-site verification
-- [Open-source flow](docs/open-source-flow.md), [Cadence flow](docs/cadence.md), [Driving EMIR from an agent](docs/agents.md)
-- [Onboarding a PDK](docs/pdk-onboarding.md), [Process file reference](docs/process-file-reference.md), [DSPF requirements](docs/dspf-requirements.md)
-- [Validation](docs/validation.md), [Limits](docs/limits.md), [FAQ](docs/faq.md)
-- [Command-line reference](docs/cli-reference.md) and the [agent contract](agent/CONTRACT.md) (both generated from the code), [Error codes](agent/errors.md), [Changelog](CHANGELOG.md)
+## Licence and trademarks
 
-## Licence
-
-EMIR is licensed under the MIT License ([`LICENSE`](LICENSE); [`NOTICE`](NOTICE) holds
-the copyright line, the disclaimer, the credit for the code derived from other projects
-under the MIT License, and the trademark note). It comes with no warranty: see the
-disclaimer at the top of this page.
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) lists the third-party code and data,
-credits the code derived from other projects, and says what the offline bundle redistributes; the
-wheel carries all three files. The process files in `pdks/` carry the open
-PDKs' own data, under their Apache-2.0 licences.
-
-## Trademarks
+EMIR is licensed under the MIT License ([`LICENSE`](LICENSE); [`NOTICE`](NOTICE) holds the
+copyright line, the disclaimer, the credit for the code derived from other projects and the
+trademark note). [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) lists the third-party
+code and data; the process files in `pdks/` carry the open PDKs' own data (Apache-2.0).
 
 Cadence, Virtuoso, Spectre, Quantus, PVS and OCEAN are trademarks of Cadence Design
-Systems, Inc.; Calibre is a trademark of Siemens Industry Software Inc.; HSPICE and
-StarRC are trademarks of Synopsys, Inc. Other names are the property of their owners. EMIR is not
-affiliated with or endorsed by Cadence, Siemens, Synopsys, or any foundry or PDK
-provider.
+Systems, Inc.; Calibre is a trademark of Siemens Industry Software Inc.; HSPICE and StarRC
+are trademarks of Synopsys, Inc. EMIR is not affiliated with or endorsed by Cadence,
+Siemens, Synopsys, or any foundry or PDK provider.

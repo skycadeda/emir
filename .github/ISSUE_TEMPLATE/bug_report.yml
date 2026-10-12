@@ -21,8 +21,8 @@ body:
       label: What happened, and what you expected
       description: The command you ran, what it did, and what you expected instead.
       placeholder: |
-        I ran `emir run blk.dspf --process pdk.yaml --cc-sim tran.raw --mode cc-grid --net VDD`.
-        It exited 2 with EMIR-E4xx, but the result does save every pin current ...
+        I ran `emir run blk.dspf --process pdk.yaml --cc-sim tran.raw --net VDD`.
+        It exited 2 with EMIR-E4xx, but the result does save every branch current ...
     validations:
       required: true
   - type: input

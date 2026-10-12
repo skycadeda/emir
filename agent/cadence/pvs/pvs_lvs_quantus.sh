@@ -17,10 +17,10 @@
 #   QRC_CORNER=<corner> EXTRACT_TEMP=<C> \
 #   sh pvs_lvs_quantus.sh <gds> <cell> <cdl> [workdir] [kind]
 #
-# kind: r_only (default: the EM/IR grid), c_only_coupled (the CC netlist of a
-# big block), rc_coupled (the RC netlist of a small block, for --mode rcc).
+# kind: r_only (default: the resistor grid, for DC currents), rc_coupled (the
+# RC netlist rcc simulates and screens), rc_decoupled (the same with grounded C).
 # Run it once per kind with the same workdir: a matched LVS newer than the GDS
-# and the CDL is reused, so both DSPFs come from one LVS and name nets alike.
+# and the CDL is reused, so the DSPFs come from one LVS and name nets alike.
 #
 # Optional: PVS_BIN, QRC_BIN, PYTHON (default python3), SOURCE_CELL (the CDL
 # top cell), FORCE_LVS=1 (run LVS again), LVS_REPORT (default
@@ -38,8 +38,8 @@ gds=$1; cell=$2; cdl=$3
 work=${4:-emir_out/extract_$cell}
 kind=${5:-r_only}
 case $kind in
-    r_only|c_only_coupled|rc_coupled|rc_decoupled|c_only_decoupled) ;;
-    *) die 2 "unknown kind '$kind' (r_only, c_only_coupled, rc_coupled, rc_decoupled, c_only_decoupled)" ;;
+    r_only|rc_coupled|rc_decoupled) ;;
+    *) die 2 "unknown kind '$kind' (r_only, rc_coupled, rc_decoupled)" ;;
 esac
 [ -f "$gds" ] || die 2 "no GDS file $gds"
 [ -f "$cdl" ] || die 2 "no CDL file $cdl"

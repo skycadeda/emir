@@ -36,10 +36,7 @@ def test_each_schema_is_valid_2020_12(name):
 def test_every_document_the_cli_prints_has_a_schema():
     expected = {"info", "selftest", "validate", "nets", "pins", "save_lines", "check",
                 "run", "import_ict", "gui_install", "explain", "schema_list", "next",
-                "report", "error", "help", "extract", "probe", "simulate",
-                # the hierarchy flow: the abstract file, what `emir abstract`
-                # prints, and the top-level pin voltages
-                "abstract", "abstract_summary", "port_voltages",
+                "report", "error", "help", "extract", "simulate",
                 # the on-site verification: what `emir verify-sim` prints, and
                 # the records it keeps (verified.json)
                 "verify_sim", "verified",

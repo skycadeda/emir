@@ -5,10 +5,11 @@
 #
 #   sh examples/11_hspice_offline/run.sh [OUT_DIR]     (default: out/ beside this file)
 #
-# 1. emir save-lines --sim hspice prints the lines an HSPICE deck needs and
-#    writes the names sidecars (<result>.names);
-# 2. emir run reads each result through its sidecar, in rcc and in cc-grid;
-# 3. the digest of the four runs is compared with expected/summary.json.
+# 1. emir save-lines --sim hspice prints the lines an HSPICE deck needs (every
+#    branch current) and writes the names sidecar (<result>.names);
+# 2. emir run reads each result (the .tr0 and its CSDF twin) through its
+#    sidecar, rcc;
+# 3. the digest of the two runs is compared with expected/summary.json.
 #
 # EMIR names the emir command (default: emir on $PATH, else bin/emir of this
 # clone); it may be several words, e.g. EMIR="python3 -m emir".
@@ -35,22 +36,17 @@ EMIR_STATE_DIR=$out/state
 export EMIR_STATE_DIR
 rm -rf "$EMIR_STATE_DIR"
 
-for mode in rcc cc; do
-    echo "== save lines for HSPICE, $mode"
-    run_mode=$mode; [ "$mode" = cc ] && run_mode=cc-grid
-    $EMIR save-lines "$dspf" --mode "$run_mode" --sim hspice --prefix XI0. \
-        --names-out "$out/$mode.tr0.names" --out "$out/$mode.hspice.inc" --format json \
-        > "$out/save_lines_$mode.json"
-    cp "$here/inputs/$mode.tr0" "$here/inputs/$mode.csd" "$out/"
-    cp "$out/$mode.tr0.names" "$out/$mode.csd.names"
-done
+echo "== save lines for HSPICE: every branch current"
+$EMIR save-lines "$dspf" --sim hspice --prefix XI0. \
+    --names-out "$out/rcc.tr0.names" --out "$out/rcc.hspice.inc" --format json \
+    > "$out/save_lines_rcc.json"
+cp "$here/inputs/rcc.tr0" "$here/inputs/rcc.csd" "$out/"
+cp "$out/rcc.tr0.names" "$out/rcc.csd.names"
 
 for fmt in tr0 csd; do
-    $EMIR run "$dspf" --process "$proc" --cc-sim "$out/rcc.$fmt" --mode rcc --period 1e-8 \
+    $EMIR run "$dspf" --process "$proc" --cc-sim "$out/rcc.$fmt" --period 1e-8 \
         --summary-out "$out/rcc_$fmt.json" > "$out/rcc_$fmt.log"
-    $EMIR run "$dspf" --process "$proc" --cc-sim "$out/cc.$fmt" --mode cc-grid --period 1e-8 \
-        --summary-out "$out/cc_$fmt.json" > "$out/cc_$fmt.log"
 done
-$EMIR report --from "$out/cc_tr0.json"
+$EMIR report --from "$out/rcc_tr0.json"
 
 "${EMIR_PYTHON:-python3}" "$here/compare.py" "$out" "$here/expected/summary.json"

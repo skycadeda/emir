@@ -54,7 +54,7 @@ magic:                     # the magic route: emir extract --tool magic
   # layer, width, length and place), tried after --magic and $EMIR_MAGIC: a
   # magic program's bare name on $PATH (a path here is refused, EMIR-E648: give
   # one with --magic or $EMIR_MAGIC). This name is the one the build had where
-  # EMIR was developed, an example (playbook 09 says how to build one)
+  # EMIR was developed, an example (docs/process-files.md says how to build one)
   binary: magic-8.3.515-geo
   layers:                  # magic's type names ([MAG] `types`) -> this file's
     locali: li1            # [MAG]:236  locali,li1,li

@@ -97,7 +97,6 @@ jobs:
         # Ubuntu 24.04 has no Xyce package (checked 2026-10-02), so this step
         # normally records the skip. The Xyce cases then skip with the reason
         # "xyce not installed" (pytest -rs lists each one): examples/02_xyce,
-        # the Xyce run of examples/12_self_consistent (its ngspice run stays),
         # the Xyce runs in tests/test_opensim_sims.py and the Xyce helper test.
         run: |
           if apt-cache show xyce > /dev/null 2>&1; then
@@ -123,7 +122,7 @@ jobs:
         run: python -m pytest -m "not example and not cadence" -rs --durations=15
       - name: Examples (each examples/NN_*/run.sh against its expected/ results)
         run: python -m pytest -m "example and not cadence" -rs -v
-      - name: emir validate (all 13 analytic cases; none may be skipped)
+      - name: emir validate (all 6 analytic cases; none may be skipped)
         run: emir validate --no-skip --out "$RUNNER_TEMP/validate"
       - name: Keep the validation output when something failed
         if: failure()

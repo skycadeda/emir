@@ -63,19 +63,16 @@ def test_check_failures_suggest_their_fixes_and_they_run(spaced, tmp_path):
         assert run_cmd(c, d).returncode == 0, c
 
 
-def test_unsaved_pins_suggest_the_save_lines(spaced, tmp_path):
+def test_unsaved_branches_suggest_the_save_lines(spaced, tmp_path):
     dspf, proc, d = spaced
-    res = cc_result(tmp_path, extra={})                 # pin currents only ...
-    # ... under names the DSPF does not have
-    text = open(res).read().replace('"MP', '"MQ')
-    open(res, "w").write(text)
+    res = cc_result(tmp_path, extra={})                 # pin currents only: no branch
     doc = emir_json("check", dspf, "--process", proc, "--net", "VDD", "--cc-sim", res,
-                    "--mode", "cc-grid", cwd=d, rc=2)
+                    cwd=d, rc=2)
     cmds = [s["command"] for s in doc["next_steps"]]
-    want = f"emir save-lines {shlex.quote(dspf)} --net VDD --mode cc-grid --format json"
+    want = f"emir save-lines {shlex.quote(dspf)} --net VDD --format json"
     assert want in cmds, cmds
     p = run_cmd(want, d)
-    assert p.returncode == 0 and json.loads(p.stdout)["lines"][0].startswith("save MP0:s")
+    assert p.returncode == 0 and json.loads(p.stdout)["lines"][0].startswith("save Rm1:1")
 
 
 def test_run_suggests_the_report_and_it_runs(spaced):

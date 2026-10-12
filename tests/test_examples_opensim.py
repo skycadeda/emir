@@ -24,7 +24,7 @@ pytestmark = pytest.mark.example
 CASES = [pytest.param(ex, sim, marks=pytest.mark.skipif(site.tool(sim)[0] is None,
                                                         reason=f"{sim} not installed"))
          for ex, sim in (("02_xyce", "xyce"), ("03_ngspice", "ngspice"))]
-INPUTS = ("loadrail.dspf", "models.sp", "cc.sp", "tb_cc.cir", "tb_rcc.cir")
+INPUTS = ("loadrail.dspf", "models.sp", "tb_rcc.cir")
 TOL = {"rel": 1e-3, "abs": 1e-6}
 
 #: the closed forms (examples/02_xyce/README.md)
@@ -41,8 +41,7 @@ def subset(summary: dict) -> dict:
             "max_ratio": n["max_ratio"], "ir_drop_mV": n["ir_drop_mV"],
             "dynamic_mV": n["dynamic_mV"], "n_violations": n["n_violations"],
             "worst_items": {f"{i['name']}:{i['metric']}": i["ratio"]
-                            for i in n["worst_items"]},
-            "unsaved_pins": n["unsaved_pins"]}
+                            for i in n["worst_items"]}}
 
 
 def close(a, b, where):
@@ -62,11 +61,15 @@ def test_example_runs_and_matches_its_golden(ex, sim, tmp_path):
     env = {**os.environ, "EMIR_EXAMPLE_OUT": str(tmp_path), "EMIR_PYTHON": sys.executable}
     p = subprocess.run(["sh", os.path.join(here, "run.sh")], capture_output=True, text=True,
                        env=env, cwd="/")
-    assert p.returncode == 0, p.stdout[-2000:] + p.stderr[-3000:]
+    # when the goldens are being rewritten, run.sh's own comparison with the
+    # old ones (its last step, exit 1 on a mismatch) is expected to differ
+    regen = os.environ.get("EMIR_REGEN_GOLDEN")
+    assert p.returncode == 0 or (regen and p.returncode == 1 and "MISMATCH" in p.stdout), \
+        p.stdout[-2000:] + p.stderr[-3000:]
     assert "Screening, not sign-off." in p.stdout
-    got = {k: subset(json.load(open(tmp_path / f"{k}.json"))) for k in ("rcc", "cc")}
+    got = {"rcc": subset(json.load(open(tmp_path / "rcc.json")))}
     gold = os.path.join(here, "expected", "summary.json")
-    if os.environ.get("EMIR_REGEN_GOLDEN"):
+    if regen:
         with open(gold, "w") as f:
             json.dump({"example": ex, "simulator": sim,
                        "made_by": f"examples/{ex}/run.sh (EMIR_REGEN_GOLDEN=1 pytest "
@@ -74,9 +77,8 @@ def test_example_runs_and_matches_its_golden(ex, sim, tmp_path):
                        "tolerance": TOL, "runs": got}, f, indent=1)
             f.write("\n")
     want = json.load(open(gold))
-    assert want["simulator"] == sim
-    for k in ("rcc", "cc"):
-        close(got[k], want["runs"][k], f"{ex}.{k}")
+    assert want["simulator"] == sim and set(want["runs"]) == {"rcc"}
+    close(got["rcc"], want["runs"]["rcc"], f"{ex}.rcc")
 
 
 def test_the_examples_share_their_circuit():
@@ -89,11 +91,10 @@ def test_the_examples_share_their_circuit():
 def test_the_goldens_agree_with_each_other_and_the_hand_calculation():
     g = {ex: json.load(open(os.path.join(ROOT, "examples", ex, "expected", "summary.json")))
          for ex in ("02_xyce", "03_ngspice")}
-    x, n = g["02_xyce"]["runs"], g["03_ngspice"]["runs"]
-    for k in ("rcc", "cc"):
-        close(n[k], x[k], f"ngspice vs xyce {k}")
-        r = x[k]
-        assert r["worst_items"]["Rc3:peak"] == pytest.approx(HAND["Rc3:peak"], rel=1e-6)
-        assert r["worst_items"]["Rm1:avg"] == pytest.approx(HAND["Rm1:avg"], rel=1e-3)
-        assert r["ir_drop_mV"] == pytest.approx(HAND["ir_drop_mV"], rel=1e-3)
-    assert x["rcc"]["dynamic_mV"] == pytest.approx(HAND["dynamic_mV"], rel=1e-3)
+    x, n = g["02_xyce"]["runs"]["rcc"], g["03_ngspice"]["runs"]["rcc"]
+    close(n, x, "ngspice vs xyce")
+    assert x["worst_items"]["Rm1:avg"] == pytest.approx(HAND["Rm1:avg"], rel=1e-3)
+    assert x["ir_drop_mV"] == pytest.approx(HAND["ir_drop_mV"], rel=1e-3)
+    assert x["worst_items"]["Rc3:peak"] == pytest.approx(HAND["Rc3:peak"], rel=1e-6)
+    assert x["dynamic_mV"] == pytest.approx(HAND["dynamic_mV"], rel=1e-3)
+    assert x["verdict"] == "FAIL"

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:emir:schema:process_new:1",
   "title": "emir process new",
-  "description": "The fill-in process file `emir process new` wrote (`out`), for a person to type the PDK's EM data into by hand when no readable process data exists: the layers and vias it covers (from the DSPF's layer tokens and $lvl numbers, or the lists given), each via's stacking as inferred from the DSPF (`stacking`: an `inferred ... check` note, or null), the cap models, and what is still empty. It never fills in a value. `next_steps`: the person types the values with their sources, then `emir process check`.",
+  "description": "The fill-in process file `emir process new` wrote (`out`), for a person to type the PDK's EM data into by hand when no readable process data exists: the layers and vias it covers (from the DSPF's layer tokens and $lvl numbers, or the lists given), each via's stacking as inferred from the DSPF (`stacking`: an `inferred ... check` note, or null), and what is still empty. It never fills in a value. `next_steps`: the person types the values with their sources, then `emir process check`.",
   "type": "object",
   "properties": {
     "schema": {
@@ -111,12 +111,6 @@
         ]
       }
     },
-    "cap_models": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
     "dspf_layers": {
       "type": "object",
       "additionalProperties": {
@@ -217,7 +211,6 @@
     "out",
     "layers",
     "vias",
-    "cap_models",
     "empty",
     "interactive",
     "values_given",

@@ -1,5 +1,5 @@
 id: report-for-manager
-playbook: 07-report-to-human
+playbook: 01-screen-a-block
 title: Turn last night's run summary into a status for a manager
 requires: []
 fixtures: [finished_run]

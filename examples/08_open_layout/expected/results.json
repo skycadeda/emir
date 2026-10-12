@@ -3,13 +3,7 @@
   "rel": 0.05,
   "count_rel": 0.05,
   "exact_rel": 1e-06,
-  "loop": {
-   "avg": 0.005,
-   "rms": 0.005,
-   "peak": 0.03,
-   "ir": 0.015,
-   "all": 0.15
-  }
+  "ir_exact_rel": 1e-05
  },
  "extraction": {
   "resistors": 1135,
@@ -40,8 +34,8 @@
    "nets": {
     "out": {
      "mode": "rcc",
-     "ir_drop_mV": 6.874444210311706,
-     "max_ratio": 1.3566327763844965,
+     "ir_drop_mV": 6.690973966788824,
+     "max_ratio": 1.3566168565608345,
      "n_violations": 1,
      "worst": {
       "layer": "via2",
@@ -51,89 +45,8 @@
     },
     "vss": {
      "mode": "rcc",
-     "ir_drop_mV": 4.918526721044164,
-     "max_ratio": 1.356631623045728,
-     "n_violations": 1,
-     "worst": {
-      "layer": "via2",
-      "metric": "avg",
-      "fix": "via2: 1 -> 2 cuts (+1)"
-     }
-    }
-   }
-  },
-  "open": {
-   "verdict": "FAIL",
-   "nets": {
-    "out": {
-     "mode": "cc-grid",
-     "ir_drop_mV": 7.300602736808433,
-     "max_ratio": 1.4389229227430531,
-     "n_violations": 1,
-     "worst": {
-      "layer": "via2",
-      "metric": "avg",
-      "fix": "via2: 1 -> 2 cuts (+1)"
-     }
-    },
-    "vss": {
-     "mode": "cc-grid",
-     "ir_drop_mV": 5.283352888851382,
-     "max_ratio": 1.439994188065034,
-     "n_violations": 1,
-     "worst": {
-      "layer": "via2",
-      "metric": "avg",
-      "fix": "via2: 1 -> 2 cuts (+1)"
-     }
-    }
-   }
-  },
-  "sc": {
-   "verdict": "FAIL",
-   "nets": {
-    "out": {
-     "mode": "cc-grid",
-     "ir_drop_mV": 6.8620325799114195,
-     "max_ratio": 1.3533991013120472,
-     "n_violations": 1,
-     "worst": {
-      "layer": "via2",
-      "metric": "avg",
-      "fix": "via2: 1 -> 2 cuts (+1)"
-     }
-    },
-    "vss": {
-     "mode": "cc-grid",
-     "ir_drop_mV": 4.962951492824305,
-     "max_ratio": 1.3534683547786734,
-     "n_violations": 1,
-     "worst": {
-      "layer": "via2",
-      "metric": "avg",
-      "fix": "via2: 1 -> 2 cuts (+1)"
-     }
-    }
-   }
-  },
-  "sc_rails": {
-   "verdict": "FAIL",
-   "nets": {
-    "out": {
-     "mode": "cc-grid",
-     "ir_drop_mV": 6.877262631837621,
-     "max_ratio": 1.356374043263591,
-     "n_violations": 1,
-     "worst": {
-      "layer": "via2",
-      "metric": "avg",
-      "fix": "via2: 1 -> 2 cuts (+1)"
-     }
-    },
-    "vss": {
-     "mode": "cc-grid",
-     "ir_drop_mV": 4.974019860899972,
-     "max_ratio": 1.3564677622189643,
+     "ir_drop_mV": 4.844750425348962,
+     "max_ratio": 1.3566024135155423,
      "n_violations": 1,
      "worst": {
       "layer": "via2",
@@ -148,8 +61,8 @@
    "nets": {
     "out": {
      "mode": "rcc",
-     "ir_drop_mV": 14.828658983602306,
-     "max_ratio": 2.926333854166662,
+     "ir_drop_mV": 14.433070882411533,
+     "max_ratio": 2.926333854166669,
      "n_violations": 6,
      "worst": {
       "layer": "via2",
@@ -159,8 +72,8 @@
     },
     "vss": {
      "mode": "rcc",
-     "ir_drop_mV": 10.609552123620041,
-     "max_ratio": 2.926333854166662,
+     "ir_drop_mV": 10.45062391211347,
+     "max_ratio": 2.926333854166669,
      "n_violations": 3,
      "worst": {
       "layer": "via2",
@@ -169,34 +82,11 @@
      }
     }
    }
-  },
-  "op_cc": {
-   "verdict": "FAIL",
-   "nets": {
-    "out": {
-     "mode": "cc-grid",
-     "ir_drop_mV": 15.6667868062683,
-     "max_ratio": 3.087868149999931,
-     "n_violations": 6,
-     "worst": {
-      "layer": "via2",
-      "metric": "avg",
-      "fix": "via2: 1 -> 4 cuts (+3)"
-     }
-    },
-    "vss": {
-     "mode": "cc-grid",
-     "ir_drop_mV": 11.32836972220781,
-     "max_ratio": 3.0878681547803213,
-     "n_violations": 3,
-     "worst": {
-      "layer": "via2",
-      "metric": "avg",
-      "fix": "via2: 1 -> 4 cuts (+3)"
-     }
-    }
-   }
   }
+ },
+ "refused": {
+  "rcc_no_period": "EMIR-E428",
+  "rcc_near_period": "EMIR-E429"
  },
  "note": "Xyce 7.10 with the open_pdks 1.0.510 SKY130 models; magic 8.3.515 with the geoout patch. `rel` covers other simulator and model versions, `count_rel` other magic versions."
 }

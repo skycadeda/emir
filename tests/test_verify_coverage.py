@@ -1,8 +1,9 @@
 """What a simulator verification covers, and how its records are kept.
 
-* coverage is per kind of current: a run that reads diode, BJT or JFET
-  terminals (which no verification testbench holds) is never reported
-  verified (EMIR-I463); it says which of its kinds are covered (`pin_kinds`);
+* coverage is per kind of current: a run reads branch currents (rcc), and a
+  record covers them when its checks of that kind passed; a record made
+  before records said what they cover verifies the route and no kind, so the
+  run is not verified and the verification is planned again;
 * a result in a format `emir verify-sim` never writes (CSDF) is `format not
   covered`, with no verify-sim suggested or planned, and a version of `0` is
   no version;
@@ -29,7 +30,7 @@ def _record(sim="xyce", version="7.10.0", passed=True, covers=None, **kw):
     """A record as `emir verify-sim` writes it: one passing check per kind
     it covers."""
     from emir import __version__
-    covers = ["branch", "mos", "probe", "two-terminal"] if covers is None else covers
+    covers = ["branch"] if covers is None else covers
     checks = [{"name": f"{k} check", "ok": passed, "kind": k} for k in covers] or \
         [{"name": "a check", "ok": passed}]
     rec = {"schema": "emir.verify_sim/1", "simulator": sim, "version": version,
@@ -49,203 +50,104 @@ def _codes(st):
 # ------------------------------------------------------------ kinds
 
 
-def test_a_pin_kind_is_its_instance_letter_unless_the_sidecar_says():
-    assert V.pin_kind("MP0:s") == "mos" and V.pin_kind("D5:k") == "diode"
-    assert V.pin_kind("Q1:e") == "bjt" and V.pin_kind("J2:g") == "jfet"
-    assert V.pin_kind("C9:2") == V.pin_kind("R1:1") == "two-terminal"
-    assert V.pin_kind("XI0/MM1:d") == "mos"            # the last level of the name
-    assert V.pin_kind("L1:1") == "other" and V.pin_kind("NM0:d") == "other"
-    k = V.classify(["D5:k", "MP0:s"], {"D5:K": "probe"})
-    assert k == {"probe": ["D5:k"], "mos": ["MP0:s"]}
-
-
 def test_what_each_simulator_s_verification_can_cover():
-    assert V.coverable("xyce") == ["branch", "mos", "probe", "two-terminal"]
-    assert V.coverable("ngspice") == ["branch", "probe", "two-terminal"]   # MOS: probes
-    assert V.coverable("hspice") == ["branch", "mos", "probe", "two-terminal"]
-    assert V.coverable("spectre") == ["branch", "mos", "source", "subcircuit",
-                                      "two-terminal"]
     for sim in V.SIMS:
-        assert not {"diode", "bjt", "jfet", "other"} & set(V.coverable(sim))
+        assert V.coverable(sim) == ["branch"]
 
 
-def test_diode_pins_are_never_reported_verified():
-    """Regression: a passing Xyce record, and a run whose pins are
-    MOSFET sources, a capacitor's pin 2 and a diode's cathode."""
+def test_a_run_reads_branch_currents():
+    from emir.dspf import parse
+    from emir.selftest import sample_paths
+    d = parse(sample_paths()[0])
+    pins = V.run_pins(d, {"VDD": {"mode": "rcc"}})
+    assert list(pins) == ["branch"] and len(pins["branch"]) == 16
+    assert V.run_pins(d, {"VDD": {"mode": "dc"}}) is None
     V.save_record(_record())
-    pins = V.classify(["MP0:s", "C9:2", "D5:k", "MP3:s"])
     st = V.status(dict(XYCE), pins=pins)
-    assert (st["status"], st["reason"]) == ("partly verified", "pin kinds not covered")
-    kinds = {k["kind"]: k for k in st["pin_kinds"]}
-    assert kinds["diode"]["covered"] is False and kinds["diode"]["examples"] == ["D5:k"]
-    assert kinds["diode"]["verify_sim_covers"] is False
-    assert kinds["mos"]["covered"] and kinds["two-terminal"]["covered"]
-    assert st["command"] is None                       # no verification can cover it
-    codes, text = _codes(st)
-    assert codes == ["EMIR-W464"] and "EMIR-I463" not in codes
-    assert "D5:k" in text and "diode terminals" in text and "UNVERIFIED" in text
-    # only diode pins: nothing the run reads is covered
-    st = V.status(dict(XYCE), pins=V.classify(["D5:k"]))
-    assert (st["status"], st["reason"]) == ("not verified", "pin kinds not covered")
-    # BJT and JFET terminals alike
-    st = V.status(dict(XYCE), pins=V.classify(["MP0:s", "Q1:e", "J2:d"]))
-    assert st["status"] == "partly verified"
-    assert {k["kind"] for k in st["pin_kinds"] if not k["covered"]} == {"bjt", "jfet"}
-    # MOSFET pins and branch currents only: verified, as before
-    st = V.status(dict(XYCE), pins={**V.classify(["MP0:s"]), "branch": ["Rm1:1"]})
     assert st["status"] == "verified" and _codes(st)[0] == ["EMIR-I463"]
+    assert st["current_kinds"] == [{"kind": "branch", "what": V.KINDS["branch"], "count": 16,
+                                "examples": pins["branch"][:4], "covered": True,
+                                "verify_sim_covers": True}]
 
 
-def test_a_record_without_covers_verifies_the_route_and_no_kind_of_pin():
+def test_a_record_without_covers_verifies_the_route_and_no_kind():
     rec = _record()
     del rec["covers"]
     V.save_record(rec)
     assert V.status(dict(XYCE))["status"] == "verified"         # the route alone
-    st = V.status(dict(XYCE), pins=V.classify(["MP0:s"]))
-    assert (st["status"], st["reason"]) == ("not verified", "pin kinds not covered")
+    st = V.status(dict(XYCE), pins={"branch": ["Rm1:1"]})
+    assert (st["status"], st["reason"]) == ("not verified", "current kinds not covered")
     # a kind a verification of this emir covers: verify again
     assert st["command"] == "emir verify-sim --sim xyce"
+    codes, text = _codes(st)
+    assert codes == ["EMIR-W464"] and "verify again" in text
 
 
 def test_a_record_cannot_claim_a_kind_its_checks_never_proved():
-    rec = _record(covers=["mos"])
+    rec = _record(covers=["branch"])
     rec["checks"] = [{"name": "x", "ok": True}]          # hand-written, one check
     assert "no passing check" in V.record_problem(rec)
     V.save_record(rec)
-    st = V.status(dict(XYCE), pins=V.classify(["MP0:s"]))
+    st = V.status(dict(XYCE), pins={"branch": ["Rm1:1"]})
     assert st["status"] == "not verified" and st["ignored_records"] == 1
-    assert V.record_problem({**_record(), "covers": ["gold"]})
+    # a kind this release does not read (an earlier build's) is kept and
+    # counts for nothing; one that is not a string makes the record invalid
+    assert V.record_problem({**_record(), "covers": ["branch", "mos"]}) is None
+    assert V.record_covers({**_record(), "covers": ["branch", "mos"]}) == ["branch"]
+    assert V.record_problem({**_record(), "covers": [3]})
 
 
-def test_a_run_says_which_kinds_it_read(tmp_path):
-    """A run on a result whose sidecar records the kinds (as emir simulate
-    writes it): the summary's pin_kinds, the report line."""
-    out = tmp_path / "v"
-    dspf = V.build("xyce", str(out))[0]["dspf"]          # verify_r.dspf: ILOAD0..3:p
-    import numpy as np
-    t = np.linspace(0, 40e-9, 9)
-    names = [f"I(XI0:D{k})" for k in range(4)]
-    res = tmp_path / "cc.raw"
+def test_a_run_says_whether_its_branch_currents_are_covered(tmp_path):
+    """A run on a result of the verification's own netlist: verified with a
+    record that covers branch currents; not verified, and the report says
+    so, with one made before records said what they cover."""
+    from _helpers import branch_waves, time_base
+    dspf = V.build("xyce", str(tmp_path / "v"))[0]["dspf"]          # verify_r.dspf
+    t = time_base()
+    w = branch_waves(t)
+    names = [f"I(XI0:{k[:-2].upper()})" for k in w]
     L = ["Title: stand-in", "Date: today", "Plotname: Transient Analysis", "Flags: real",
          f"No. Variables: {len(names) + 1}", f"No. Points: {len(t)}", "Variables:",
          "\t0\ttime\ttime"] + [f"\t{k + 1}\t{x}\tcurrent" for k, x in enumerate(names)]
     L.append("Values:")
     for i, ti in enumerate(t):
         L.append(f" {i}\t{ti:.12e}")
-        L += ["\t1.000000000000e-03"] * len(names)
+        L += [f"\t{v[i]:.12e}" for v in w.values()]
+    res = tmp_path / "rcc.raw"
     res.write_text("\n".join(L) + "\n")
-    side = {"map": {x: [f"ILOAD{k}:p", 1] for k, x in enumerate(names)},
-            "simulator": "xyce", "simulator_version": "Xyce Release 7.10.0", "sim_args": "",
-            "kinds": {f"ILOAD{k}:p": "diode" for k in range(4)}}
-    (tmp_path / "cc.raw.names").write_text(json.dumps(side))
-    V.save_record(_record())
-    p = emir("run", dspf, "--process", PROC, "--cc-sim", res, "--mode", "cc-grid",
-             "--format", "json")
-    s = json.loads(p.stdout)
+    side = {"map": {x: [k, 1] for x, k in zip(names, w)}, "simulator": "xyce",
+            "simulator_version": "Xyce Release 7.10.0", "sim_args": ""}
+    (tmp_path / "rcc.raw.names").write_text(json.dumps(side))
+    rec = _record()
+    del rec["covers"]
+    V.save_record(rec)
+    s = json.loads(emir("run", dspf, "--process", PROC, "--cc-sim", res, "--period", "1e-9",
+                        "--format", "json").stdout)
     v = s["simulator_verification"]
-    assert (v["status"], v["reason"]) == ("not verified", "pin kinds not covered")
-    assert [k["kind"] for k in v["pin_kinds"]] == ["diode"] and v["pin_kinds"][0]["count"] == 4
+    assert (v["status"], v["reason"]) == ("not verified", "current kinds not covered")
+    assert [k["kind"] for k in v["current_kinds"]] == ["branch"] and v["current_kinds"][0]["count"] == 16
     codes = [n["code"] for n in s["notices"]]
     assert "EMIR-W464" in codes and "EMIR-I463" not in codes
     (tmp_path / "s.json").write_text(json.dumps(s))
     md = emir("report", "--from", tmp_path / "s.json").stdout
-    assert "NOT verified on this machine" in md and "diode terminals" in md
+    assert "NOT verified on this machine" in md
     js = pytest.importorskip("jsonschema")
     from emir import schemas
     js.validate(s, schemas.get("run"))
-    # the probe kind (emir simulate --probe): covered
-    side["kinds"] = {f"ILOAD{k}:p": "probe" for k in range(4)}
-    (tmp_path / "cc.raw.names").write_text(json.dumps(side))
-    s = json.loads(emir("run", dspf, "--process", PROC, "--cc-sim", res, "--mode", "cc-grid",
+    V.save_record(_record())
+    s = json.loads(emir("run", dspf, "--process", PROC, "--cc-sim", res, "--period", "1e-9",
                         "--format", "json").stdout)
     assert s["simulator_verification"]["status"] == "verified"
 
 
-def test_the_save_set_records_how_each_pin_is_read():
+def test_the_save_set_records_no_kinds():
     from emir.dspf import parse
     from emir.opensim import save_set
     from emir.selftest import sample_paths
     d = parse(sample_paths()[0])
-    ss = save_set(d, ["VDD"], "cc", "xyce", ["XI0"])
-    assert set(ss.sidecar()["kinds"].values()) == {"mos"}            # MP0..MP3 sources
-    ss = save_set(d, ["VDD"], "cc", "ngspice", ["XI0"])
-    assert "kinds" not in ss.sidecar()                   # ngspice MOS pins: probes only
-    ss = save_set(d, ["VDD"], "rcc", "hspice", ["XI0"])
-    assert set(ss.sidecar()["kinds"].values()) == {"branch"}
-
-
-def _stand_in_result(tmp_path, kind):
-    """An Xyce-style result of the verification's CC netlist (ILOAD0..3:p),
-    with a names sidecar recording each pin's kind as emir simulate does."""
-    import numpy as np
-    t = np.linspace(0, 40e-9, 9)
-    names = [f"I(XI0:D{k})" for k in range(4)]
-    res = tmp_path / f"cc_{kind}.raw"
-    L = ["Title: stand-in", "Date: today", "Plotname: Transient Analysis", "Flags: real",
-         f"No. Variables: {len(names) + 1}", f"No. Points: {len(t)}", "Variables:",
-         "\t0\ttime\ttime"] + [f"\t{k + 1}\t{x}\tcurrent" for k, x in enumerate(names)]
-    L.append("Values:")
-    for i, ti in enumerate(t):
-        L.append(f" {i}\t{ti:.12e}")
-        L += ["\t1.000000000000e-03"] * len(names)
-    res.write_text("\n".join(L) + "\n")
-    side = {"map": {x: [f"ILOAD{k}:p", 1] for k, x in enumerate(names)},
-            "simulator": "xyce", "simulator_version": "Xyce Release 7.10.0", "sim_args": "",
-            "kinds": {f"ILOAD{k}:p": kind for k in range(4)}}
-    (tmp_path / f"cc_{kind}.raw.names").write_text(json.dumps(side))
-    return str(res)
-
-
-def test_next_judges_a_finished_result_by_the_kinds_the_run_reads(tmp_path):
-    """`emir next --cc-sim` says what `emir run` will say: a record that does
-    not cover the kinds of current the run reads plans a verification (or,
-    where none can cover them, says they stay UNVERIFIED), never "verified"."""
-    from emir import plan as P
-    dspf = V.build("xyce", str(tmp_path / "v"))[0]["dspf"]
-
-    def plan(res):
-        p = P.build(P.Facts(dspf=dspf, process=PROC, cc_sim=res, mode="cc-grid"))
-        return p, [s["id"] for s in p.steps]
-
-    def run(res):
-        p = emir("run", dspf, "--process", PROC, "--cc-sim", res, "--mode", "cc-grid",
-                 "--format", "json")
-        return json.loads(p.stdout)["simulator_verification"]
-
-    mos = _stand_in_result(tmp_path, "mos")
-    diode = _stand_in_result(tmp_path, "diode")
-    # no record yet: the verification is planned, and the diode pins it can
-    # never cover are named
-    p, ids = plan(diode)
-    assert "verify-sim" in ids
-    assert any("diode terminals" in a and "UNVERIFIED" in a for a in p.advice)
-    # a record made before records said what they cover
-    rec = _record()
-    del rec["covers"]
-    V.save_record(rec)
-    p, ids = plan(mos)
-    assert "verify-sim" in ids and ids.index("verify-sim") < ids.index("check")
-    v = p.steps[ids.index("verify-sim")]
-    assert v["command"] == "emir verify-sim --sim xyce" and "MOSFET terminals" in v["why"]
-    assert not any("route was verified" in a for a in p.advice)
-    assert (run(mos)["status"], run(mos)["command"]) == ("not verified",
-                                                         "emir verify-sim --sim xyce")
-    # a record covering branch currents only: the same
-    V.save_record(_record(covers=["branch"]))
-    assert "verify-sim" in plan(mos)[1]
-    # a record of this emir covers MOSFET terminals: nothing to plan
-    V.save_record(_record())
-    p, ids = plan(mos)
-    assert "verify-sim" not in ids and run(mos)["status"] == "verified"
-    assert any("verified on this machine" in a for a in p.advice)
-    # diode terminals: no verification covers them; none is planned, and the
-    # plan says they stay UNVERIFIED, as the run does
-    p, ids = plan(diode)
-    assert "verify-sim" not in ids
-    assert not any("route was verified" in a for a in p.advice)
-    assert any("diode terminals" in a and "UNVERIFIED" in a and "EMIR-W464" in a
-               for a in p.advice)
-    assert run(diode)["status"] == "not verified"
+    for sim in ("xyce", "ngspice", "hspice"):
+        side = save_set(d, ["VDD"], sim, ["XI0"]).sidecar()
+        assert set(side) == {"map", "simulator"} and len(side["map"]) == 16
 
 
 @pytest.fixture
@@ -265,7 +167,7 @@ def test_a_record_that_does_not_cover_every_kind_is_verified_again(xyce_found):
     dspf, proc = sample_paths()
 
     def plan():
-        p = P.build(P.Facts(dspf=dspf, process=proc, net="VDD", mode="rcc"))
+        p = P.build(P.Facts(dspf=dspf, process=proc, net="VDD"))
         return p, [s["id"] for s in p.steps]
 
     rec = _record()
@@ -309,11 +211,11 @@ def test_next_plans_no_verification_for_a_format_it_cannot_cover(tmp_path):
     from emir import plan as P
     out = tmp_path / "v"
     dspf = V.build("hspice", str(out))[0]["dspf"]
-    res = tmp_path / "cc.csd"
-    names = [f"ILOAD{k}:p" for k in range(4)]
+    res = tmp_path / "rcc.csd"
+    names = [f"Rm{k}:1" for k in range(1, 13)] + [f"Rc{k}:1" for k in range(4)]
     rows = [[k * 5e-9] + [1e-3] * len(names) for k in range(9)]
     csdf.write_csdf(str(res), names, [rows], source="HSPICE")
-    plan = P.build(P.Facts(dspf=dspf, process=PROC, cc_sim=str(res), mode="cc-grid"))
+    plan = P.build(P.Facts(dspf=dspf, process=PROC, cc_sim=str(res), period=1e-8))
     assert "verify-sim" not in [s["id"] for s in plan.steps]
     assert any("format not covered" in a or "csdf result stays UNVERIFIED" in a
                for a in plan.advice)

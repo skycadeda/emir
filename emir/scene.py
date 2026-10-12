@@ -8,10 +8,7 @@ matplotlib) or, for one net, by `emir.netreport` (inline SVG). Its keys:
   "via"), box [x0, y0, x1, y1] um, ratio (the governing EM ratio; None when
   the process file states no limit for it: not checked; NaN when it is not a
   number), metric, ir (its drop from the net's feed in V, the larger of its
-  two ends; None when unknown), fix, model (true for a block model's element
-  in a chip-level run: an abstract's port-to-port conductance, no metal of
-  this layout, its EM checked in the block's abstract; drawn dotted, never
-  as "no limit stated")};
+  two ends; None when unknown), fix};
 * `markers`: the violations (1x and over, or not a number), worst first,
   each {box, rank};
 * `items`: the worst items, numbered as on the map: {rank, net, name, layer,
@@ -71,10 +68,7 @@ def segments(r: dict, d, net: str, proc) -> list:
         box = _box(res, a, b)
         if box is None:
             continue
-        # a block abstract's conductance (hier.py `_virtual_res`): solved, no
-        # metal here, its EM checked in the block's own abstract run
-        model = bool(res.get("virtual"))
-        hit = None if model else lmap.get(res["layer"])
+        hit = lmap.get(res["layer"])
         kind = "via" if (hit and hit[0] == "via") else "wire"
         ratios, cuts, src, dw = {}, None, "count", None
         if hit:
@@ -121,7 +115,7 @@ def segments(r: dict, d, net: str, proc) -> list:
                             "cuts_from": src, "w": res.get("w"), "dw": dw})
         out.append({"net": net, "name": res["name"], "layer": layer, "kind": kind,
                     "box": box, "ratio": ratio, "metric": gov, "ir": ir, "fix": fix,
-                    "cuts": cuts, "w": res.get("w"), "model": model})
+                    "cuts": cuts, "w": res.get("w")})
     return out
 
 
@@ -134,7 +128,7 @@ def _rank_key(ratio) -> float:
 
 def _order_key(s) -> tuple:
     """Worst first, and equal ratios (to 9 significant digits: the
-    superposition's rounding is no ranking) by net, then left to right,
+    solve's rounding is no ranking) by net, then left to right,
     then bottom to top, so the numbers on the map read in order."""
     r = _rank_key(s.get("ratio"))
     if math.isfinite(r) and r > 0:
@@ -180,15 +174,12 @@ def _ir_node(r: dict, d) -> list | None:
     return [float(p[0]), float(p[1])] if p is not None else None
 
 
-def not_checked(solved: dict, proc, extra: dict | None = None) -> str:
+def not_checked(solved: dict, proc) -> str:
     """The chart's "not checked" line: the run summary's `not_checked` (the
-    structure `emir report` turns into sentences, `summary.not_checked`, with
-    `extra` merged in), each part in
-    a few words, so the PNG says what the report says."""
+    structure `emir report` turns into sentences, `summary.not_checked`),
+    each part in a few words, so the PNG says what the report says."""
     from .summary import not_checked as summary_nc
-    nc = dict(summary_nc(solved, proc))
-    nc.update(extra or {})
-    return not_checked_text(nc)
+    return not_checked_text(dict(summary_nc(solved, proc)))
 
 
 def _few(names, n=3) -> str:
@@ -222,7 +213,6 @@ def not_checked_text(nc: dict) -> str:
             parts.append(f"{n} {what}: {_few(names)}")
     per_net("wires_without_width", "wire(s) with no width")
     per_net("diagonal_wires", "wire(s) on diagonal shapes (width not across the current)")
-    per_net("unsaved_pins", "pin(s) not saved (taken as zero current)")
     per_net("vias_assumed_one_cut", "via(s) with no cut count (checked as one cut)")
     for net, u in sorted((nc.get("unsolved") or {}).items()):
         parts.append(f"{net} in pieces: {u.get('n_nodes')} node(s) not solved")
@@ -233,15 +223,6 @@ def not_checked_text(nc: dict) -> str:
     n = sum(len(v) for v in bi.values())
     if n:
         parts.append(f"{n} branch(es) with a reversing current: no AC rule applied")
-    short = {"no-dynamic": "decap(s) and no --dynamic: their straps not checked",
-             "not-sized": "decap(s) cap_models cannot size: their straps not checked",
-             "basis": "segment(s) read higher with their decaps than the decap-free basis",
-             "not-computed": "decap(s), decap-aware EM not computed: their straps not "
-                             "checked"}
-    for net, rows in sorted((nc.get("decap_straps_not_covered") or {}).items()):
-        for x in rows:
-            parts.append(f"{net}: {x['n']} {short.get(x['reason'], x['reason'])}"
-                         + (f" ({x['code'][5:]})" if x.get("code") else ""))
     return "; ".join(parts)
 
 
@@ -268,7 +249,7 @@ def keep_worst(shapes: list, n: int) -> list:
 
 def run_scene(solved: dict, d, proc, *, title: str = "", subtitle: str = "",
               source: str = "", gds: str | None = None, cell: str | None = None,
-              pdk: str | None = None, notes=(), not_checked_extra: dict | None = None) -> dict:
+              pdk: str | None = None, notes=()) -> dict:
     """The scene of a run's solved nets: every element of every net, the
     worst items, one row per net; the layout under it when `gds` is given."""
     from .dspf import overall_verdict, worst_ratio
@@ -287,33 +268,15 @@ def run_scene(solved: dict, d, proc, *, title: str = "", subtitle: str = "",
     nets.sort(key=lambda n: -_rank_key(n["ratio"]))
     verdict, counts, _top, _w = overall_verdict(solved, proc)
     notes = list(notes)
-    # the EM basis the ratios are on (--dynamic, --em-basis; `decap.basis_label`),
-    # named on the chart as on the report and the HTML pages
-    from .decap import basis_label
-    basis = {net: basis_label(r) for net, r in solved.items() if basis_label(r)}
-    if basis:
-        one = set(basis.values())
-        subtitle = (subtitle + " · EM " + (next(iter(one)) if len(one) == 1 and len(basis) ==
-                                           len(solved) else
-                                           "; ".join(f"{n} {b}" for n, b in basis.items())))
-    # --dynamic: the IR panel is the average (static) drop; the dynamic droop
-    # (open loop, or from the self-consistent loop's reported pass) is in the
-    # report, and its peak in a note here
-    from .bigblock import loop_words
+    # rcc: the IR panel is the average (static) drop; the dynamic droop, from
+    # the simulated branch currents, is in the report, and its peak in a note
     dyn = [(net, r["dynamic"]) for net, r in solved.items() if r.get("dynamic")]
     if dyn:
         net, dy = max(dyn, key=lambda x: float(x[1].get("worst_V") or 0.0))
-        sc = solved[net].get("self_consistency")
-        notes.insert(0, f"IR is the average (static) drop; the dynamic droop "
-                        f"({loop_words(sc, short=True)}) "
-                        f"peaks at {float(dy['worst_V']) * 1e3:.4g} mV at "
+        notes.insert(0, f"IR is the average (static) drop; the dynamic droop (rcc, from the "
+                        f"simulated branch currents) peaks at "
+                        f"{float(dy['worst_V']) * 1e3:.4g} mV at "
                         f"{dy.get('worst_node')} on {net} (the report has every net's).")
-    blocks = sorted({s["name"].split(":")[1] for s in shapes
-                     if s.get("model") and s["name"].count(":") >= 2})
-    if blocks:
-        notes.append(f"Dotted: the block models of {', '.join(blocks)} (each abstract's "
-                     f"port-to-port conductance): their EM is checked in each block's own "
-                     f"abstract run, not on this map.")
     total = len(shapes)
     markers, items = markers_of(shapes), items_of(shapes, warn)
     if total > MAX_SHAPES:
@@ -329,62 +292,18 @@ def run_scene(solved: dict, d, proc, *, title: str = "", subtitle: str = "",
         outline = bbox(gds, cell)
     return {"kind": "shapes", "shapes": shapes, "markers": markers,
             "items": items, "nets": nets, "verdict": verdict,
-            "counts": counts, "warn": warn, "em_basis": basis,
+            "counts": counts, "warn": warn,
             "ir_kind": "average" if dyn else "drop",
-            "unchecked": not_checked(solved, proc, not_checked_extra),
-            "any_unchecked": any(s["ratio"] is None and not s.get("model") for s in shapes),
-            "any_model": any(s.get("model") for s in shapes),
+            "unchecked": not_checked(solved, proc),
+            "any_unchecked": any(s["ratio"] is None for s in shapes),
             "title": title, "subtitle": subtitle, "source": source, "notes": notes,
             "underlay": underlay, "outline": outline}
 
 
-def loop_status(solved: dict) -> tuple:
-    """`(mode words, alert lines)` of a run's chart: each net's mode, and for
-    cc-grid whether the droop was fed back -- a self-consistent loop's state
-    (converged, settled, or the open loop reported), its simulations and the
-    tolerance its last pass met, or an open loop's droop -- so the two charts
-    of one block never look alike. An open loop above about 2 % of the supply
-    (EMIR-W520) and a loop that reported pass 0 (EMIR-W406 diverging, W407 at
-    its pass limit, W543 a pass's simulation stopped) are alerts, in the warn
-    colour."""
-    from .plan_bigblock import DROOP_FRACTION
-    from .selfconsist import stop_alert
-    words, alerts = [], []
-    for net, r in solved.items():
-        mode = r.get("mode", "dc")
-        sc = r.get("self_consistency")
-        if sc:
-            passes = sc.get("passes") or []
-            n = sc.get("n_passes") or len(passes)
-            sims = f"{n} pass{'es' if n != 1 else ''}"
-            if sc.get("converged"):
-                how = "settled" if sc.get("stopped") == "settled" else "converged"
-                state = f"{how} in {sims}" + (", the --max-passes limit"
-                                              if sc.get("at_pass_limit") else "")
-            else:
-                label, code, what = stop_alert(sc)
-                state = f"{label} after {sims}"
-                alerts.append(f"{label.upper()}: {net}'s self-consistent loop {what} ({code}): "
-                              f"pass 0, the open loop, is reported")
-            # the tolerance the last pass was held to (max(--tol-rel x the
-            # droop, --tol-mV)), not the floor alone
-            tol = passes[-1].get("tolerance_mV") if passes else None
-            tol = tol if tol is not None else sc.get("tol_mV")
-            words.append(f"{mode}, self-consistent ({state}"
-                         + (f", tol {tol:.3g} mV" if tol is not None else "") + ")")
-        elif mode == "cc-grid":
-            frac = r.get("droop_fraction")
-            words.append(f"{mode}, open loop" + (f" (droop {frac:.1%} of the supply)"
-                                                 if frac is not None else ""))
-            if frac is not None and frac > DROOP_FRACTION:
-                alerts.append(f"OPEN LOOP: {net} droops {frac:.1%} of the supply, above "
-                              f"about {DROOP_FRACTION:.0%} (EMIR-W520): its currents and IR "
-                              f"read high; the self-consistent run is the person's call")
-        else:
-            words.append(mode)
-    uniq = list(dict.fromkeys(words))
-    return ", ".join(uniq) if len(uniq) <= 2 else ", ".join(sorted(
-        {r.get("mode", "dc") for r in solved.values()})), alerts
+def mode_status(solved: dict) -> tuple:
+    """`(mode words, alert lines)` of a run's chart: the modes of its nets
+    (rcc, dc), no alert."""
+    return ", ".join(sorted({r.get("mode", "dc") for r in solved.values()})), []
 
 
 def limits_notes(lp: dict | None) -> list:
@@ -419,7 +338,7 @@ def limits_notes(lp: dict | None) -> list:
 
 def write_charts(solved: dict, d, proc, out_dir: str, *, gds: str | None = None,
                  cell: str | None = None, command: str = "", what: str = "emir run",
-                 log=print, not_checked_extra: dict | None = None) -> list:
+                 log=print) -> list:
     """The run's EM/IR chart PNG (dark, and light as `_light`) into the
     --html directory (`emir.chart.write_run_charts`). Without matplotlib nothing is
     drawn (EMIR-I720); a drawing that fails is EMIR-W720, never a failed run.
@@ -437,8 +356,7 @@ def write_charts(solved: dict, d, proc, out_dir: str, *, gds: str | None = None,
     try:
         from .chart import write_run_charts
         paths, how = write_run_charts(solved, d, proc, out_dir, gds=gds, cell=cell,
-                                      command=command, what=what,
-                                      not_checked_extra=not_checked_extra)
+                                      command=command, what=what)
     except EmirError:
         raise
     except Exception as e:                 # noqa: BLE001 - the picture only: the run stands

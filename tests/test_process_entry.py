@@ -119,18 +119,17 @@ def test_new_covers_exactly_the_dspf_layers_with_every_value_empty(tmp_path):
     assert d["next_steps"][0]["command"].startswith("emir process check")
 
 
-def test_new_infers_stacking_and_finds_the_capacitor_and_decap_models(tmp_path):
+def test_new_infers_stacking_and_writes_no_cap_models(tmp_path):
     dspf = write(tmp_path / "blk.dspf", BLOCK)
     info = from_dspf(dspf)
     assert [e.name for e in info["layers"]] == ["m1", "m2"]
     v12 = info["vias"][0]
     assert (v12.name, v12.below, v12.above) == ("v12", "m1", "m2")    # by $lvl 1 < 3
     assert "by their $lvl" in v12.stack_note
-    assert info["caps"] == ["mimcap"] and info["mos"] == ["nmos_cap"]
     data = build_model(info, None)
-    assert data["cap_models"]["mimcap"] == {"cj": None, "cjsw": None,
-                                            "sources": {"cj": None, "cjsw": None}}
-    assert data["cap_models"]["nmos_cap"]["cox"] is None
+    # capacitor devices and MOS decaps are not asked for: nothing sizes them
+    # (cc-grid has no dynamic IR, and decap-aware EM was removed)
+    assert "cap_models" not in data and "caps" not in info
     # a file written from it parses, and passes the schema's shape
     text = render(data, info, dspf)
     assert yaml.safe_load(text)["vias"]["v12"]["below"] == "m1"
@@ -397,17 +396,17 @@ def test_derating_refusals(derating, jf, code):
 def test_empty_values_are_not_given():
     data = _strap_proc(tc1=None, jmax_peak=None)
     data.update(derating={"model": "black", "ea_eV": None, "n": None}, temp_reference=None,
-                warn_fraction=None, cap_models={"mim": {"cj": None, "cjsw": 1e-10}})
+                warn_fraction=None)
     data["layers"]["Metal1"]["gds"] = None
     proc = Process(data)
     m1 = proc.layers["Metal1"]
     assert proc.derating is None and proc.derate == 1.0 and proc.temp_ref == 25.0
     assert proc.warn_fraction == 0.8 and m1["gds"] is None
-    assert m1["jmax"]["peak"] is None and proc.cap_models == {"mim": {"cjsw": 1e-10}}
+    assert m1["jmax"]["peak"] is None
     p = write_yaml(data)
     Process.load(p)                                # no path needs GDS numbers
     assert {x["path"] for x in empty_values(data)["optional"]} >= {
-        "temp_reference", "derating/ea_eV", "layers/Metal1/gds", "cap_models/mim/cj"}
+        "temp_reference", "derating/ea_eV", "layers/Metal1/gds"}
 
 
 # ------------------------------------------------------------------ what reports say

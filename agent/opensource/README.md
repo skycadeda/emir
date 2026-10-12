@@ -3,7 +3,7 @@
 EMIR's DSPF flow with no licensed tool: **Xyce** or **ngspice** simulates the
 block and supplies the currents; **KLayout** shows the results on the layout.
 On an open PDK with no DSPF yet, **magic** (built with the public `geoout`
-patch) extracts one: `emir extract --tool magic` (playbook 09).
+patch) extracts one: `emir extract --tool magic` (playbook 03).
 An agent drives it through the `emir` commands (each one runs as printed and
 answers in JSON); a person can run the one-shot scripts here.
 
@@ -25,10 +25,8 @@ emir next --dspf block.dspf --process pdk.yaml --netlist tb.cir --format json
 ```
 
 With Xyce or ngspice found and no Spectre, the plan's simulation step is
-`emir simulate` on the testbench given with `--netlist`. It reads the
-testbench to choose the mode: the DSPF included (the RC netlist) means rcc,
-a CC netlist means cc. It adds `--probe` when the devices are subcircuits.
-Then come `emir check`, `emir run` and `emir report` on the result it writes
+`emir simulate` on the testbench given with `--netlist`, which must include
+the DSPF (the RC netlist: rcc reads every branch current). Then come `emir check`, `emir run` and `emir report` on the result it writes
 (`emir_out/sim/result.raw`). Every step runs as printed. Without `--netlist`, the
 simulate step waits for a testbench (`<testbench.cir>`). Before the first simulation
 on a machine the plan also runs `emir verify-sim --sim xyce` (or ngspice): seconds, no
@@ -40,13 +38,10 @@ its version).
 ## For a person
 
 ```sh
-agent/opensource/run_xyce.sh --mode cc-grid [--net VDD] [--probe] [--period 1e-8] \
-    [--out emir_out] tb.cir block.dspf pdk.yaml
+agent/opensource/run_xyce.sh [--net VDD] --period 1e-8 [--out emir_out] tb.cir block.dspf pdk.yaml
 ```
 
-`--mode` (rcc or cc-grid) is required: it is the person's choice (`emir next` lists what
-each costs and how accurate it is). rcc needs the DSPF itself in the testbench; cc-grid a CC
-netlist (with `--probe` when the devices are subcircuits).
+The testbench includes the DSPF itself (rcc: every branch current is saved and read).
 
 It prints the report and where the HTML and the marker database went.
 Exit status: the first failing step's (`emir`'s contract), else 0, whatever the
@@ -54,14 +49,13 @@ verdict.
 
 ## The testbench
 
-The person's, in SPICE: supplies, stimulus, device models, a `.tran` over whole
-periods of the block's activity, and the extracted netlist instantiated once:
-
-* **rcc**: the DSPF itself (`.include block.dspf`). Every resistor current
-  is printed and read directly: exact, and the right mode for small nets.
-* **cc** (cc-grid): a CC netlist (the devices on ideal nets: a C-only
-  extraction, or the schematic). Each instance pin's current is printed and
-  superposed through the R-only DSPF: scales to big blocks.
+The person's, in SPICE: supplies, stimulus, device models, a `.tran` long enough to
+settle and then whole periods of the block's activity (its `--period`: the run averages
+the last ones, up to three), and the extracted netlist instantiated once: the DSPF
+itself (`.include block.dspf`). Every resistor current is printed and read directly
+(rcc), every metric. rcc is exact for the simulated record over the whole periods you
+give (--period); whether the testbench has settled is yours to establish, as for any
+.meas.
 
 ## What `emir simulate` does to it
 
@@ -78,9 +72,7 @@ included files it changes. The testbench itself is never touched. In the copy:
 * relative `.include` / `.lib` paths are rebased onto the copy's directory
   (both simulators resolve them from the including file's directory, measured);
 * for Xyce, the DSPF's `$KEY=value` annotations are left out of its copy
-  (Xyce rejects them as unknown parameters; ngspice reads them as comments);
-* with `--probe` (cc), each device terminal on the net gets a 0 V source in
-  series, `VEMIRk node node__emirk 0`, whose current is the pin's.
+  (Xyce rejects them as unknown parameters; ngspice reads them as comments).
 
 Then it writes `<result>.names`, which maps the simulator's names to the DSPF's.
 It reads the result back and reports any current asked for that is missing
@@ -89,40 +81,26 @@ It reads the result back and reports any current asked for that is missing
 | current | Xyce | ngspice | DSPF name |
 |---|---|---|---|
 | resistor Rm1 in XI0 | `I(XI0:RM1)` | `i(@r.xi0.rm1[i])` | `Rm1:1` |
-| MOSFET MN0's drain in XI0 | `ID(XI0:MN0)` | a 0 V probe (`--probe`): ngspice's `@m[id]` carries the model's polarity | `MN0:d` |
-| a probe on XMN0's drain | `I(XI0:VEMIR0)` | `i(v.xi0.vemir0)` | `XMN0:d` |
-| a subcircuit instance's pin | none: probe it | none: probe it | `XMN0:d` |
 
-Every sign is +1 (a two-terminal element's pin 2: -1): Xyce and ngspice give a
-resistor's current from its first node to its second and a terminal current into the
-terminal, as Spectre does.
-
-Devices inside library subcircuits (sky130's `sky130_fd_pr__nfet_01v8`, for
-example, is a `.subckt` with ports `d g s b`) are named by their ports when the
-netlist defines the subcircuit. A `.lib` model file is not read for that: give
-`--pins sky130_fd_pr__nfet_01v8=d,g,s,b`, or `--dspf`, which settles the name
-when a device has one pin on the net.
+Every sign is +1: Xyce and ngspice give a resistor's current from its first node to
+its second, as Spectre does.
 
 ## By hand, without `emir simulate`
 
 ```sh
 # the lines, and the sidecar beside the result they write (sim/result.raw)
-emir save-lines block.dspf --mode rcc --sim xyce --prefix XI0. \
+emir save-lines block.dspf --sim xyce --prefix XI0. \
     --names-out sim/result.raw.names > saves.inc
 # Xyce only: a copy of the DSPF without its $ annotations (comment lines kept)
 sed -e '/^[^*]/s/ \$[^ ]*//g' block.dspf > block.xyce.sp
 # in the testbench: include block.xyce.sp (not the DSPF), and saves.inc before .end
 Xyce -a tb.cir                     # from the directory that holds sim/
-emir run block.dspf --process pdk.yaml --cc-sim sim/result.raw --mode rcc --summary-out emir_out/summary.json
+emir run block.dspf --process pdk.yaml --cc-sim sim/result.raw --period <T> --summary-out emir_out/summary.json
 ```
 
 (Measured on the 02 example: these five steps reproduce `emir simulate`'s
 result. With ngspice: `--sim ngspice`, no `sed`, and `ngspice -b -r
 sim/result.raw tb.cir`.)
-
-For devices in subcircuits, `emir probe tb.cir -o tb.probed.cir --dspf block.dspf
---net VDD --names-out probes.names` writes the probed netlist. Then
-`emir save-lines ... --mode cc-grid --probes probes.names` prints their lines.
 
 A result simulated with emir's lines but no sidecar is recognised:
 `emir next --cc-sim result.raw ...` plans the `emir save-lines ... --names-out

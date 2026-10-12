@@ -1,7 +1,7 @@
-"""examples/11_hspice_offline: run.sh reads the synthetic HSPICE ASCII results
-(and their CSDF twins) through the HSPICE names sidecars, in rcc and
-cc-grid, and its digest matches expected/summary.json; the committed inputs
-are what make_results.py writes."""
+"""examples/11_hspice_offline: run.sh reads the synthetic HSPICE ASCII result
+(and its CSDF twin) through the HSPICE names sidecar, rcc, and its digest
+matches expected/summary.json; the committed inputs are what make_results.py
+writes."""
 import filecmp
 import json
 import os
@@ -27,16 +27,15 @@ def test_example_11_hspice_offline(tmp_path):
     assert "NOT verified on this machine" in p.stdout
     lines = json.load(open(out / "save_lines_rcc.json"))["lines"]
     assert lines[1] == ".option probe post=2 post_version=2001"
-    assert (out / "rcc.hspice.inc").read_text().startswith("* emir: 16 currents for rcc")
-    # the source-current sign was set from KCL, not assumed
-    assert "EMIR-I465" in p.stderr
+    assert (out / "rcc.hspice.inc").read_text().startswith(
+        "* emir: 16 branch currents for rcc")
 
 
 def test_example_11_inputs_are_what_the_generator_writes(tmp_path):
     p = subprocess.run([sys.executable, os.path.join(EX, "make_results.py"), str(tmp_path)],
                        capture_output=True, text=True, env={**os.environ, "PYTHONPATH": ROOT})
     assert p.returncode == 0, p.stderr
-    for f in ("rcc.tr0", "cc.tr0", "rcc.csd", "cc.csd"):
+    for f in ("rcc.tr0", "rcc.csd"):
         assert filecmp.cmp(tmp_path / f, os.path.join(EX, "inputs", f), shallow=False), f
     head = open(os.path.join(EX, "inputs", "rcc.tr0"), encoding="latin-1").read(400)
     assert "synthetic" in head and "Synopsys" not in head

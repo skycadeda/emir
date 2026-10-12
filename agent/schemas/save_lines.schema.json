@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:emir:schema:save_lines:1",
   "title": "emir save-lines",
-  "description": "The simulator save lines a run needs (also what `emir run --save-list`, `--save-branches` and `--split-stub` print in JSON mode): Spectre `save`, HSPICE `.probe` (with `.option probe post=2 post_version=2001`), Xyce `.print`, ngspice `.save` (`simulator`). For HSPICE, Xyce and ngspice, `names` is the map of the `<result>.names` sidecar (`emir schema names`), written to each path in `sidecars`, and `raw` the result the lines write.",
+  "description": "The simulator lines that save every branch current an rcc run reads (also what `emir run --save-branches` prints in JSON mode): Spectre `save`, HSPICE `.probe` (with `.option probe post=2 post_version=2001`), Xyce `.print`, ngspice `.save` (`simulator`). For HSPICE, Xyce and ngspice, `names` is the map of the `<result>.names` sidecar (`emir schema names`), written to each path in `sidecars`, and `raw` the result the lines write.",
   "type": "object",
   "properties": {
     "schema": {
@@ -26,9 +26,7 @@
     },
     "mode": {
       "enum": [
-        "rcc",
-        "cc-grid",
-        "split-stub"
+        "rcc"
       ]
     },
     "prefix": {
@@ -98,9 +96,6 @@
       }
     },
     "direct": {
-      "type": "integer"
-    },
-    "probed": {
       "type": "integer"
     },
     "out": {

@@ -3,7 +3,7 @@
     python agent/evals/run.py --list
     python agent/evals/run.py --prompt-stdin \\
         --agent-cmd 'claude -p --output-format stream-json --verbose --allowedTools Bash,Read' \\
-        [--cards screen-dc,troubleshoot-e417] [--out DIR] [--timeout 900] [--jobs 1]
+        [--cards screen-dc,opensource-xyce] [--out DIR] [--timeout 900] [--jobs 1]
     python agent/evals/run.py --agent-cmd 'codex exec --full-auto'
     python agent/evals/run.py --mcp --prompt-stdin --agent-cmd \\
         'claude -p --output-format stream-json --verbose --mcp-config {mcp_config} ...'

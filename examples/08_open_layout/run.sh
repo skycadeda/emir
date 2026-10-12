@@ -6,18 +6,22 @@
 #
 # Needs: Python with numpy, scipy, pyyaml and klayout (pip install -e '.[klayout]'
 # from the clone root); PDK_ROOT holding sky130A; a magic that writes resistor
-# geometry (the geoout patch: playbook 09 says how to build it); Xyce or
+# geometry (the geoout patch: docs/process-files.md says how to build it); Xyce or
 # ngspice (EMIR_EXAMPLE_SIM=ngspice picks ngspice). Without them it says what is
 # missing and exits 0.
 #
-# A. the gate pulsed (three 4 ns periods): rcc, the reference (the DSPF itself
-#    simulated, every branch current saved); cc-grid open loop (the CC netlist);
-#    cc-grid self-consistent on out, vss and vb (the waveform loop), and on the
-#    rails alone;
-# B. the operating point the removed `emir layout` simulated, on magic's network.
-# compare.py checks every result against expected/results.json (and rcc branch
-# by branch against the simulator's own output) and exits non-zero on a
-# mismatch. EMIR (default: the clone's bin/emir) and PYTHON can be overridden.
+# A. the gate pulsed (four 4 ns periods): rcc (the DSPF itself simulated,
+#    every branch current saved: every metric) over the last three; without
+#    --period the run is refused (EMIR-E428: a transient needs the block's
+#    period), and with a period 10 % off (3.6 ns) too (EMIR-E429: its last two
+#    periods differ), with no number;
+# B. the DC bias, held over a short transient with every source at DC, on
+#    magic's network (rcc, one net at a time; --period 1e-9 averages its last
+#    three 1 ns spans: any period that fits twice gives the same numbers).
+# compare.py checks every result against expected/results.json, rcc branch by
+# branch against the simulator's own output, and rcc's IR against the
+# simulator's own node voltages (one more short run of A's deck, printing them),
+# and exits non-zero on a mismatch. EMIR (default: the clone's bin/emir) and PYTHON can be overridden.
 # `sh run.sh` works too: this script needs bash (arrays, pipefail), so a POSIX sh
 # hands it over before any bash syntax
 if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
@@ -55,13 +59,9 @@ if [ "$rc" = 3 ]; then
 fi
 [ "$rc" = 0 ] || { cat "$out/extract.log"; exit "$rc"; }
 dspf="$out/extract/sink.dspf"
-cc="$out/extract/sink.cc.spice"
 for t in tran op; do
-    for k in rcc cc; do
-        netlist="$dspf"; [ "$k" = cc ] && netlist="$cc"
-        name="tb_$k.cir"; [ "$t" = op ] && name="tb_op_$k.cir"
-        sed -e "s|@PDK_ROOT@|$PDK_ROOT|g" -e "s|@NETLIST@|$netlist|g" "$here/tb_$t.cir.in" > "$out/$name"
-    done
+    name="tb_rcc.cir"; [ "$t" = op ] && name="tb_op_rcc.cir"
+    sed -e "s|@PDK_ROOT@|$PDK_ROOT|g" -e "s|@NETLIST@|$dspf|g" "$here/tb_$t.cir.in" > "$out/$name"
 done
 
 run() {                  # run <name> <emir run options...>: the run's text in <name>.log
@@ -71,32 +71,31 @@ run() {                  # run <name> <emir run options...>: the run's text in <
 }
 
 echo "== A: the gate pulsed, $sim"
-"$emir" simulate "$out/tb_rcc.cir" --sim "$sim" --dspf "$dspf" --mode rcc --out "$out/sim/rcc.raw" \
+"$emir" simulate "$out/tb_rcc.cir" --sim "$sim" --dspf "$dspf" --out "$out/sim/rcc.raw" \
     > "$out/sim_rcc.log" 2>&1 || { tail -n 30 "$out/sim_rcc.log"; exit 1; }
-run rcc --cc-sim "$out/sim/rcc.raw" --mode rcc --period 4e-9 \
+run rcc --cc-sim "$out/sim/rcc.raw" --period 4e-9 \
     --viewer "$out/rcc_viewer" --viewer-all --html "$out/html" --gds "$out/sink.gds" --cell sink
-"$emir" simulate "$out/tb_cc.cir" --sim "$sim" --dspf "$dspf" --mode cc-grid --probe \
-    --out "$out/sim/cc.raw" > "$out/sim_cc.log" 2>&1 || { tail -n 30 "$out/sim_cc.log"; exit 1; }
-run open --cc-sim "$out/sim/cc.raw" --mode cc-grid --period 4e-9 --vdd out=1.8,vss=0 \
-    --viewer "$out/open_viewer" --viewer-all
-run sc --net out,vss,vb --mode cc-grid --self-consistent --sim "$sim" --netlist "$out/tb_cc.cir" \
-    --vdd out=1.8,vss=0,vb=1.0 --period 4e-9 --droop-file "$out/sc/droop.inc" \
-    --viewer "$out/sc_viewer" --viewer-all
-# the loop on the two rails only: the gate's drop is not fed back
-run sc_rails --net out,vss --mode cc-grid --self-consistent --sim "$sim" --netlist "$out/tb_cc.cir" \
-    --vdd out=1.8,vss=0 --period 4e-9 --droop-file "$out/sc_rails/droop.inc" \
-    --viewer "$out/sc_rails_viewer" --viewer-all
+refused() {              # refused <name> <emir run options...>: exit 2, no number
+    local name="$1" rc; shift
+    set +e
+    "$emir" run "$dspf" --process "$proc" --cc-sim "$out/sim/rcc.raw" "$@" \
+        --summary-out "$out/$name.json" > "$out/$name.log" 2>&1
+    rc=$?
+    set -e
+    [ "$rc" = 2 ] || { tail -n 30 "$out/$name.log"; echo "run.sh: exit $rc, not 2 (refused)"; exit 1; }
+}
+echo "== A without --period: refused (EMIR-E428), no number"
+refused rcc_no_period
+echo "== A with a period 10 % off (3.6 ns): refused (EMIR-E429), no number"
+refused rcc_near_period --period 3.6e-9
 
-echo "== B: the operating point, $sim"
-"$emir" simulate "$out/tb_op_rcc.cir" --sim "$sim" --dspf "$dspf" --mode rcc --out "$out/sim/op_rcc.raw" \
+echo "== B: the DC bias, held over a short transient, $sim"
+"$emir" simulate "$out/tb_op_rcc.cir" --sim "$sim" --dspf "$dspf" --out "$out/sim/op_rcc.raw" \
     > "$out/sim_op_rcc.log" 2>&1 || { tail -n 30 "$out/sim_op_rcc.log"; exit 1; }
-"$emir" simulate "$out/tb_op_cc.cir" --sim "$sim" --dspf "$dspf" --mode cc-grid --probe \
-    --out "$out/sim/op_cc.raw" > "$out/sim_op_cc.log" 2>&1 || { tail -n 30 "$out/sim_op_cc.log"; exit 1; }
 for net in out vss; do   # one net at a time: vb carries no current at DC
-    run "op_rcc_$net" --net "$net" --cc-sim "$out/sim/op_rcc.raw" --mode rcc --period 1e-9
-    run "op_cc_$net" --net "$net" --cc-sim "$out/sim/op_cc.raw" --mode cc-grid --period 1e-9
+    run "op_rcc_$net" --net "$net" --cc-sim "$out/sim/op_rcc.raw" --period 1e-9
 done
 
 "$python" "$here/compare.py" "$out" "$here/expected/results.json"
-"$emir" report --from "$out/sc.json" > "$out/report.md"
+"$emir" report --from "$out/rcc.json" > "$out/report.md"
 echo "   comparison: $out/comparison.md  report: $out/report.md  html: $out/html/index.html"

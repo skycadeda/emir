@@ -85,7 +85,8 @@ def branch_waves(t) -> dict:
 
 
 def cc_result(tmp, name="cc.tran", extra=None) -> str:
-    """A CC (pin currents only) result for the sample."""
+    """A result of the sample's pin currents only, no branch current: what
+    rcc refuses (EMIR-E415)."""
     t = time_base()
     sigs = device_waves(t)
     sigs.update(extra or {})
@@ -123,6 +124,24 @@ Ro2 OUT:1 MN1:d 1.000000 $metal1 $L=5 $W=0.750000 $LLX=15 $LLY=-10.375 $URX=20 $
 def two_net_dspf(tmp) -> str:
     text = sample_text().replace(".ENDS", TWO_NET_EXTRA + ".ENDS")
     return write(os.path.join(str(tmp), "twonet.dspf"), text)
+
+
+def two_net_branches(t) -> dict:
+    """Every branch current of `two_net_dspf`: the sample's VDD; 1 mA from
+    MN0 and 2 mA from MN1 into VSS, to its port; 1 mA from MN0:d to MN1:d
+    through the port-less OUT (each current from the resistor's first node to
+    its second)."""
+    one = np.ones_like(t)
+    sigs = branch_waves(t)
+    sigs.update({"Rs1:1": -3e-3 * one, "Rs2:1": -2e-3 * one, "Rs3:1": -1e-3 * one,
+                 "Rs4:1": -2e-3 * one, "Ro1:1": -1e-3 * one, "Ro2:1": 1e-3 * one})
+    return sigs
+
+
+def two_net_result(tmp, name="all.tran") -> str:
+    """An RCC result of `two_net_dspf`: every branch current of its nets."""
+    t = time_base()
+    return _psf_tran(os.path.join(str(tmp), name), t, two_net_branches(t))
 
 
 #: a parent net with a black-boxed block whose supply pin XB:VDDB reaches the
@@ -164,20 +183,6 @@ def emir(*args, cwd=None, env=None):
     """`python -m emir ARGS`, captured."""
     return subprocess.run([sys.executable, "-m", "emir", *map(str, args)],
                           cwd=cwd or ROOT, capture_output=True, text=True, env=env)
-
-
-def spectre_split_netlist(path, dspf_path, net, droop) -> str:
-    """A Spectre CC netlist (a stand-in: never simulated for real) that holds
-    the self-consistent loop's per-tap split of `net`: the `--split-stub`
-    lines, each pin's PWL file beside the manifest `droop`, and every instance pin on
-    its split node (the loop refuses a netlist without them, EMIR-E524)."""
-    from emir.dspf import parse
-    from emir.selfconsist import node_name, rail_split_fragment
-    d = parse(dspf_path)
-    stub = rail_split_fragment(d, net, droop_file=str(droop))
-    pins = "\n".join(f"X{t['inst']} ({node_name(t['inst'] + ':' + t['pin'])} 0) load"
-                     for t in d.net_taps(net))
-    return write(path, f"// a CC netlist stand-in\nsimulator lang=spectre\n{stub}\n{pins}\n")
 
 
 # ----------------------------------------------------------- the magic route

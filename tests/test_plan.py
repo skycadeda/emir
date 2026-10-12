@@ -113,65 +113,58 @@ def test_dc_currents_on_a_one_net_dspf_need_no_net(tools, tmp_path):
         assert p.returncode == 0, (s["command"], p.stderr)
 
 
-def _choices(plan):
-    st = plan.steps[0]
-    assert st["id"] == "choose-mode" and st["needs_human"] and st["status"] == "waiting"
-    assert st["placeholders"] == ["<mode>"] and plan.blocked
-    return {c["route"]: c for c in st["choices"]}
-
-
-def test_without_a_mode_the_plan_is_the_persons_choice(tools, tmp_path):
-    """No --mode and currents from a simulation: the first step lists the three
-    routes with their measured cost and accuracy, and nothing that simulates or
-    runs is planned (emir never picks the mode)."""
+def test_a_simulation_is_planned_as_rcc(tools, tmp_path):
+    """No --mode and currents from a simulation: the plan is rcc (every
+    branch current of the RC netlist), with no step that asks for a mode."""
     tools(xyce=True)
+    _, plan = build(dspf=DSPF, process=PROC, net="VDD", period=1e-9)
+    assert plan.mode["chosen"] == "rcc" and "every branch current" in plan.mode["why"]
+    assert "choose-mode" not in ids(plan) and not any("choices" in s for s in plan.steps)
+    assert ids(plan) == ["selftest", "verify-sim", "simulate", "check", "run", "report"]
+    assert not any("--mode" in s["command"] for s in plan.steps)
+    # without --period the simulation's run is refused (EMIR-E428): the plan
+    # asks for the period and plans no check or run (review of 93da011)
     _, plan = build(dspf=DSPF, process=PROC, net="VDD")
-    assert plan.mode["chosen"] is None and "rcc is recommended" in plan.mode["why"]
-    c = _choices(plan)
-    assert list(c) == ["rcc", "cc-grid", "cc-grid self-consistent"]
-    assert c["rcc"]["recommended"] and not c["cc-grid"]["recommended"]
-    assert all(x["possible"] for x in c.values())
-    for x in c.values():
-        assert x["cost"] and x["accuracy"] and x["source"].startswith("examples/06_big_block")
-    assert c["cc-grid self-consistent"]["command"].endswith("--mode cc-grid --self-consistent")
-    assert not {"save-lines", "simulate", "check", "run", "report"} & set(ids(plan))
+    assert ids(plan) == ["selftest", "verify-sim", "simulate"] and plan.blocked
+    assert any("period" in m["what"] for m in plan.missing)
 
 
-def test_a_pin_current_result_can_only_be_cc_grid(tools, tmp_path):
+def test_a_pin_current_result_needs_the_rc_netlist_simulated(tools, tmp_path):
+    """A result with pin currents only cannot be screened (rcc reads branch
+    currents): the plan names what is missing and plans the save lines; it
+    never checks that result."""
     tools()
     cc = cc_result(tmp_path)
     _, plan = build(dspf=DSPF, process=PROC, cc_sim=cc, net="VDD")
-    c = _choices(plan)
-    assert not c["rcc"]["possible"] and "0 of the net's 16 branch currents" in \
-        c["rcc"]["why_not"]
-    assert c["cc-grid"]["possible"] and c["cc-grid"]["recommended"]
-    assert "Only cc-grid can work" in plan.steps[0]["why"]
-    _, plan = build(dspf=DSPF, process=PROC, cc_sim=cc, net="VDD", mode="cc-grid")
-    assert plan.mode["chosen"] == "cc-grid" and "the person's choice" in plan.mode["why"]
-    assert ids(plan)[-3:] == ["check", "run", "report"]
-    assert "--mode cc-grid" in plan.steps[-2]["command"]
+    assert plan.mode["chosen"] == "rcc" and plan.blocked
+    m = plan.missing[0]
+    assert m["what"] == "the branch currents of VDD" and "0 of 16 branch currents" in m["why"]
+    assert ids(plan) == ["selftest", "save-lines:VDD"]
+    assert not any(cc in s["command"] for s in plan.steps)
 
 
-def test_every_branch_current_can_only_be_rcc(tools, tmp_path):
+def test_every_branch_current_plans_the_run(tools, tmp_path):
     tools()
-    _, plan = build(dspf=DSPF, process=PROC, cc_sim=rcc_result(tmp_path))
-    c = _choices(plan)
-    assert c["rcc"]["possible"] and not c["cc-grid"]["possible"]
-    _, plan = build(dspf=DSPF, process=PROC, cc_sim=rcc_result(tmp_path), mode="rcc")
-    assert plan.mode["chosen"] == "rcc" and "--mode rcc" in plan.steps[-2]["command"]
+    res = rcc_result(tmp_path)
+    # every input a simulated run needs: the result and the block's period
+    _, plan = build(dspf=DSPF, process=PROC, cc_sim=res, period=1e-9)
+    assert plan.mode["chosen"] == "rcc" and not plan.missing
+    assert ids(plan)[-3:] == ["check", "run", "report"]
+    assert f"--cc-sim {res}" in plan.steps[-2]["command"]
+    assert "--mode" not in plan.steps[-2]["command"]
 
 
 def test_a_result_without_the_net_currents_asks_for_saves(tools, tmp_path):
     tools(xyce=True)
     t = time_base()
     res = _psf_tran(str(tmp_path / "x.tran"), t, {"OTHER:1": 0 * t})
-    _, plan = build(dspf=DSPF, process=PROC, cc_sim=res, net="VDD", mode="cc-grid")
-    assert "the currents of VDD" in what(plan)
+    _, plan = build(dspf=DSPF, process=PROC, cc_sim=res, net="VDD")
+    assert "the branch currents of VDD" in what(plan)
     # the Xyce route is verified on this machine first (no record here)
     assert ids(plan) == ["selftest", "verify-sim", "save-lines:VDD", "simulate",
                          "names-sidecar", "check", "run", "report"]
     assert plan.steps[1]["command"] == "emir verify-sim --sim xyce"
-    assert "--mode cc-grid" in plan.steps[2]["command"]
+    assert "--mode" not in plan.steps[2]["command"]
     sim = plan.steps[3]
     assert sim["command"].startswith("Xyce ") and sim["needs_human"] and sim["long_run"]
     # the save lines are Spectre syntax, and the Xyce names need the sidecar
@@ -185,10 +178,10 @@ def test_a_result_without_the_net_currents_asks_for_saves(tools, tmp_path):
     assert check["after"] == ["simulate", "names-sidecar"] and run["after"] == ["check"]
 
 
-def test_rcc_requested_on_pin_currents_is_advised_against(tools, tmp_path):
-    """--mode rcc on a result with pin currents only: the check would refuse
-    it (EMIR-E415), so the plan never checks that result in rcc: it plans the
-    rcc saves, and says the result as it is serves cc-grid."""
+def test_rcc_on_pin_currents_plans_the_rcc_saves(tools, tmp_path):
+    """--mode rcc (accepted, the one method) on a result with pin currents
+    only: the check would refuse it (EMIR-E415), so the plan never checks
+    that result: it plans the rcc saves and the simulation."""
     tools(spectre=True)
     cc = cc_result(tmp_path)
     _, plan = build(dspf=DSPF, process=PROC, cc_sim=cc, mode="rcc", net="VDD")
@@ -197,9 +190,6 @@ def test_rcc_requested_on_pin_currents_is_advised_against(tools, tmp_path):
     # Spectre is licensed: its verification needs the person's go-ahead
     assert plan.steps[1]["command"] == "emir verify-sim --sim spectre --run"
     assert plan.steps[1]["needs_human"] and plan.steps[1]["licensed_tool"] == "spectre"
-    assert "--mode rcc" in plan.steps[2]["command"]
-    assert any("can screen VDD in cc-grid mode" in a and "ask the person" in a
-               for a in plan.advice)
     assert not any(cc in s["command"] for s in plan.steps)
 
 
@@ -215,59 +205,67 @@ def test_netlist_without_spectre_says_so(tools, tmp_path):
     # no simulator at all (with Xyce or ngspice the netlist is the testbench
     # `emir simulate` runs: tests/test_opensim.py)
     tools()
-    _, plan = build(dspf=DSPF, process=PROC, netlist=write(tmp_path / "tb.scs", "x\n"),
+    _, plan = build(dspf=DSPF, process=PROC, netlist=write(tmp_path / "tb.cir", "x\n"),
                     have_cadence=False)
     assert "Spectre, for --netlist" in what(plan) and plan.stopped
+    # a deck in Spectre's language says it is one (tests/test_plan_spectre_deck.py)
+    _, plan = build(dspf=DSPF, process=PROC, netlist=write(tmp_path / "tb.scs", "x\n"),
+                    have_cadence=False)
+    assert "Spectre, for the Spectre testbench --netlist" in what(plan) and plan.stopped
 
 
 def test_netlist_with_spectre_needs_the_person(tools, tmp_path):
     tools(spectre=True)
-    _, plan = build(dspf=DSPF, process=PROC, netlist=write(tmp_path / "tb.scs", "x\n"),
-                    mode="cc-grid")
+    tb = write(tmp_path / "tb.scs", "x\n")
+    _, plan = build(dspf=DSPF, process=PROC, netlist=tb, period=1e-9)
+    assert not plan.blocked and plan.mode["chosen"] == "rcc"
     run = next(s for s in plan.steps if s["id"] == "run")
     assert run["licensed_tool"] == "spectre" and run["needs_human"] and run["long_run"]
     assert "--netlist" in run["command"] and "--run" in run["command"]
+    assert "--period 1e-09" in run["command"]
+    # without --period the licensed run is certain to be refused (EMIR-E428):
+    # it is not planned; the plan asks for the period (review of 93da011)
+    _, plan = build(dspf=DSPF, process=PROC, netlist=tb)
+    assert plan.blocked and not plan.has("run") and not plan.has("check")
+    assert any("period" in m["what"] for m in plan.missing)
 
 
 def test_small_net_without_a_result_plans_rcc(tools):
     tools(spectre=True)
     _, plan = build(dspf=DSPF, process=PROC, net="VDD")
-    c = _choices(plan)
-    assert c["rcc"]["recommended"] and "17 nodes" in plan.mode["why"]
-    _, plan = build(dspf=DSPF, process=PROC, net="VDD", mode="rcc")
     assert plan.mode["chosen"] == "rcc"
     assert ids(plan)[:4] == ["selftest", "verify-sim", "save-lines", "simulate"]
-    assert "--mode rcc" in plan.steps[2]["command"]
+    assert plan.steps[2]["command"].endswith("--net VDD")
     sim = plan.steps[3]
     assert sim["licensed_tool"] == "spectre" and "psfascii" in sim["command"]
 
 
-def test_a_medium_net_plans_cc_grid(tools, monkeypatch):
+def test_a_medium_net_is_simulated_by_the_open_simulator(tools, monkeypatch):
+    """Above small_net_nodes the simulation is flagged a long run; the open
+    simulator runs through `emir simulate` (emir/plan_opensim.py)."""
     tools(ngspice=True)
     monkeypatch.setitem(P.THRESHOLDS, "small_net_nodes", 5)
     _, plan = build(dspf=DSPF, process=PROC, net="VDD")
-    assert _choices(plan)["cc-grid"]["recommended"]
-    _, plan = build(dspf=DSPF, process=PROC, net="VDD", mode="cc-grid")
-    assert plan.mode["chosen"] == "cc-grid" and "--mode cc-grid" in plan.steps[2]["command"]
+    assert plan.mode["chosen"] == "rcc"
     assert plan.steps[1]["id"] == "verify-sim" and not plan.steps[1]["needs_human"]
-    # the open simulator runs through `emir simulate` (emir/plan_opensim.py)
-    assert plan.steps[2]["id"] == "simulate" and "--sim ngspice" in plan.steps[2]["command"]
-    assert not plan.steps[2]["licensed_tool"]
+    sim = plan.steps[2]
+    assert sim["id"] == "simulate" and "--sim ngspice" in sim["command"]
+    assert not sim["licensed_tool"] and sim["long_run"] and sim["needs_human"]
 
 
-def test_a_big_block_gets_the_c_only_r_only_advice(tools, monkeypatch):
+def test_a_big_block_is_a_long_rcc_run(tools, monkeypatch):
     tools(xyce=True)
     monkeypatch.setitem(P.THRESHOLDS, "big_block_nodes", 10)
     _, plan = build(dspf=DSPF, process=PROC, net="VDD")
-    c = _choices(plan)
-    assert c["cc-grid"]["recommended"] and "converge poorly" in plan.mode["why"]
-    assert any("C-only" in a and "R-only" in a for a in plan.advice)
+    assert plan.mode["chosen"] == "rcc"
+    assert any(a.startswith("ADC-top / PLL-top size") for a in plan.advice)
+    assert not any("C-only" in a or "cc-grid" in a for a in plan.advice)
 
 
 def test_a_big_block_run_is_flagged_long(tools, monkeypatch, tmp_path):
     tools()
     monkeypatch.setitem(P.THRESHOLDS, "big_block_nodes", 10)
-    _, plan = build(dspf=DSPF, process=PROC, cc_sim=cc_result(tmp_path), mode="cc-grid")
+    _, plan = build(dspf=DSPF, process=PROC, cc_sim=rcc_result(tmp_path), period=1e-9)
     run = next(s for s in plan.steps if s["id"] == "run")
     assert run["long_run"] and run["needs_human"]
 
@@ -352,15 +350,9 @@ def test_cli_text_flags_the_steps_that_need_the_person(tmp_path):
                        capture_output=True, text=True,
                        env={"PYTHONPATH": ROOT, "PATH": "/nonexistent"})
     assert p.returncode == 0, p.stderr
-    assert "[ASK THE PERSON FIRST: their choice]" in p.stdout
-    assert p.stdout.startswith("mode: not chosen: the person chooses")
-    assert "* rcc (recommended)" in p.stdout and "cost:" in p.stdout
-    p = subprocess.run([sys.executable, "-m", "emir", "next", "--dspf", DSPF, "--process",
-                        PROC, "--net", "VDD", "--have-cadence", "--mode", "rcc"], cwd=ROOT,
-                       capture_output=True, text=True,
-                       env={"PYTHONPATH": ROOT, "PATH": "/nonexistent"})
     assert "[ASK THE PERSON FIRST: licensed tool: spectre, long run]" in p.stdout
     assert p.stdout.startswith("mode: rcc -- ")
+    assert "their choice" not in p.stdout
 
 
 def test_cli_json(tmp_path):

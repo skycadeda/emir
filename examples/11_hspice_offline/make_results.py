@@ -13,16 +13,10 @@ Per load: avg 1.0 mA, peak 2 mA, rms 2 mA x sqrt((4.9 + 0.2/3) / 10) = 1.409492
 mA (README.md works out every ratio from these).
 
 * `rcc.tr0`: every branch current of the RC netlist, named as
-  `emir save-lines rail.dspf --mode rcc --sim hspice --prefix XI0.` prints them
+  `emir save-lines rail.dspf --sim hspice --prefix XI0.` prints them
   (`i(xi0.rm1` ...): Rm1..Rm3 carry four loads, Rm4..Rm6 three, Rm7..Rm9 two,
   Rm10..Rm12 and Rc0..Rc3 one, from the feed towards the loads.
-* `cc.tr0`: the CC netlist's device currents, `i1`..`i4` of each MPk, as
-  `--mode cc-grid --sim hspice` asks for them. A PMOS load's current enters at its
-  source and leaves at its drain: into the drain (i1) -load, gate and bulk
-  0; i3, the source, is written OUT of the device (-load), the way HSPICE's
-  manuals draw it. Whether a real HSPICE run reports it so was not confirmed,
-  which is why EMIR sets the sign from KCL over i1..i4 when it reads the file.
-* `rcc.csd`, `cc.csd`: the same data as CSDF (Xyce's `value:index` form).
+* `rcc.csd`: the same data as CSDF (Xyce's `value:index` form).
 
 Time points are uneven, as a simulator's are: every 0.5 ns, and 11 points on
 each 0.1 ns edge.
@@ -74,23 +68,11 @@ def main(out: str) -> list:
     note = "synthetic: emir.hspice.write_tr0ascii, not HSPICE"
     rcc_names = [f"i(xi0.{r}" for r in LOADS]
     rcc_rows = [[t, *[n * load(t) for n in LOADS.values()]] for t in ts]
-    cc_names, cc_rows = [], [[t] for t in ts]
-    for k in range(4):
-        cc_names += [f"i{j}(xi0.mp{k}" for j in (1, 2, 3, 4)]
-    for row, t in zip(cc_rows, ts):
-        for _k in range(4):
-            i = load(t)
-            row += [-i, 0.0, -i, 0.0]        # drain in: -i; source drawn out: -i
     written = [
         write_tr0ascii(os.path.join(out, "rcc.tr0"), ["TIME", *rcc_names], [([], rcc_rows)],
                        version="2001", title=title, date="10/02/2026", time_="00:00:00",
                        copyright_=note),
-        write_tr0ascii(os.path.join(out, "cc.tr0"), ["TIME", *cc_names], [([], cc_rows)],
-                       version="2001", title=title, date="10/02/2026", time_="00:00:00",
-                       copyright_=note),
         write_csdf(os.path.join(out, "rcc.csd"), [n + ")" for n in rcc_names], [rcc_rows],
-                   title=title),
-        write_csdf(os.path.join(out, "cc.csd"), [n + ")" for n in cc_names], [cc_rows],
                    title=title),
     ]
     rms = PEAK * math.sqrt((TOP + 2 * EDGE / 3) / PERIOD)

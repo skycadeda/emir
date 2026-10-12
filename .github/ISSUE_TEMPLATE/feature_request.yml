@@ -37,8 +37,6 @@ body:
         - process files and PDKs
         - currents and simulators
         - EM / IR checks and their maths
-        - big blocks (CC simulation, streaming)
-        - chip-level hierarchy (abstracts)
         - the magic route (emir extract --tool magic)
         - reports, HTML and layout viewers
         - Cadence integration

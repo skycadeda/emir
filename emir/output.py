@@ -381,14 +381,62 @@ CROSS_COMMAND_GUESSES = {
                       "`emir next --dspf D ...` prints them",
 }
 
+#: options of methods 1.1 does not have (each pin's current solved through
+#: the R grid, its guard, block abstracts, the per-pin probes): an unknown
+#: option of these names says so, instead of a fuzzy guess at another option
+REMOVED_OPTIONS = frozenset((
+    "--superposition", "--dynamic", "--dyn-steps", "--max-memory", "--em-basis",
+    "--align", "--phase", "--phase-sweep", "--points", "--self-consistent",
+    "--max-passes", "--tol-mV", "--tol-rel", "--droop-file", "--scalars",
+    "--split-stub", "--vdd", "--testbench", "--guard-sim", "--guard-dir", "--taps-out",
+    "--save-list", "--abstract", "--place", "--place-tol", "--budget-mv",
+    "--port-voltages-out", "--port-voltages", "--probe", "--probes", "--types", "--pins",
+    "--rcc-nodes"))
+REMOVED_TEXT = ("not in 1.1: a simulated run is rcc (every branch current of the RC netlist, "
+                "every metric), a DC run takes --currents")
+
 #: the namespace attribute `--dspf FILE` is parsed into before `ArgParser`
 #: moves it to `dspf` (see `add_dspf`)
 _DSPF_OPTION = "dspf_given_as_option"
 
 
+#: SPICE's scale suffixes for a time: femto to milli (`u` or `µ` micro)
+_TIME_SCALE = {"f": 1e-15, "p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6, "m": 1e-3, "": 1.0}
+#: SPICE reads its suffixes in any case (4NS is 4ns; M is milli): `meg` is no
+#: time unit here, so it stays out
+_TIME = re.compile(r"^\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*([fpnuµm]?)s?\s*$",
+                   re.IGNORECASE)
+
+
+def seconds(text) -> float:
+    """An option's time in seconds: a number (`1e-08`), or a number with a
+    SPICE suffix and an optional `s`, in any case as SPICE reads them (`10n`,
+    `10ns`, `1.5us`, `4NS`, `1.5US`). A time the person types as the
+    testbench writes it is read the same way."""
+    m = _TIME.match(str(text))
+    if not m:
+        raise argparse.ArgumentTypeError(
+            f"invalid time {text!r}: give seconds as a number (1e-08) or with a SPICE "
+            f"suffix (10n, 10ns, 1.5us)")
+    unit = m.group(2).lower()
+    v = float(m.group(1)) * _TIME_SCALE["µ" if unit == "\u03bc" else unit]
+    if not math.isfinite(v):
+        raise argparse.ArgumentTypeError(f"invalid time {text!r}: not finite")
+    if v <= 0:
+        # a period or a timeout of 0 or less is no time: 0 was taken as "not
+        # given", and a negative period planned a simulation to a negative time
+        raise argparse.ArgumentTypeError(f"invalid time {text!r}: give a time above 0")
+    return v
+
+
+seconds.json_type = "number"
+seconds.example = 1e-08
+seconds.__name__ = "seconds"
+
+
 def add_dspf(ap, help: str, optional: bool = False):
     """The DSPF argument of a command that reads one (run, check, nets, pins,
-    save-lines, abstract): positional, `emir run <dspf> ...`, and `--dspf FILE`
+    save-lines): positional, `emir run <dspf> ...`, and `--dspf FILE`
     accepted as the same. `emir next` takes the DSPF as `--dspf`, and agents
     carry that option over to the commands it prints; refusing it would
     cost a round trip for nothing. Two different files, one each way, are
@@ -456,14 +504,10 @@ class ArgParser(argparse.ArgumentParser):
                 re.search(r"arguments are required: (.*, )?dspf\b", message):
             message += (f"; the DSPF is the first argument: {self.prog} <dspf> ... "
                         f"(--dspf FILE is accepted as the same)")
-        # --- feature modes --- a missing --mode, or the removed `auto`: the
-        # mode is the person's choice, and its code says what each one costs
-        if re.search(r"arguments are required: (.*, )?--mode\b", message) or \
-                re.match(r"argument --mode: invalid choice: 'auto'", message):
-            if "invalid choice" in message:
-                message = "--mode auto is gone: the person chooses rcc or cc-grid"
-            raise EmirError("EMIR-E520", f"{message} (the mode is the person's choice: "
-                            f"emir does not pick one)", details=details, command=command)
+        # --mode takes rcc alone in 1.1, and may be left out
+        if re.match(r"argument --mode: invalid choice", message):
+            message += ("; 1.1 has one method of a simulated run, rcc (every branch current "
+                        "of the RC netlist): --mode rcc, or leave --mode out")
         guesses = self._did_you_mean(message, command)
         if guesses:
             details["did_you_mean"] = guesses
@@ -484,6 +528,9 @@ class ArgParser(argparse.ArgumentParser):
             if not tok.startswith("--"):
                 continue
             opt = tok.split("=", 1)[0]
+            if opt in REMOVED_OPTIONS:
+                out[opt] = REMOVED_TEXT
+                continue
             fixed = CROSS_COMMAND_GUESSES.get((command, opt)) or \
                 CROSS_COMMAND_GUESSES.get((None, opt), "").replace("{command}", command or "")
             if fixed:

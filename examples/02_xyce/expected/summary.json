@@ -19,45 +19,18 @@
    "governing_metric": "peak",
    "max_ratio": {
     "all": 1.0416666666666667,
-    "wire": 0.8474600569659817,
+    "wire": 0.8474599538391717,
     "via": 1.0416666666666667
    },
-   "ir_drop_mV": 28.06788738524215,
+   "ir_drop_mV": 28.0678866426572,
    "dynamic_mV": 90.00011479,
    "n_violations": 4,
    "worst_items": {
     "Rc3:peak": 1.0416666666666667,
-    "Rm3:avg": 0.8474600569659817,
-    "Rm2:avg": 0.8474600233504255,
-    "Rm1:avg": 0.8474600066204524
-   },
-   "unsaved_pins": []
-  },
-  "cc": {
-   "verdict": "FAIL",
-   "counts": {
-    "FAIL": 1,
-    "WARN": 0,
-    "CLEAN": 0
-   },
-   "net": "VDD",
-   "mode": "cc-grid",
-   "governing_metric": "peak",
-   "max_ratio": {
-    "all": 1.0416666666666667,
-    "wire": 0.8474611375991751,
-    "via": 1.0416666666666667
-   },
-   "ir_drop_mV": 28.067909551778545,
-   "dynamic_mV": null,
-   "n_violations": 4,
-   "worst_items": {
-    "Rc3:peak": 1.0416666666666667,
-    "Rm3:avg": 0.8474611375991751,
-    "Rm1:avg": 0.8474611375991747,
-    "Rm2:avg": 0.8474611375991747
-   },
-   "unsaved_pins": []
+    "Rm3:avg": 0.8474599538391717,
+    "Rm2:avg": 0.8474599202169741,
+    "Rm1:avg": 0.8474599034925582
+   }
   }
  }
 }

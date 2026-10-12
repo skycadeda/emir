@@ -158,7 +158,7 @@ rm -rf "$STAGE/python/lib/python${PYVER%.*}/test" "$STAGE/python/lib/python${PYV
 echo "== 6. self-test the bundle in place (from /, so nothing on the cwd can shadow the package)"
 (cd / && "$STAGE/bin/emir" selftest)
 # what the docs tell a bundle user to run: a process file checked on its own,
-# from the bundle's pdks/ (pdk-onboarding.md)
+# from the bundle's pdks/ (docs/process-files.md)
 (cd "$STAGE" && bin/emir check --process pdks/TEMPLATE.yaml > /dev/null)
 (cd "$STAGE" && bin/emir check --process pdks/sky130.yaml > /dev/null)
 "$STAGE/bin/emir" gui-install > /dev/null

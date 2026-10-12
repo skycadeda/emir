@@ -18,7 +18,7 @@
 ;;   emirT3()   -- wait for "Inputs OK." --
 ;;   emirT4()   -- wait for the Explorer --
 ;;   emirT5() emirT6()   -- close the Explorer form by hand --   emirT6b()
-;;   emirT7() emirT8() emirT9()   -- close the dialog --   emirT9a()   -- wait --   emirT9b()
+;;   emirT7() emirT8() emirT9()   -- wait --   emirT9b()
 ;; Paste every line starting with EMIRTEST (and any *Error* line) back.
 ;;
 ;; WARNING: emirT1() creates (overwrites) <emirT_lib>/<emirT_cell> layout and
@@ -165,21 +165,12 @@ procedure( emirT8()
   emirTSay("T8" "LOOK" "\"Inputs OK.\"; then press Run, wait, press Open HTML: all three work with the space")
   t )
 
-;; T9 -- Save lines with a testbench prefix, written to a file. The Mode
-;; starts at "choose": Save lines must refuse until a mode is picked
+;; T9 -- Save lines (every branch current, for rcc) with a testbench prefix,
+;; written to a file
 procedure( emirT9()
   let( (f)
     f = emirTForm(strcat(emirT_dir "/run"))
     f->emirMainPrefix->value = "XDUT."
-    f->emirMainMode->value = "choose"
-    emirDoSaveLines()
-    emirTSay("T9" "LOOK" "a dialog says to choose the Mode first (rcc or cc-grid); close it, then run emirT9a()")
-    t ))
-
-procedure( emirT9a()
-  let( (f)
-    f = emirMainForm
-    f->emirMainMode->value = "rcc"
     emirDoSaveLines()
     emirTSay("T9" "LOOK" "a dialog names <out>/emir_save.scs; then run emirT9b()")
     t ))

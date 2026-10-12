@@ -2,10 +2,10 @@
 
     python compare.py OUT_DIR expected/summary.json [--write]
 
-The digest: per run (rcc and cc-grid, from the HSPICE ASCII .tr0 and from its
-CSDF twin) the verdict, the mode, the IR drop, the simulator verification
-status, and the avg / rms / peak ratios of Rm1 and Rc3. Numbers compare to the
-golden's `_tolerance` (relative); the rest exactly. Exit 0 when they match,
+The digest: per run (rcc, from the HSPICE ASCII .tr0 and from its CSDF twin)
+the verdict, the mode, the IR drop, the simulator verification status, and the
+ratios of Rm1 and Rc3 on the metrics the run checked (avg, rms and peak).
+Numbers compare to the golden's `_tolerance` (relative); the rest exactly. Exit 0 when they match,
 1 with each difference otherwise. `--write` writes the golden instead (after
 checking the numbers by hand: README.md). Standard library only.
 """
@@ -13,7 +13,7 @@ import json
 import os
 import sys
 
-RUNS = ("rcc_tr0", "cc_tr0", "rcc_csd", "cc_csd")
+RUNS = ("rcc_tr0", "rcc_csd")
 
 
 def digest(out: str) -> dict:
@@ -23,12 +23,14 @@ def digest(out: str) -> dict:
             s = json.load(f)
         net = s["nets"][0]
         items = {it["name"]: it["ratios"] for it in net["worst_items"]}
+        ms = net.get("metrics") or ("avg", "rms", "peak")
         v = s["simulator_verification"]
-        d[run] = {"verdict": s["verdict"], "mode": net["mode"],
-                  "ir_drop_mV": net["ir_drop_mV"], "unsaved_pins": net["unsaved_pins"],
-                  "simulator": v["simulator"], "verification": v["status"],
-                  "Rm1": {m: items["Rm1"][m] for m in ("avg", "rms", "peak")},
-                  "Rc3": {m: items["Rc3"][m] for m in ("avg", "rms", "peak")}}
+        d[run] = {"verdict": s["verdict"], "mode": net["mode"], "metrics": list(ms),
+                  "ir_drop_mV": net["ir_drop_mV"],
+                  "simulator": v["simulator"], "verification": v["status"]}
+        for name in ("Rm1", "Rc3"):
+            if name in items:
+                d[run][name] = {m: items[name][m] for m in ms}
     return d
 
 

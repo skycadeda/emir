@@ -25,6 +25,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -41,10 +42,8 @@ for p in (ROOT, EVALS):
 import emircmd  # noqa: E402
 
 PLAYBOOK_DIR = os.path.join(ROOT, "agent", "playbooks")
-PLAYBOOKS = ["00-preflight.md", "01-screen-a-block.md", "02-big-block-cc.md",
-             "03-chip-level-hierarchy.md", "04-onboard-a-pdk.md", "05-open-source-flow.md",
-             "06-cadence-flow.md", "07-report-to-human.md", "08-troubleshooting.md",
-             "09-gds-only.md", "10-mcp.md"]
+PLAYBOOKS = ["00-preflight.md", "01-screen-a-block.md", "02-process-file.md",
+             "03-open-source-flow.md", "04-cadence-flow.md"]
 SECTIONS = ["When to use", "Inputs", "Commands", "Decision points", "Success criteria",
             "What to report", "Failure modes"]
 DOCS = (["AGENTS.md", "CLAUDE.md", "agent/README.md", "agent/CONTRACT.md",
@@ -124,7 +123,7 @@ def test_claude_md_imports_agents_md():
 
 def test_agents_md_is_short_and_operational():
     text = _read("AGENTS.md")
-    assert len(text.splitlines()) <= 150
+    assert len(text.splitlines()) <= 90
     for p in PLAYBOOKS:
         assert f"agent/playbooks/{p}" in text, p
     for needle in ("emir --version", "emir info --format json", "emir selftest --format json",
@@ -314,30 +313,79 @@ RUNNABLE = [p for p in PLAYBOOKS if os.path.isfile(os.path.join(PLAYBOOK_DIR, p)
             and any(b.marker == "run" for b in blocks(_read(f"agent/playbooks/{p}")))]
 
 
+def run_block(lines, ws, env, tmp) -> list:
+    """Run a block's command lines as one script in one shell, as a person
+    pasting the block (or an agent whose shell keeps its working directory)
+    runs them: a `cd` in one line holds for the next. Each line's stdout,
+    stderr and exit status are kept apart; the script stops at the first
+    line whose status is not the one it declares (`# exit N`, default 0).
+    Returns [(line, status, stdout, stderr)] for the lines that ran."""
+    tmp = os.path.abspath(str(tmp))
+    os.makedirs(tmp, exist_ok=True)
+    script = ["set -o pipefail"]
+    for i, line in enumerate(lines):
+        o, e, r = (os.path.join(tmp, f"{x}{i}") for x in "oer")
+        script += [f"{{ {line}", f"}} > {shlex.quote(o)} 2> {shlex.quote(e)}",
+                   f"echo $? > {shlex.quote(r)}",
+                   f'[ "$(cat {shlex.quote(r)})" = "{_exit_of(line)}" ] || exit 97']
+    subprocess.run(["bash", "-c", "\n".join(script)], cwd=ws, env=env,
+                   capture_output=True, text=True, timeout=600 * max(len(lines), 1))
+    out = []
+    for i, line in enumerate(lines):
+        r = os.path.join(tmp, f"r{i}")
+        if not os.path.isfile(r):
+            break
+        with open(r, encoding="utf-8") as f:
+            status = int(f.read().strip() or -1)
+        with open(os.path.join(tmp, f"o{i}"), encoding="utf-8", errors="replace") as f:
+            so = f.read()
+        with open(os.path.join(tmp, f"e{i}"), encoding="utf-8", errors="replace") as f:
+            se = f.read()
+        out.append((line, status, so, se))
+    return out
+
+
+def test_a_block_runs_in_one_shell(tmp_path):
+    """A `cd` in a line holds for the next, as in the person's shell: the
+    playbook's `cd emir_out/mesh && Xyce ...` once left the next line's
+    relative paths pointing nowhere, unseen by a runner that gave every line
+    a fresh shell."""
+    ws = tmp_path / "ws"
+    (ws / "sub").mkdir(parents=True)
+    ran = run_block(["cd sub && pwd", "pwd", "false  # exit 1", "true"], ws, _env(),
+                    tmp_path / "io")
+    assert [r[1] for r in ran] == [0, 0, 1, 0]
+    assert ran[1][2].strip().endswith("/ws/sub")
+    ran = run_block(["false", "true"], ws, _env(), tmp_path / "io2")
+    assert [r[1] for r in ran] == [1]         # stopped at the first wrong status
+
+
 @pytest.mark.example
 @pytest.mark.parametrize("name", RUNNABLE)
 def test_worked_examples_run_as_printed(name, tmp_path):
     ws = workspace(tmp_path)
     env, last, ran, skipped = _env(), None, 0, False
-    for b in blocks(_read(f"agent/playbooks/{name}")):
+    for k, b in enumerate(blocks(_read(f"agent/playbooks/{name}"))):
         if b.marker == "run":
             skipped = any(not _have(r) for r in b.requires())
             if skipped:
                 last = None
                 continue
-            for line in emircmd.logical_lines(b.text):
+            lines = emircmd.logical_lines(b.text)
+            for line in lines:
                 argv, err = emircmd.check_line(line)
                 assert (err is not None) == (ON_PURPOSE in line), (name, line, err)
-                p = subprocess.run(["bash", "-o", "pipefail", "-c", line], cwd=ws, env=env,
-                                   capture_output=True, text=True, timeout=600)
-                want = _exit_of(line)
-                assert p.returncode == want, (name, b.line, line, p.returncode,
-                                              p.stdout[-2000:], p.stderr[-3000:])
-                ran += 1
-                try:
-                    last = json.loads(p.stdout) if p.stdout.strip() else None
-                except json.JSONDecodeError:
-                    last = None
+            done = run_block(lines, ws, env, tmp_path / f"io{k}")
+            for line, status, so, se in done:
+                assert status == _exit_of(line), (name, b.line, line, status, so[-2000:],
+                                                  se[-3000:])
+            assert len(done) == len(lines), (name, b.line, "stopped", done[-1:])
+            ran += len(done)
+            p_stdout = done[-1][2] if done else ""
+            try:
+                last = json.loads(p_stdout) if p_stdout.strip() else None
+            except json.JSONDecodeError:
+                last = None
         elif b.marker == "expect":
             if skipped:
                 continue        # the block before it needs a tool not installed here
@@ -391,7 +439,7 @@ def test_the_skill_is_thin_and_simulator_neutral():
         assert sim in desc
     body = text[m.end():]
     assert "AGENTS.md" in body and "agent/playbooks" in body and "emir next" in body
-    assert len(text.splitlines()) <= 120
+    assert len(text.splitlines()) <= 60
 
 
 def test_claude_code_finds_the_skill_through_a_relative_symlink():
@@ -436,20 +484,27 @@ def test_the_tool_is_emir_in_prose_and_the_command_in_backticks(rel):
 
 
 def test_every_planning_input_is_named_for_emir_next():
-    """`emir next` plans decap-aware EM only when it is given --dynamic (and
-    the person's --em-basis), and plans after a run from --run-summary;
-    AGENTS.md's "Pass every input" list named none of them, and playbook 02
-    never said to pass --dynamic to `emir next`."""
+    """`emir next` plans after a run from --run-summary: AGENTS.md's "Pass
+    every input" list names it (it once named none), and every name in it is
+    an option `emir next` takes (--dynamic and --em-basis went with
+    decap-aware EM; --vdd, --testbench and --abstract with cc-grid and the
+    chip-level hierarchy); AGENTS.md and playbook 01 say a simulated run is
+    rcc, and name no removed method."""
     import re
+
+    from emir import mcp_tools
     text = " ".join(_read("AGENTS.md").split())
     m = re.search(r"Pass \*\*every\*\* input the person gave \(([^()]*)\)", text)
     assert m, "AGENTS.md: the list of emir next's inputs"
-    for opt in ("--dspf", "--process", "--cc-sim", "--currents", "--period", "--dynamic",
-                "--em-basis", "--run-summary"):
+    for opt in ("--dspf", "--process", "--cc-sim", "--currents", "--period", "--run-summary"):
         assert f"`{opt}`" in m.group(1), opt
-    pb = " ".join(_read("agent/playbooks/02-big-block-cc.md").split())
-    assert "pass `--dynamic` (and their `--em-basis`, if they named one) to `emir next`" in pb
-    assert "EMIR-W409" in pb and "decaps-not-sized" in pb
+    takes = {o for a in mcp_tools.capture_parser("next")._actions for o in a.option_strings}
+    for opt in re.findall(r"`(--[a-z-]+)`", m.group(1)):
+        assert opt in takes, opt
+    for rel in ("AGENTS.md", "agent/playbooks/01-screen-a-block.md"):
+        pb = " ".join(_read(rel).split())
+        assert "every branch current" in pb and "rcc" in pb, rel
+        assert "cc-grid" not in pb and "EMIR-E530" not in pb, rel
     # the skill, which an agent outside a clone loads alone, lists the same
     skill = " ".join(_read("agent/skills/emir/SKILL.md").split())
     s = re.search(r"Pass \*\*every\*\* input the person gave \(([^()]*)\)", skill)
@@ -459,31 +514,36 @@ def test_every_planning_input_is_named_for_emir_next():
 
 
 def test_every_reason_for_exit_1_is_named():
-    """Exit 1 is a FAIL verdict, an IR budget FAIL or an EM basis not
-    computed, each with --fail-on-violation (the registry's wording): the
-    contract's summaries name all three."""
+    """Exit 1 is a FAIL verdict, with --fail-on-violation (the registry's
+    wording; an EM basis not computed went with decap-aware EM, an IR budget
+    FAIL with the chip-level hierarchy): the contract's summaries name it,
+    and no other."""
     from emir.errors import EXIT_CODES, EXIT_VIOLATION
     want = EXIT_CODES[EXIT_VIOLATION]
-    for what in ("a FAIL verdict", "an IR budget FAIL", "an EM basis asked for and not"):
-        assert what in want, what
-    for rel in ("AGENTS.md", "docs/agents.md"):
+    assert "a FAIL verdict" in want
+    assert "EM basis" not in want and "IR budget" not in want
+    for rel in ("AGENTS.md",):
         text = " ".join(_read(rel).split())
         line = text.split("**Exit status.**", 1)[1].split(" 2 bad input", 1)[0]
-        for what in ("a FAIL verdict", "an IR budget FAIL", "an EM basis asked for and not "
-                     "computed", "--fail-on-violation"):
+        for what in ("a FAIL verdict", "--fail-on-violation"):
             assert what in line, (rel, what)
+        assert "EM basis" not in line and "IR budget" not in line, rel
 
 
 def test_every_mcp_go_ahead_is_in_the_go_ahead_lists():
-    """The MCP server asks the person (EMIR-E590) before a `dynamic` run with
-    `dyn_steps` above 200000, a long run (`mcp_tools.GATE_WHEN`): every page
-    that lists the go-ahead rule names it."""
+    """The MCP server asks the person (EMIR-E590) before a long run
+    (`mcp_tools.GATE_WHEN`); its gates on `dynamic`, `dyn_steps`, `em_basis`
+    and `self_consistent` went with those options: no page that lists the
+    go-ahead rule names them any more."""
     from emir.mcp_tools import GATE_WHEN
-    assert any("dyn_steps above 200000" in w for w in GATE_WHEN["run"])
-    for rel in ("docs/agents.md", "agent/mcp/README.md", "SECURITY.md",
-                "agent/playbooks/10-mcp.md"):
+    gates = " ".join(w for ws in GATE_WHEN.values() for w in ws)
+    for gone in ("dyn_steps", "em_basis", "self_consistent", "dynamic"):
+        assert gone not in gates, gone
+    for rel in ("agent/mcp/README.md", "SECURITY.md", "agent/playbooks/00-preflight.md"):
         text = " ".join(_read(rel).split())
-        assert "`dyn_steps` above 200000" in text, rel
+        assert "long run" in text or "run long" in text, rel
+        for gone in ("`dyn_steps`", "`em_basis`", "`self_consistent`"):
+            assert gone not in text, (rel, gone)
 
 
 def test_the_changelog_counts_the_eval_cards():

@@ -1,5 +1,5 @@
 id: onboard-gf180
-playbook: 04-onboard-a-pdk
+playbook: 02-process-file
 title: Onboard gf180mcu from its tech LEF and prove it on a strap
 requires: []
 fixtures: [gf180_strap]

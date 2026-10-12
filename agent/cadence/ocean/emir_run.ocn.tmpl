@@ -14,17 +14,15 @@
 ;;
 ;;   ocean -nograph -restore emir_run.ocn
 ;;
-;; Inputs: an ADE netlist directory whose top instantiates the block -- the RC
-;; extraction for --mode rcc, or the C-only extraction / the schematic for
-;; --mode cc-grid -- and the DSPF EMIR screens (the RC DSPF for rcc, the R-only
-;; DSPF for cc-grid). Fill the ${...} fields first.
+;; Inputs: an ADE netlist directory whose top instantiates the block's RC
+;; extraction, and that RC DSPF, which EMIR screens with every branch current
+;; the simulation saves (rcc). Fill the ${...} fields first.
 ;; ============================================================
 
 emirBin    = "${EMIR_BIN}"          ; the emir command, e.g. <clone>/bin/emir
-emirDspf   = "${DSPF}"              ; RC DSPF (rcc) or R-only DSPF (cc-grid)
+emirDspf   = "${DSPF}"              ; the RC DSPF, simulated and screened (rcc)
 emirProc   = "${PROCESS_YAML}"      ; your PDK's EMIR process file
 emirOut    = "${OUT_DIR}"
-emirMode   = "${MODE}"              ; "rcc" | "cc-grid": the person's choice, no default
 emirPrefix = "${INST_PREFIX}"       ; what the testbench calls the block, e.g. "XDUT."
 emirSaves  = strcat(emirOut "/emir_save.scs")
 
@@ -37,15 +35,10 @@ procedure( emirOcnQ(s)
       out = strcat(out if( c == "'" "'\\''" c )) )
     strcat(out "'") ))
 
-;; the mode is the person's choice (`emir next` lists what each costs and how
-;; accurate it is); the sketch stops until MODE says one
-unless( member(emirMode '("rcc" "cc-grid"))
-  error("EMIR: set MODE to rcc or cc-grid -- the person's choice; emir does not pick one") )
-
-;; 1. what to save (rcc: every branch current; cc-grid: the instance-pin currents)
-system(sprintf(nil "mkdir -p %s && %s save-lines %s --mode %s --prefix %s --out %s"
+;; 1. what to save: every branch current of the RC netlist
+system(sprintf(nil "mkdir -p %s && %s save-lines %s --prefix %s --out %s"
                emirOcnQ(emirOut) emirOcnQ(emirBin) emirOcnQ(emirDspf)
-               emirMode emirOcnQ(emirPrefix) emirOcnQ(emirSaves)))
+               emirOcnQ(emirPrefix) emirOcnQ(emirSaves)))
 
 ;; 2. simulate with those saves, in a text result format
 simulator('spectre)
@@ -59,8 +52,8 @@ temp(${TEMP})
 run()
 
 ;; 3. screen the result (summary, HTML report, viewer data)
-system(sprintf(nil "%s run %s --process %s --mode %s --net all --cc-sim %s --summary-out %s --html %s --viewer %s --lib %s --cell %s"
-               emirOcnQ(emirBin) emirOcnQ(emirDspf) emirOcnQ(emirProc) emirMode
+system(sprintf(nil "%s run %s --process %s --net all --cc-sim %s --summary-out %s --html %s --viewer %s --lib %s --cell %s"
+               emirOcnQ(emirBin) emirOcnQ(emirDspf) emirOcnQ(emirProc)
                emirOcnQ(strcat(emirOut "/sim/psf"))
                emirOcnQ(strcat(emirOut "/summary.json"))
                emirOcnQ(strcat(emirOut "/html")) emirOcnQ(strcat(emirOut "/viewer"))

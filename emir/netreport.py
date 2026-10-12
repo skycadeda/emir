@@ -9,9 +9,9 @@ Everything the colour encodes is also in a table, sortable and readable without
 colour vision, because a colour scale on its own is not a result.
 
 Consumes the `check_net` / `rcc_check` return dict, so the same page serves
-RCC, CC+grid and self-consistent runs — with the mode and the current
-provenance stated at the top, since the number means different things depending
-on which produced it.
+rcc and DC runs — with the mode, what it checked and the current provenance
+stated at the top, since the number means different things depending on which
+produced it.
 """
 from __future__ import annotations
 
@@ -25,13 +25,12 @@ import numpy as np
 
 from . import RESEARCH_DISCLAIMER, SCREENING_NOTE
 from .dashboard import CSS, _bar, _e, _tile, legend_html
-from .dspf import dyn_ratio, scale_text
+from .dspf import dyn_ratio, r_text, scale_text
 from .errors import EmirError
 
 #: what each route's numbers are, for the provenance table
 _MODE_TEXT = {
-    "rcc": "branch currents measured in the simulation",
-    "cc-grid": "CC currents pushed through the R grid by superposition",
+    "rcc": "every branch current read from the simulation",
     "dc": "DC currents given on the command line, solved through the R grid",
 }
 
@@ -140,20 +139,6 @@ EXTRA_CSS = """
 
 
 
-def _sc_line(sc: dict) -> str:
-    """The self-consistent loop in one line of the provenance: how it ended,
-    the pass reported, and the last residual against its tolerance."""
-    from .selfconsist import state_text
-    p = sc.get("passes") or []
-    last = p[-1] if p else {}
-
-    def mv(v):
-        return "not a number" if v is None else f"{v:.4g} mV"
-    return (f"self-consistent loop: {state_text(sc)}; pass {sc.get('reported_pass')} "
-            f"reported of {len(p)} simulation(s); last residual "
-            f"{mv(last.get('residual_mV'))} against a {mv(last.get('tolerance_mV'))} "
-            f"tolerance")
-
 def _mr(res) -> dict:
     """max_ratio, tolerating older results that stored a scalar."""
     m = res.get("max_ratio", 0.0)
@@ -212,9 +197,7 @@ def _svg(dspf, res, net, warn=0.8, max_px=1100, proc=None) -> str:
     for sev, ratio, i, a, b, w, r, sh in segs:
         em = S.em_colour(ratio, warn)
         ir = S.ir_colour(sh.get("ir"), ir_top) if sh.get("ir") is not None else S.UNCHECKED
-        model = bool(sh.get("model"))
-        rt = (S.MODEL_TEXT if model else "no limit stated" if ratio is None
-              else S.fmt_ratio(ratio))
+        rt = "no limit stated" if ratio is None else S.fmt_ratio(ratio)
         title = (f'<title>{_e(r["name"])} {_e(r.get("layer") or "")} {_e(rt)}'
                  + (f' · IR {_e(S.fmt_mv(sh["ir"]))}' if sh.get("ir") is not None else "")
                  + '</title>')
@@ -232,10 +215,8 @@ def _svg(dspf, res, net, warn=0.8, max_px=1100, proc=None) -> str:
         body.append(
             f'<line id="seg-{i}" class="seg {sev}" x1="{a[0]:.4f}" '
             f'y1="{-a[1]:.4f}" x2="{b[0]:.4f}" y2="{-b[1]:.4f}" '
-            f'stroke-width="{w:.4f}" stroke="{S.MODEL if model else em}" '
-            f'data-em="{S.MODEL if model else em}" data-ir="{S.MODEL if model else ir}"'
-            + (f' stroke-dasharray="{w:.4f} {2 * w:.4f}"' if model else "")
-            + f'>{title}</line>')
+            f'stroke-width="{w:.4f}" stroke="{em}" data-em="{em}" data-ir="{ir}"'
+            f'>{title}</line>')
     for t in dspf.net_taps(net):
         p = t["xy"]
         body.append(f'<circle class="tap" cx="{p[0]:.4f}" cy="{-p[1]:.4f}" '
@@ -313,25 +294,26 @@ def ring_label(p, rr: float, text: str, box, size: float) -> tuple:
     return x, y, anchor, fs
 
 
-def _legend_html(mode: str, warn: float, ir_top: float, unchecked: bool, lost: bool,
-                 model: bool = False) -> str:
+def _legend_html(mode: str, warn: float, ir_top: float, unchecked: bool, lost: bool) -> str:
     """One legend of the net page (`dashboard.legend_html`), with the map's
     port and device-tap dots."""
     return legend_html(mode, warn, ir_top, unchecked=unchecked, lost=lost,
-                       markers=mode == "em", rings=True, model=model,
+                       markers=mode == "em", rings=True,
                        extra='<span><i class="sw dot port"></i> port</span>'
                              '<span><i class="sw dot tap"></i> device tap</span>')
 
 
 def _metric_rows(res, proc):
+    """(metric, has a limit, worst ratio, checked by the run) per metric."""
     from .engine import METRICS
+    checked = res.get("metrics") or METRICS
     out = []
     for m in METRICS:
         lim = proc.limited(m)
         rs = [c["ratios"].get(m) for c in res["clusters"] if c.get("ratios")]
         rs = [r for r in rs if r is not None]
         worst = max(rs) if rs else None
-        out.append((m, lim, worst))
+        out.append((m, lim, worst, m in checked))
     return out
 
 
@@ -351,9 +333,6 @@ def net_report(res, dspf, net, proc, out_dir, file_name=None, title=None,
     verdict = "FAIL" if n_fail else ("WARN" if n_warn else "CLEAN")
     w = res["worst"]
     dyn = res.get("dynamic")
-    from .decap import basis_label                     # --- feature decap ---
-    from .decap import html_section as decap_html
-    basis = basis_label(res)
     mode = res.get("mode", "dc")
     nw = res["network"]
 
@@ -362,8 +341,7 @@ def net_report(res, dspf, net, proc, out_dir, file_name=None, title=None,
               {"FAIL": "f", "WARN": "w", "CLEAN": "g"}[verdict]),
         _tile("worst EM",
               f"{(w['ratio'] if w else _mr(res)['all']):.3f}×",
-              f"{w['metric']} on {w['layer']} ({w['name']})"
-              + (f"; {basis}" if basis else "") if w else
+              f"{w['metric']} on {w['layer']} ({w['name']})" if w else
               f"worst checked branch, below the {proc.warn_fraction:.2f}× "
               f"warn fraction",
               "f" if w and w["ratio"] >= 1 else ("w" if w else "g")),
@@ -389,14 +367,14 @@ def net_report(res, dspf, net, proc, out_dir, file_name=None, title=None,
 
     # provenance: what produced these numbers, and what checks passed
     checks = [
-        ("mode", f"<b>{_e(mode)}</b> — " + _MODE_TEXT.get(mode, "")
-         + (" — " + _e(_sc_line(res.get("self_consistency") or {}))
-            if res.get("self_consistent") else "")),
+        ("mode", f"<b>{_e(mode)}</b> — " + _MODE_TEXT.get(mode, "")),
         ("currents", _e(res.get("metric_note", "?"))),
-        ("temperature", f"analysis at <b>{proc.temp:g} °C</b>; extracted R "
-         + ("already at temperature, solver scaling <b>off</b>"
-            if res.get("r_at_temp") else
-            _e(scale_text(False, res.get("rscale", 1.0), res.get("layer_map"))))),
+        ("temperature", f"analysis at <b>{proc.temp:g} °C</b>; "
+         + (_e(r_text(res, proc)[1]) if res.get("r_basis") else
+            "extracted R " + ("already at temperature, solver scaling <b>off</b>"
+                              if res.get("r_at_temp") else
+                              _e(scale_text(False, res.get("rscale", 1.0),
+                                            res.get("layer_map")))))),
         ("KCL residual", f"{res['kcl_residual']:.2e} A"),
     ]
     if "loop_residual" in res:
@@ -436,12 +414,13 @@ def net_report(res, dspf, net, proc, out_dir, file_name=None, title=None,
 
     mrows = "".join(
         f"<tr><td>{m}</td><td>"
-        + ("<span class=\"sev WARN\">value only — no PDK limit</span>"
+        + ("<span class=\"sev WARN\">not checked</span>" if not done else
+           "<span class=\"sev WARN\">value only — no PDK limit</span>"
            if not lim else "checked")
         + "</td><td class=\"num\">"
-        + (f"{worst:.3f}×" if worst is not None else "—")
+        + (f"{worst:.3f}×" if worst is not None and done else "—")
         + "</td></tr>"
-        for m, lim, worst in _metric_rows(res, proc))
+        for m, lim, worst, done in _metric_rows(res, proc))
 
     vrows = []
     names = [r["name"] for r in nw.res]
@@ -478,14 +457,12 @@ def net_report(res, dspf, net, proc, out_dir, file_name=None, title=None,
     from .scene import segments
     _sh = segments(res, dspf, net, proc)
     _irt = max((v["ir"] for v in _sh if S.finite(v.get("ir"))), default=0.0)
-    _model = any(v.get("model") for v in _sh)
     legends = (_legend_html("em", proc.warn_fraction, _irt,
-                            any(v["ratio"] is None and not v.get("model") for v in _sh),
+                            any(v["ratio"] is None for v in _sh),
                             any(v["ratio"] is not None and not S.finite(v["ratio"])
-                                for v in _sh), model=_model)
+                                for v in _sh))
                + _legend_html("ir", proc.warn_fraction, _irt, False,
-                              any(v["ir"] is not None and not S.finite(v["ir"]) for v in _sh),
-                              model=_model)
+                              any(v["ir"] is not None and not S.finite(v["ir"]) for v in _sh))
                .replace('class="emleg" data-for="ir"', 'class="emleg" data-for="ir" hidden'))
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     doc = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -528,7 +505,7 @@ def net_report(res, dspf, net, proc, out_dir, file_name=None, title=None,
 <div class="tblwrap"><table><thead><tr><th>metric</th><th>status</th>
 <th class="num">worst ratio</th></tr></thead><tbody>{mrows}</tbody></table></div>
 
-<h2>Violations — {len(cl)} at or above {proc.warn_fraction:.2f}×{' · ' + _e(basis) if basis else ''}</h2>
+<h2>Violations — {len(cl)} at or above {proc.warn_fraction:.2f}×</h2>
 <div class="tblwrap"><table><thead><tr><th></th><th>resistor</th><th>layer</th>
 <th>kind</th><th>metric</th><th class="num">ratio</th>
 <th class="num">value <span class="u">mA/µm or mA/cut</span></th>
@@ -538,7 +515,6 @@ def net_report(res, dspf, net, proc, out_dir, file_name=None, title=None,
         '<tr><td colspan="10" style="color:var(--muted)">nothing at or above the warn fraction</td></tr>'}
 </tbody></table></div>
 {'<h2>Worst dynamic excursion by node</h2><div class="tblwrap"><table><thead><tr><th>node</th><th class="num">worst mV</th><th class="num">at t (s)</th></tr></thead><tbody>' + drows + '</tbody></table></div>' if dyn else ''}
-{decap_html(res)}
 
 <footer class="foot">
 <p><b>{_e(SCREENING_NOTE)}</b> Foundry-qualified EM/IR analysis, with the PDK's full
@@ -560,9 +536,7 @@ def net_report(res, dspf, net, proc, out_dir, file_name=None, title=None,
                    "worst_via": float(_mr(res)["via"]),
                    "ir": float(res["ir_drop"]),
                    "dyn": float(dyn["worst_V"]) if dyn else None,
-                   "res": len(nw.res), "when": now,
-                   "em_basis": (res.get("em_basis") or {}).get("used"),
-                   "em_basis_label": basis or None}, f, indent=1)
+                   "res": len(nw.res), "when": now}, f, indent=1)
     return path
 
 
@@ -597,6 +571,78 @@ def index_dir(out_dir, file_name="index.html") -> str:
                 continue
     entries.sort(key=lambda e: -e.get("worst", 0))
     return net_index(entries, out_dir, file_name=file_name)
+
+
+#: the files a run's --viewer writes that hold its numbers (the Explorer's
+#: code, emir_explorer.il, holds none: without its data it loads nothing)
+VIEWER_DATA = ("emir_viz.json", "emir_data.il", "emir.lyrdb", "emir_em_bar.png",
+               "emir_ir_bar.png")
+#: where `set_aside` moves an earlier run's numbers
+STALE = "stale"
+#: the run's EM/IR charts in --html (`emir.chart.CHART_FILE` and its light
+#: twin; named here so a refusal needs no matplotlib)
+CHART_FILES = ("emir_chart.png", "emir_chart_light.png")
+
+
+def set_aside(html=None, viewer=None) -> list:
+    """Move an earlier run's numbers out of a refused run's --html and
+    --viewer directories, into their `stale/` subdirectory: EMIR's own per-net
+    pages (each `<stem>.html` with its `<stem>.json` sidecar), its charts and
+    the viewer data (`VIEWER_DATA`). Nothing else is touched. Returns what
+    moved."""
+    import shutil
+    moved = []
+
+    def move(d, names):
+        for n in names:
+            src = os.path.join(d, n)
+            if os.path.isfile(src):
+                os.makedirs(os.path.join(d, STALE), exist_ok=True)
+                shutil.move(src, os.path.join(d, STALE, n))
+                moved.append(src)
+
+    if html and os.path.isdir(html):
+        names = list(CHART_FILES)
+        for fn in sorted(os.listdir(html)):
+            if not fn.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(html, fn), encoding="utf-8") as f:
+                    side = json.load(f)
+            except (ValueError, OSError):
+                continue
+            if isinstance(side, dict) and {"href", "net", "verdict"} <= set(side):
+                names += [fn, os.path.basename(str(side["href"]))]
+        move(html, names)
+    if viewer and os.path.isdir(viewer):
+        move(viewer, VIEWER_DATA)
+    return moved
+
+
+def refused_index(out_dir, err, file_name="index.html", moved=()) -> str:
+    """The landing page of a run refused for its window (`waveform.REFUSALS`):
+    the code, why, and what to give -- no number; an earlier run's pages are
+    in `stale/` (`set_aside`), so nothing here is read as this run's."""
+    os.makedirs(out_dir, exist_ok=True)
+    steps = "".join(f"<li><code>{_e(s['command'])}</code></li>" for s in err.next_steps())
+    doc = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EMIR — run refused</title><style>{CSS}{EXTRA_CSS}</style></head><body>
+<header class="top"><div class="topin"><span class="brand">EMIR · REFUSED</span>
+<span class="cell">no number</span><span class="spacer"></span>
+<button class="tgl" id="themebtn">Theme</button></div></header>
+<div class="wrap"><h2>The run was refused: {_e(err.code)} {_e(err.entry.title)}</h2>
+<p>{_e(err.message)}</p><p><b>What to give:</b> {_e(err.hint)}</p>
+{f"<p>Next:</p><ul>{steps}</ul>" if steps else ""}
+<p>rcc averages over the record's last whole periods of --period; this run was refused
+before it printed any number.
+{f"An earlier run's pages and charts were moved to {STALE}/: they are not this run's."
+ if moved else ""}</p>
+<footer class="foot"><p><b>{_e(SCREENING_NOTE)}</b></p>
+<p>{_e(RESEARCH_DISCLAIMER)}</p></footer>
+</div><script>{THEMED_IMAGES}</script></body></html>"""
+    from .output import write_text
+    return write_text(os.path.join(out_dir, file_name), doc, code="EMIR-E701")
 
 
 def _vcls(e):
@@ -664,8 +710,7 @@ def net_index(entries, out_dir, file_name="index.html") -> str:
         f'<tr class="clickable" data-href="{_e(quote(str(e["href"])))}">'
         f'<td><span class="sev {_e(e["verdict"])}">{_e(e["verdict"])}</span></td>'
         f'<td><a href="{_e(quote(str(e["href"])))}">{_e(e["design"])} · '
-        f'<b>{_e(e["net"])}</b></a></td><td>{_e(e["mode"])}'
-        + (f' · {_e(e["em_basis_label"])}' if e.get("em_basis_label") else "") + '</td>'
+        f'<b>{_e(e["net"])}</b></a></td><td>{_e(e["mode"])}</td>'
         f'<td class="num"{_wcls(e)}>{e.get("worst_wire", e["worst"]):.3f}×</td>'
         f'<td class="num"{_vcls(e)}>{e.get("worst_via", 0.0):.3f}×</td>'
         f'<td class="num">{e["ir"] * 1e3:.4f}</td>'
